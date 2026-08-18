@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <!-- Amber / Yellow rounded background badge for Metrobús València -->
+    <path
+        android:fillColor="#FFB300"
+        android:pathData="M96,0 L416,0 C469,0 512,43 512,96 L512,416 C512,469 469,512 416,512 L96,512 C43,512 0,469 0,416 L0,96 C0,43 43,0 96,0 Z" />
+    <!-- Dark Navy bus header bar -->
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M80,80 L432,80 C445,80 456,91 456,104 L456,136 C456,149 445,160 432,160 L80,160 C67,160 56,149 56,136 L56,104 C56,91 67,80 80,80 Z" />
+    <!-- White 'METROBÚS' / bus windshield light -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M96,100 L416,100 C423,100 428,105 428,112 L428,128 C428,135 423,140 416,140 L96,140 C89,140 84,135 84,128 L84,112 C84,105 89,100 96,100 Z" />
+    <!-- Stylized Metrobús "m" emblem in crisp white -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M90,210 L150,210 C155,210 160,215 160,220 L160,420 C160,425 155,430 150,430 L90,430 C85,430 80,425 80,420 L80,220 C80,215 85,210 90,210 Z M200,260 C225,225 265,210 310,210 C370,210 420,250 420,320 L420,420 C420,425 415,430 410,430 L350,430 C345,430 340,425 340,420 L340,330 C340,295 320,280 295,280 C270,280 250,295 250,330 L250,420 C250,425 245,430 240,430 L180,430 C175,430 170,425 170,420 L170,270 C170,265 175,260 180,260 L200,260 Z" />
+</vector>

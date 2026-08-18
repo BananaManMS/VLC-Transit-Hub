@@ -1,0 +1,10 @@
+{
+  "name": "VLC Transit",
+  "description": "A responsive tablet and mobile dashboard for Valencia transit, featuring real-time EMT Bus, Metrovalencia departures, Cercanías Renfe schedules, weather, calendar, and an interactive Osmdroid OpenStreetMap.",
+  "requestFramePermissions": [
+    "GEOLOCATION"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

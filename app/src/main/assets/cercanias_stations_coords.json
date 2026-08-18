@@ -1,0 +1,758 @@
+[
+  {
+    "stop_id": "64003",
+    "stop_name": "Moixent",
+    "stop_lat": 38.8777975,
+    "stop_lon": -0.7536507,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64004",
+    "stop_name": "Vallada",
+    "stop_lat": 38.9089907,
+    "stop_lon": -0.6902385,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64005",
+    "stop_name": "Montesa",
+    "stop_lat": 38.9429388,
+    "stop_lon": -0.6410905,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64006",
+    "stop_name": "L'Alcúdia de Crespins",
+    "stop_lat": 38.9690579,
+    "stop_lon": -0.5866758,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64007",
+    "stop_name": "Lenova-Manuel",
+    "stop_lat": 39.0500968,
+    "stop_lon": -0.4776857,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64100",
+    "stop_name": "Xàtiva",
+    "stop_lat": 38.992148,
+    "stop_lon": -0.5245402,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "64102",
+    "stop_name": "La Pobla Llarga",
+    "stop_lat": 39.083238,
+    "stop_lon": -0.469644,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64103",
+    "stop_name": "Carcaixent",
+    "stop_lat": 39.1205251,
+    "stop_lon": -0.4544102,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64104",
+    "stop_name": "Alzira",
+    "stop_lat": 39.1531495,
+    "stop_lon": -0.4506011,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64105",
+    "stop_name": "Algemesí",
+    "stop_lat": 39.1931484,
+    "stop_lon": -0.4409196,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64107",
+    "stop_name": "Benifaió",
+    "stop_lat": 39.2843027,
+    "stop_lon": -0.4299537,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64200",
+    "stop_name": "Silla",
+    "stop_lat": 39.3617810,
+    "stop_lon": -0.4150501,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64201",
+    "stop_name": "Catarroja",
+    "stop_lat": 39.4000447,
+    "stop_lon": -0.3992195,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64202",
+    "stop_name": "Massanassa",
+    "stop_lat": 39.4091934,
+    "stop_lon": -0.3953073,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64203",
+    "stop_name": "Alfafar-Benetússer",
+    "stop_lat": 39.4223282,
+    "stop_lon": -0.3926720,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "64210",
+    "stop_name": "Albal",
+    "stop_lat": 39.3918429,
+    "stop_lon": -0.4026343,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65000",
+    "stop_name": "València-Estació del Nord",
+    "stop_lat": 39.4659223,
+    "stop_lon": -0.3774565,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "65001",
+    "stop_name": "Roca-Cúper",
+    "stop_lat": 39.5262094,
+    "stop_lon": -0.3238405,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65002",
+    "stop_name": "València-La Font de Sant Lluís",
+    "stop_lat": 39.4415863,
+    "stop_lon": -0.3713961,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65003",
+    "stop_name": "València-Cabanyal",
+    "stop_lat": 39.4702456,
+    "stop_lon": -0.3346772,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65005",
+    "stop_name": "Albuixech",
+    "stop_lat": 39.5435233,
+    "stop_lon": -0.3205526,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65006",
+    "stop_name": "Massalfassar",
+    "stop_lat": 39.5557532,
+    "stop_lon": -0.3183058,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65007",
+    "stop_name": "El Puig",
+    "stop_lat": 39.588302,
+    "stop_lon": -0.3116645,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65008",
+    "stop_name": "Puçol",
+    "stop_lat": 39.6205367,
+    "stop_lon": -0.3031085,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65200",
+    "stop_name": "Sagunt",
+    "stop_lat": 39.6758025,
+    "stop_lon": -0.271542,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "65201",
+    "stop_name": "Les Valls",
+    "stop_lat": 39.7193457,
+    "stop_lon": -0.2397602,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65202",
+    "stop_name": "Almenara",
+    "stop_lat": 39.7487737,
+    "stop_lon": -0.2183811,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65203",
+    "stop_name": "La Llosa",
+    "stop_lat": 39.7678109,
+    "stop_lon": -0.2029444,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65204",
+    "stop_name": "Chilches/Xilxes",
+    "stop_lat": 39.7826726,
+    "stop_lon": -0.1903295,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65205",
+    "stop_name": "Moncofa",
+    "stop_lat": 39.8208891,
+    "stop_lon": -0.1626965,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65206",
+    "stop_name": "Nules la Villavella",
+    "stop_lat": 39.8532354,
+    "stop_lon": -0.1527317,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65207",
+    "stop_name": "Burriana-Alquerías Niño Perdido",
+    "stop_lat": 39.8965088,
+    "stop_lon": -0.1038601,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65208",
+    "stop_name": "Vila-Real",
+    "stop_lat": 39.9330935,
+    "stop_lon": -0.0967681,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65209",
+    "stop_name": "Almassora",
+    "stop_lat": 39.9549079,
+    "stop_lon": -0.0767713,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65300",
+    "stop_name": "Castelló de la Plana",
+    "stop_lat": 39.9884736,
+    "stop_lon": -0.0523456,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "65304",
+    "stop_name": "Orpesa",
+    "stop_lat": 40.092258,
+    "stop_lon": 0.139861,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65306",
+    "stop_name": "Torreblanca",
+    "stop_lat": 40.212211,
+    "stop_lon": 0.198779,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65308",
+    "stop_name": "Alcalá de Chivert",
+    "stop_lat": 40.30469,
+    "stop_lon": 0.228717,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65311",
+    "stop_name": "Benicarló-Peñíscola",
+    "stop_lat": 40.427639,
+    "stop_lon": 0.415217,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "65312",
+    "stop_name": "Vinaròs",
+    "stop_lat": 40.471682,
+    "stop_lon": 0.455727,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "65314",
+    "stop_name": "Ulldecona-Alcanar-La Sénia",
+    "stop_lat": 40.5959267,
+    "stop_lon": 0.44927448,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65318",
+    "stop_name": "Benicàssim",
+    "stop_lat": 40.0579451,
+    "stop_lon": 0.0577646,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65400",
+    "stop_name": "Tortosa",
+    "stop_lat": 40.807333,
+    "stop_lon": 0.5230136,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "65401",
+    "stop_name": "Camp-redó",
+    "stop_lat": 40.7591556,
+    "stop_lon": 0.55584433,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65402",
+    "stop_name": "L'Aldea-Amposta-Tortosa",
+    "stop_lat": 40.753564,
+    "stop_lon": 0.61430923,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "65403",
+    "stop_name": "Camarles-Deltebre",
+    "stop_lat": 40.7747633,
+    "stop_lon": 0.67176095,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65404",
+    "stop_name": "L'Ampolla-El Perelló-Deltebre",
+    "stop_lat": 40.8119898,
+    "stop_lon": 0.70826336,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65405",
+    "stop_name": "L'Ametlla de Mar",
+    "stop_lat": 40.8862,
+    "stop_lon": 0.80045321,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65411",
+    "stop_name": "Salou-Port Aventura",
+    "stop_lat": 41.0884798,
+    "stop_lon": 1.14605195,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65420",
+    "stop_name": "L'Hospitalet de l'Infant",
+    "stop_lat": 40.99939,
+    "stop_lon": 0.91253887,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "65422",
+    "stop_name": "Cambrils",
+    "stop_lat": 41.0815642,
+    "stop_lon": 1.04603752,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66200",
+    "stop_name": "Utiel",
+    "stop_lat": 39.5707742,
+    "stop_lon": -1.2024215,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66201",
+    "stop_name": "San Antonio de Requena",
+    "stop_lat": 39.5222997,
+    "stop_lon": -1.150367,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66202",
+    "stop_name": "Requena",
+    "stop_lat": 39.4912708,
+    "stop_lon": -1.1046578,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66203",
+    "stop_name": "El Rebollar",
+    "stop_lat": 39.4773604,
+    "stop_lon": -1.0116025,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66204",
+    "stop_name": "Siete Aguas",
+    "stop_lat": 39.4572264,
+    "stop_lon": -0.9025067,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66206",
+    "stop_name": "Buñol",
+    "stop_lat": 39.427139,
+    "stop_lon": -0.7873638,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66207",
+    "stop_name": "Chiva",
+    "stop_lat": 39.4711268,
+    "stop_lon": -0.7229414,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66208",
+    "stop_name": "Cheste",
+    "stop_lat": 39.490903,
+    "stop_lon": -0.6862639,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66209",
+    "stop_name": "Lorigüilla-Reva",
+    "stop_lat": 39.4857771,
+    "stop_lon": -0.5673983,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66210",
+    "stop_name": "Circuit Ricardo Tormo",
+    "stop_lat": 39.4954379,
+    "stop_lon": -0.6247545,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66211",
+    "stop_name": "Aldaia",
+    "stop_lat": 39.4611179,
+    "stop_lon": -0.4632476,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66212",
+    "stop_name": "València-Sant Isidre",
+    "stop_lat": 39.4501252,
+    "stop_lon": -0.4039833,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "66214",
+    "stop_name": "Xirivella-Alqueries",
+    "stop_lat": 39.4625201,
+    "stop_lon": -0.4321538,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67007",
+    "stop_name": "Arañales de Muel",
+    "stop_lat": 41.468946,
+    "stop_lon": -1.086394,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67010",
+    "stop_name": "Cariñena",
+    "stop_lat": 41.335586,
+    "stop_lon": -1.228422,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67011",
+    "stop_name": "Encinacorba",
+    "stop_lat": 41.28865,
+    "stop_lon": -1.278534,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67013",
+    "stop_name": "Villarreal de Huerva",
+    "stop_lat": 41.196498,
+    "stop_lon": -1.287096,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67017",
+    "stop_name": "Ferreruela",
+    "stop_lat": 41.06387,
+    "stop_lon": -1.239384,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67021",
+    "stop_name": "Calamocha",
+    "stop_lat": 40.903864,
+    "stop_lon": -1.299841,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67105",
+    "stop_name": "Santa Eulalia del Campo",
+    "stop_lat": 40.572917,
+    "stop_lon": -1.312995,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67107",
+    "stop_name": "Cella",
+    "stop_lat": 40.455266,
+    "stop_lon": -1.244329,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67113",
+    "stop_name": "Monreal del Campo",
+    "stop_lat": 40.782321,
+    "stop_lon": -1.360792,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67200",
+    "stop_name": "Teruel",
+    "stop_lat": 40.341029,
+    "stop_lon": -1.110284,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "67202",
+    "stop_name": "Puerto Escandón",
+    "stop_lat": 40.273092,
+    "stop_lon": -0.985079,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67203",
+    "stop_name": "Puebla de Valverde",
+    "stop_lat": 40.213424,
+    "stop_lon": -0.944674,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67205",
+    "stop_name": "Sarrión",
+    "stop_lat": 40.146339,
+    "stop_lon": -0.823631,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67206",
+    "stop_name": "Mora de Rubielos",
+    "stop_lat": 40.123142,
+    "stop_lon": -0.786145,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67207",
+    "stop_name": "Rubielos de Mora",
+    "stop_lat": 40.118006,
+    "stop_lon": -0.773463,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67208",
+    "stop_name": "Barracas",
+    "stop_lat": 40.01174,
+    "stop_lon": -0.696151,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67211",
+    "stop_name": "Caudiel",
+    "stop_lat": 39.9473696,
+    "stop_lon": -0.5720537,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67212",
+    "stop_name": "Jérica-Viver",
+    "stop_lat": 39.9149777,
+    "stop_lon": -0.5693896,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67213",
+    "stop_name": "Navajas",
+    "stop_lat": 39.8744166,
+    "stop_lon": -0.5059546,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67214",
+    "stop_name": "Segorbe-Arrabal",
+    "stop_lat": 39.854557,
+    "stop_lon": -0.493863,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67215",
+    "stop_name": "Segorbe-Ciudad",
+    "stop_lat": 39.8471755,
+    "stop_lon": -0.4823544,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67216",
+    "stop_name": "Algimia-Ciudad",
+    "stop_lat": 39.7529934,
+    "stop_lon": -0.3657542,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67217",
+    "stop_name": "Soneja",
+    "stop_lat": 39.8126015,
+    "stop_lon": -0.4318206,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67221",
+    "stop_name": "Estivella-Albalat Dels Tarongers",
+    "stop_lat": 39.706408,
+    "stop_lon": -0.348324,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "67223",
+    "stop_name": "Gilet",
+    "stop_lat": 39.6793985,
+    "stop_lon": -0.3206548,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69001",
+    "stop_name": "Genovés",
+    "stop_lat": 38.98773,
+    "stop_lon": -0.47988,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69002",
+    "stop_name": "Benigànim",
+    "stop_lat": 38.938499,
+    "stop_lon": -0.453424,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69003",
+    "stop_name": "La Pobla del Duc",
+    "stop_lat": 38.907606,
+    "stop_lon": -0.453386,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69004",
+    "stop_name": "Montaberner",
+    "stop_lat": 38.884135,
+    "stop_lon": -0.491619,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69005",
+    "stop_name": "Bufalí",
+    "stop_lat": 38.867405,
+    "stop_lon": -0.510478,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69006",
+    "stop_name": "Albaida",
+    "stop_lat": 38.845645,
+    "stop_lon": -0.518129,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69007",
+    "stop_name": "Agullent",
+    "stop_lat": 38.830569,
+    "stop_lon": -0.551183,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69008",
+    "stop_name": "Ontinyent",
+    "stop_lat": 38.809692,
+    "stop_lon": -0.602457,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69009",
+    "stop_name": "Agres",
+    "stop_lat": 38.796829,
+    "stop_lon": -0.521744,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69010",
+    "stop_name": "Cocentaina",
+    "stop_lat": 38.740618,
+    "stop_lon": -0.446789,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69011",
+    "stop_name": "Alcoi",
+    "stop_lat": 38.709349,
+    "stop_lon": -0.470247,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69101",
+    "stop_name": "El Romaní",
+    "stop_lat": 39.3029585,
+    "stop_lon": -0.3942113,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69102",
+    "stop_name": "Sollana",
+    "stop_lat": 39.2792942,
+    "stop_lon": -0.3792563,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69103",
+    "stop_name": "Sueca",
+    "stop_lat": 39.2058471,
+    "stop_lon": -0.3082388,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69104",
+    "stop_name": "Cullera",
+    "stop_lat": 39.1778885,
+    "stop_lon": -0.2632437,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "69105",
+    "stop_name": "Tavernes de la Valldigna",
+    "stop_lat": 39.0790438,
+    "stop_lon": -0.2262966,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69107",
+    "stop_name": "Xeraco",
+    "stop_lat": 39.0261489,
+    "stop_lon": -0.2150346,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69110",
+    "stop_name": "Gandia",
+    "stop_lat": 38.970514,
+    "stop_lon": -0.1797829,
+    "wheelchair_boarding": 1
+  },
+  {
+    "stop_id": "69111",
+    "stop_name": "Platja i Grau de Gandia",
+    "stop_lat": 38.9902436,
+    "stop_lon": -0.1624339,
+    "wheelchair_boarding": 2
+  }
+]

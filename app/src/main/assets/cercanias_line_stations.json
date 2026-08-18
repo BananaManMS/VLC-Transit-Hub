@@ -1,0 +1,344 @@
+{
+  "C1": [
+    {
+      "id": "65000",
+      "name": "València-Estació del Nord"
+    },
+    {
+      "id": "64203",
+      "name": "Alfafar-Benetússer"
+    },
+    {
+      "id": "64202",
+      "name": "Massanassa"
+    },
+    {
+      "id": "64201",
+      "name": "Catarroja"
+    },
+    {
+      "id": "64210",
+      "name": "Albal"
+    },
+    {
+      "id": "64200",
+      "name": "Silla"
+    },
+    {
+      "id": "69101",
+      "name": "El Romaní"
+    },
+    {
+      "id": "69102",
+      "name": "Sollana"
+    },
+    {
+      "id": "69103",
+      "name": "Sueca"
+    },
+    {
+      "id": "69104",
+      "name": "Cullera"
+    },
+    {
+      "id": "69105",
+      "name": "Tavernes de la Valldigna"
+    },
+    {
+      "id": "69107",
+      "name": "Xeraco"
+    },
+    {
+      "id": "69110",
+      "name": "Gandia"
+    },
+    {
+      "id": "69111",
+      "name": "Platja i Grau de Gandia"
+    }
+  ],
+  "C2": [
+    {
+      "id": "65000",
+      "name": "València-Estació del Nord"
+    },
+    {
+      "id": "64203",
+      "name": "Alfafar-Benetússer"
+    },
+    {
+      "id": "64202",
+      "name": "Massanassa"
+    },
+    {
+      "id": "64201",
+      "name": "Catarroja"
+    },
+    {
+      "id": "64210",
+      "name": "Albal"
+    },
+    {
+      "id": "64200",
+      "name": "Silla"
+    },
+    {
+      "id": "64107",
+      "name": "Benifaió"
+    },
+    {
+      "id": "64105",
+      "name": "Algemesí"
+    },
+    {
+      "id": "64104",
+      "name": "Alzira"
+    },
+    {
+      "id": "64103",
+      "name": "Carcaixent"
+    },
+    {
+      "id": "64102",
+      "name": "La Pobla Llarga"
+    },
+    {
+      "id": "64007",
+      "name": "Lenova-Manuel"
+    },
+    {
+      "id": "64100",
+      "name": "Xàtiva"
+    },
+    {
+      "id": "64006",
+      "name": "L'Alcúdia de Crespins"
+    },
+    {
+      "id": "64005",
+      "name": "Montesa"
+    },
+    {
+      "id": "64004",
+      "name": "Vallada"
+    },
+    {
+      "id": "64003",
+      "name": "Moixent"
+    }
+  ],
+  "C3": [
+    {
+      "id": "65000",
+      "name": "València-Estació del Nord"
+    },
+    {
+      "id": "65002",
+      "name": "València-La Font de Sant Lluís"
+    },
+    {
+      "id": "66212",
+      "name": "València-Sant Isidre"
+    },
+    {
+      "id": "66214",
+      "name": "Xirivella-Alqueries"
+    },
+    {
+      "id": "66211",
+      "name": "Aldaia"
+    },
+    {
+      "id": "66210",
+      "name": "Circuit Ricardo Tormo"
+    },
+    {
+      "id": "66209",
+      "name": "Lorigüilla-Reva"
+    },
+    {
+      "id": "66208",
+      "name": "Cheste"
+    },
+    {
+      "id": "66207",
+      "name": "Chiva"
+    },
+    {
+      "id": "66206",
+      "name": "Buñol"
+    },
+    {
+      "id": "66204",
+      "name": "Siete Aguas"
+    },
+    {
+      "id": "66203",
+      "name": "El Rebollar"
+    },
+    {
+      "id": "66202",
+      "name": "Requena"
+    },
+    {
+      "id": "66201",
+      "name": "San Antonio de Requena"
+    },
+    {
+      "id": "66200",
+      "name": "Utiel"
+    }
+  ],
+  "C5": [
+    {
+      "id": "65000",
+      "name": "València-Estació del Nord"
+    },
+    {
+      "id": "65003",
+      "name": "València-Cabanyal"
+    },
+    {
+      "id": "65008",
+      "name": "Puçol"
+    },
+    {
+      "id": "65200",
+      "name": "Sagunt"
+    },
+    {
+      "id": "67223",
+      "name": "Gilet"
+    },
+    {
+      "id": "67221",
+      "name": "Estivella-Albalat Dels Tarongers"
+    },
+    {
+      "id": "67216",
+      "name": "Algimia-Ciudad"
+    },
+    {
+      "id": "67217",
+      "name": "Soneja"
+    },
+    {
+      "id": "67215",
+      "name": "Segorbe-Ciudad"
+    },
+    {
+      "id": "67214",
+      "name": "Segorbe-Arrabal"
+    },
+    {
+      "id": "67213",
+      "name": "Navajas"
+    },
+    {
+      "id": "67212",
+      "name": "Jérica-Viver"
+    },
+    {
+      "id": "67211",
+      "name": "Caudiel"
+    }
+  ],
+  "C6": [
+    {
+      "id": "65000",
+      "name": "València-Estació del Nord"
+    },
+    {
+      "id": "65002",
+      "name": "València-La Font de Sant Lluís"
+    },
+    {
+      "id": "65003",
+      "name": "València-Cabanyal"
+    },
+    {
+      "id": "65001",
+      "name": "Roca-Cúper"
+    },
+    {
+      "id": "65005",
+      "name": "Albuixech"
+    },
+    {
+      "id": "65006",
+      "name": "Massalfassar"
+    },
+    {
+      "id": "65007",
+      "name": "El Puig"
+    },
+    {
+      "id": "65008",
+      "name": "Puçol"
+    },
+    {
+      "id": "65200",
+      "name": "Sagunt"
+    },
+    {
+      "id": "65201",
+      "name": "Les Valls"
+    },
+    {
+      "id": "65202",
+      "name": "Almenara"
+    },
+    {
+      "id": "65203",
+      "name": "La Llosa"
+    },
+    {
+      "id": "65204",
+      "name": "Chilches/Xilxes"
+    },
+    {
+      "id": "65205",
+      "name": "Moncofa"
+    },
+    {
+      "id": "65206",
+      "name": "Nules la Villavella"
+    },
+    {
+      "id": "65207",
+      "name": "Burriana-Alquerías Niño Perdido"
+    },
+    {
+      "id": "65208",
+      "name": "Vila-Real"
+    },
+    {
+      "id": "65209",
+      "name": "Almassora"
+    },
+    {
+      "id": "65300",
+      "name": "Castelló de la Plana"
+    },
+    {
+      "id": "65318",
+      "name": "Benicàssim"
+    },
+    {
+      "id": "65304",
+      "name": "Orpesa"
+    },
+    {
+      "id": "65306",
+      "name": "Torreblanca"
+    },
+    {
+      "id": "65311",
+      "name": "Benicarló-Peñíscola"
+    },
+    {
+      "id": "65312",
+      "name": "Vinaròs"
+    }
+  ]
+}

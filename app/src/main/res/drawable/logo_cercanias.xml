@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="300"
+    android:viewportHeight="300">
+    <!-- Red circle background of Cercanías -->
+    <path
+        android:fillColor="#EF2C30"
+        android:pathData="M150,150m-150,0a150,150 0,1 1,300 0a150,150 0,1 1,-300 0" />
+    <!-- White stylized rotated "C" train symbol -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M150,100C177.429,100 200,122.571 200,150C200,177.429 177.429,200 150,200C122.571,200 100,177.429 100,150L50,150C50,204.858 95.142,250 150,250C204.858,250 250,204.858 250,150C250,95.142 204.858,50 150,50L150,100Z" />
+</vector>

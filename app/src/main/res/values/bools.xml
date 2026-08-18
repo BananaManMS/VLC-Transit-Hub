@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Default for phones: lock orientation to portrait -->
+    <bool name="allow_land_rotation">false</bool>
+</resources>

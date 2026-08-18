@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <!-- Red circle background of Metrovalencia -->
+    <path
+        android:fillColor="#E51D2D"
+        android:pathData="M0,512c0,282.8 229.2,512 512,512c282.7,0 512,-229.2 512,-512C1024,229.2 794.7,0 512,0C229.2,0 0,229.2 0,512" />
+    <!-- White isotype modern stylized "m" -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M512.4,397.5H402.7v404.5h113.9V540.7c0,-37.9 13.7,-67.9 56.8,-67.9c54.9,0 54.9,41.1 54.9,70.6v258.8h113.8V540.7c0,-37.9 13.8,-67.9 56.8,-67.9c54.9,0 54.9,41.1 54.9,70.6v258.8h107.7V517.9c0,-85.6 -59.3,-130.3 -135.4,-130.3c-57.7,0 -86.5,37.2 -100.9,57.7c-25.4,-38.7 -51.1,-57.7 -105.5,-57.7c-61.4,0 -90.8,33.3 -105.8,58.6h-1.6V397.5z" />
+</vector>
