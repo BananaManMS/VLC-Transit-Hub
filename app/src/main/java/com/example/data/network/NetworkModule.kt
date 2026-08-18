@@ -8,7 +8,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object NetworkModule {
-    const val USER_AGENT = "VLC Transit/1.0 (https://github.com/BananaManMS/Valencia-Transit-Hub)"
+    const val USER_AGENT = "VLC Transit/1.0 (https://github.com/BananaManMS/VLC-Transit-Hub)"
 
     val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
