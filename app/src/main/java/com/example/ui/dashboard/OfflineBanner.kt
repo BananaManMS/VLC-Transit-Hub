@@ -5,7 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,15 +15,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -37,7 +43,7 @@ import com.example.R
 /**
  * Discreet persistent banner at the bottom of the dashboard that appears
  * only when network connectivity is lost, informing the user that information
- * is loaded from cache/offline.
+ * is loaded from cache/offline. Can be dismissed by the user.
  */
 @Composable
 fun OfflineBanner(
@@ -45,10 +51,19 @@ fun OfflineBanner(
     appLanguage: AppLanguage,
     isDarkMode: Boolean,
     bottomPadding: Dp = 0.dp,
+    onDismiss: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var isDismissed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isOnline) {
+        if (isOnline) {
+            isDismissed = false
+        }
+    }
+
     AnimatedVisibility(
-        visible = !isOnline,
+        visible = !isOnline && !isDismissed,
         enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
         exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
         modifier = modifier
@@ -56,7 +71,6 @@ fun OfflineBanner(
             .padding(start = 16.dp, end = 16.dp, bottom = bottomPadding + 8.dp)
     ) {
         val containerColor = if (isDarkMode) Color(0xFF23272F) else Color(0xFFF8FAFC)
-        val borderColor = if (isDarkMode) Color(0xFF3B4252) else Color(0xFFCBD5E1)
         val textPrimary = if (isDarkMode) Color(0xFFF1F5F9) else Color(0xFF1E293B)
         val textSecondary = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
         val iconTint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
@@ -67,7 +81,9 @@ fun OfflineBanner(
                 .fillMaxWidth()
                 .testTag("offline_status_banner"),
             shape = RoundedCornerShape(12.dp),
-            color = containerColor
+            color = containerColor,
+            tonalElevation = 2.dp,
+            shadowElevation = 3.dp
         ) {
             Row(
                 modifier = Modifier
@@ -110,7 +126,25 @@ fun OfflineBanner(
                         maxLines = 1
                     )
                 }
+
+                IconButton(
+                    onClick = {
+                        isDismissed = true
+                        onDismiss?.invoke()
+                    },
+                    modifier = Modifier
+                        .size(28.dp)
+                        .testTag("offline_banner_close_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = if (appLanguage == AppLanguage.CA) "Tancar" else "Cerrar",
+                        tint = textSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }
 }
+

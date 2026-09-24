@@ -36,8 +36,14 @@ fun UnifiedTransitModalBottomSheet(
     onLoadMoreScheduled: (() -> Unit)? = null,
     onCollapseScheduled: (() -> Unit)? = null
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val sheetBg = if (isDarkMode) Color(0xFF171717) else Color(0xFFFAFAFA)
+
+    androidx.compose.runtime.LaunchedEffect(sheetState.isVisible) {
+        if (!sheetState.isVisible) {
+            onDismissRequest()
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,

@@ -3,6 +3,14 @@ package com.example.data.model.routing
 import org.osmdroid.util.GeoPoint
 
 /**
+ * Phase of schedule synchronization for real-time tracking.
+ */
+enum class SchedulePhase {
+    THEORETICAL_AWAITING_RADAR,
+    LIVE_ACQUIRED
+}
+
+/**
  * Transport mode representation with localized labels and visual indicators.
  */
 enum class TransitMode(

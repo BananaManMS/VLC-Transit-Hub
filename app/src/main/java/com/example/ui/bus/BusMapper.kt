@@ -38,7 +38,15 @@ object BusMapper {
                 return emptyList()
             }
 
-            val jsonArray = JSONArray(jsonString)
+            val jsonArray = try {
+                JSONArray(jsonString)
+            } catch (e: Exception) {
+                try {
+                    JSONObject(jsonString).optJSONArray("stops") ?: JSONArray()
+                } catch (_: Exception) {
+                    JSONArray()
+                }
+            }
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
                 val idParada = obj.optString("id_parada", "")

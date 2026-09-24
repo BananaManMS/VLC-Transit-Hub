@@ -377,60 +377,62 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         favoriteMetroStationsSet,
         favoriteCercaniasStationsSet
     ) { favBuses, favMetros, favCercanias ->
-        val list = mutableListOf<RecentSearch>()
-        try {
-            val busStops = database.geoportalStopDao().getAllActiveStops()
-            val metroStations = database.stationDao().getAllStations()
-            val cercaniasStations = database.cercaniasStationDao().getAllStations()
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val list = mutableListOf<RecentSearch>()
+            try {
+                val busStops = database.geoportalStopDao().getAllActiveStops()
+                val metroStations = database.stationDao().getAllStations()
+                val cercaniasStations = database.cercaniasStationDao().getAllStations()
 
-            favBuses.forEach { id ->
-                busStops.find { it.id_parada == id }?.let { stop ->
-                    list.add(
-                        RecentSearch(
-                            type = "bus",
-                            id = stop.id_parada,
-                            title = stop.denominacion,
-                            subtitle = "EMT Parada ${stop.id_parada}",
-                            latitude = stop.lat,
-                            longitude = stop.lon,
-                            extraData = stop.lineas
+                favBuses.forEach { id ->
+                    busStops.find { it.id_parada == id }?.let { stop ->
+                        list.add(
+                            RecentSearch(
+                                type = "bus",
+                                id = stop.id_parada,
+                                title = stop.denominacion,
+                                subtitle = "EMT Parada ${stop.id_parada}",
+                                latitude = stop.lat,
+                                longitude = stop.lon,
+                                extraData = stop.lineas
+                            )
                         )
-                    )
+                    }
                 }
-            }
-            favMetros.forEach { id ->
-                metroStations.find { it.id.toString() == id }?.let { st ->
-                    list.add(
-                        RecentSearch(
-                            type = "metro",
-                            id = st.id.toString(),
-                            title = st.name,
-                            subtitle = "Metrovalencia",
-                            latitude = st.lat,
-                            longitude = st.lon,
-                            extraData = st.lines
+                favMetros.forEach { id ->
+                    metroStations.find { it.id.toString() == id }?.let { st ->
+                        list.add(
+                            RecentSearch(
+                                type = "metro",
+                                id = st.id.toString(),
+                                title = st.name,
+                                subtitle = "Metrovalencia",
+                                latitude = st.lat,
+                                longitude = st.lon,
+                                extraData = st.lines
+                            )
                         )
-                    )
+                    }
                 }
-            }
-            favCercanias.forEach { id ->
-                cercaniasStations.find { it.stop_id == id }?.let { st ->
-                    list.add(
-                        RecentSearch(
-                            type = "cercanias",
-                            id = st.stop_id,
-                            title = st.nombre,
-                            subtitle = "Renfe Rodalies",
-                            latitude = st.lat,
-                            longitude = st.lon
+                favCercanias.forEach { id ->
+                    cercaniasStations.find { it.stop_id == id }?.let { st ->
+                        list.add(
+                            RecentSearch(
+                                type = "cercanias",
+                                id = st.stop_id,
+                                title = st.nombre,
+                                subtitle = "Renfe Rodalies",
+                                latitude = st.lat,
+                                longitude = st.lon
+                            )
                         )
-                    )
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e("DashboardViewModel", "Error building transit favorites: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e("DashboardViewModel", "Error building transit favorites: ${e.message}")
+            list
         }
-        list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun clearRecentSearches() {

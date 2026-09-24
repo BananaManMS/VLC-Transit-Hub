@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -34,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.SkeletonCardItem
@@ -50,6 +52,7 @@ fun UnifiedScheduledSection(
     scrollState: ScrollState? = null,
     onLoadMoreScheduled: (() -> Unit)? = null,
     onCollapse: (() -> Unit)? = null,
+    isOnline: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val titleColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF111827)
@@ -175,11 +178,54 @@ fun UnifiedScheduledSection(
                         .padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (appLanguage == AppLanguage.CA) "No hi ha més eixides programades per a hui." else "No hay más salidas programadas para hoy.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = subtextColor
-                    )
+                    if (!isOnline) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.WifiOff,
+                                contentDescription = null,
+                                tint = if (isDarkMode) Color(0xFFEF5350) else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Text(
+                                text = if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = titleColor
+                            )
+                            Text(
+                                text = if (appLanguage == AppLanguage.CA)
+                                    "No es poden carregar els horaris programats sense connexió."
+                                    else "No se pueden cargar los horarios programados sin conexión.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = subtextColor,
+                                textAlign = TextAlign.Center
+                            )
+                            OutlinedButton(
+                                onClick = onLoadScheduled,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.padding(top = 4.dp)
+                            ) {
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Reintentar" else "Reintentar",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = if (appLanguage == AppLanguage.CA) "No hi ha més eixides programades per a hui." else "No hay más salidas programadas para hoy.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = subtextColor
+                        )
+                    }
                 }
             } else {
                 val displayedDepartures = scheduledDepartures.take(visibleCount)

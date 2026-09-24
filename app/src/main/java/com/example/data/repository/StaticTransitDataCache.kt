@@ -11,6 +11,30 @@ import java.io.File
 object StaticTransitDataCache {
     private var cachedEmtStops: List<GeoportalStopEntity>? = null
     private var cachedMetrobusStops: List<MetrobusStopEntity>? = null
+    private var offsetsPrecomputed = false
+    private val metroPositions = mutableMapOf<String, org.osmdroid.util.GeoPoint>()
+    private val cercaniasPositions = mutableMapOf<String, org.osmdroid.util.GeoPoint>()
+
+    fun isOffsetsReady(): Boolean = offsetsPrecomputed
+
+    fun precomputeStationVisualOffsets(
+        metro: List<Pair<String, org.osmdroid.util.GeoPoint>>,
+        cercanias: List<Pair<String, org.osmdroid.util.GeoPoint>>
+    ) {
+        metroPositions.clear()
+        metro.forEach { (name, pos) -> metroPositions[name] = pos }
+        cercaniasPositions.clear()
+        cercanias.forEach { (id, pos) -> cercaniasPositions[id] = pos }
+        offsetsPrecomputed = true
+    }
+
+    fun getVisualPositionForMetro(name: String, fallback: org.osmdroid.util.GeoPoint): org.osmdroid.util.GeoPoint {
+        return metroPositions[name] ?: fallback
+    }
+
+    fun getVisualPositionForCercanias(id: String, fallback: org.osmdroid.util.GeoPoint): org.osmdroid.util.GeoPoint {
+        return cercaniasPositions[id] ?: fallback
+    }
 
     fun initialize(context: Context) {
         getOrLoadEmtStops(context)

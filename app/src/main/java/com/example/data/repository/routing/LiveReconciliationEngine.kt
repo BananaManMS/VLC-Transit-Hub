@@ -372,7 +372,7 @@ class LiveReconciliationEngine(
                             val vehicleKey = "RENFE_${matchingTripUpdate.tripId}"
                             if (liveArrivalMs >= (earliestReachableUserArrivalMs - 120_000L) && !claimedVehicleKeys.contains(vehicleKey)) {
                                 claimedVehicleKeys.add(vehicleKey)
-                                matchedLiveDelayMins = delayMins
+                                matchedLiveDelayMins = delayMins.toInt()
                                 val lineLabel = if (cercaniasLine.isNotBlank()) "Cercanías $cercaniasLine" else "Cercanías Renfe"
                                 matchedLiveLabel = lineLabel
                             }

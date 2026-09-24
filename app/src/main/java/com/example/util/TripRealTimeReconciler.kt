@@ -46,6 +46,8 @@ data class RealTimeTripStatus(
     val upcomingTransferMinutes: Int? = null,
     val scheduledDepartureTime: String? = null,
     val adjustedDepartureTime: String? = null,
+    val schedulePhase: com.example.data.model.routing.SchedulePhase = com.example.data.model.routing.SchedulePhase.THEORETICAL_AWAITING_RADAR,
+    val transferSchedulePhase: com.example.data.model.routing.SchedulePhase = com.example.data.model.routing.SchedulePhase.THEORETICAL_AWAITING_RADAR,
     val lastCheckedTimestamp: Long = 0L
 )
 
@@ -58,7 +60,8 @@ data class LegReconciliationResult(
     val delayMinutes: Int,
     val adjustedDepartureTime: String?,
     val matchedLineShortName: String? = null,
-    val matchedDestination: String? = null
+    val matchedDestination: String? = null,
+    val schedulePhase: com.example.data.model.routing.SchedulePhase = com.example.data.model.routing.SchedulePhase.THEORETICAL_AWAITING_RADAR
 )
 
 /**

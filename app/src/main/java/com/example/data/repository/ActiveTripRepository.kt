@@ -61,93 +61,70 @@ class ActiveTripRepository(
         destinationName: String
     ) {
         val routeJson = gson.toJson(itinerary)
-        val lastLegArrivalMillis = parseArrivalTimeToMillis(itinerary.endTime)
 
         val entity = ActiveTripEntity(
-            tripId = ActiveTripEntity.ACTIVE_TRIP_ID,
-            originName = originName,
+            tripId = "ACTIVE_TRIP",
             destinationName = destinationName,
-            routeDataJson = routeJson,
-            status = ActiveTripEntity.STATUS_IN_PROGRESS,
-            currentLegIndex = 0,
-            lastLegScheduledArrivalTimeMillis = lastLegArrivalMillis,
-            startTimestamp = System.currentTimeMillis(),
-            lastUpdatedTimestamp = System.currentTimeMillis()
+            status = ActiveTripEntity.STATUS_ACTIVE,
+            startTime = System.currentTimeMillis(),
+            currentStepIndex = 0,
+            totalSteps = itinerary.legs.size,
+            rawJsonData = routeJson
         )
-        activeTripDao.insertOrUpdateActiveTrip(entity)
+        activeTripDao.insertTrip(entity)
     }
 
-    /**
-     * Checks if the stored active trip has expired according to the deterministic rule:
-     * currentTime > (lastLegScheduledArrivalTimeMillis + 30 minutes).
-     * If expired, silently purges it from Room and returns true.
-     */
     suspend fun checkAndCleanExpiredTrip(): Boolean {
         val entity = activeTripDao.getActiveTrip() ?: return false
         val now = System.currentTimeMillis()
-        val expirationThreshold = entity.lastLegScheduledArrivalTimeMillis + ActiveTripEntity.EXPIRATION_GRACE_PERIOD_MILLIS
+        val expirationThreshold = entity.startTime + 7_200_000L
 
         if (now > expirationThreshold) {
-            activeTripDao.deleteActiveTrip()
+            activeTripDao.updateTripStatus("ACTIVE_TRIP", ActiveTripEntity.STATUS_CANCELLED)
             return true
         }
         return false
     }
 
-    /**
-     * Updates the current leg index of the active trip (e.g. user moved from walking to bus).
-     */
     suspend fun advanceLegIndex(newIndex: Int) {
-        activeTripDao.updateLegIndex(newIndex)
+        val entity = activeTripDao.getActiveTrip() ?: return
+        val updated = entity.copy(currentStepIndex = newIndex)
+        activeTripDao.insertTrip(updated)
     }
 
-    /**
-     * Updates the active trip's itinerary in Room when a leg recalculation/splicing occurs.
-     */
     suspend fun updateItinerary(newItinerary: PlannedItinerary) {
         val entity = activeTripDao.getActiveTrip() ?: return
         val routeJson = gson.toJson(newItinerary)
-        val lastLegArrivalMillis = parseArrivalTimeToMillis(newItinerary.endTime)
         val updatedEntity = entity.copy(
-            routeDataJson = routeJson,
-            lastLegScheduledArrivalTimeMillis = lastLegArrivalMillis,
-            lastUpdatedTimestamp = System.currentTimeMillis()
+            rawJsonData = routeJson,
+            totalSteps = newItinerary.legs.size
         )
-        activeTripDao.insertOrUpdateActiveTrip(updatedEntity)
+        activeTripDao.insertTrip(updatedEntity)
     }
 
-    /**
-     * Cancels the active trip and removes it from persistent storage.
-     */
     suspend fun cancelActiveTrip() {
-        activeTripDao.deleteActiveTrip()
+        activeTripDao.updateTripStatus("ACTIVE_TRIP", ActiveTripEntity.STATUS_CANCELLED)
     }
 
-    /**
-     * Marks the active trip status as COMPLETED so UI and Notification can show arrival card before dismissal.
-     */
     suspend fun markTripCompleted() {
-        activeTripDao.updateStatus(ActiveTripEntity.STATUS_COMPLETED)
+        activeTripDao.updateTripStatus("ACTIVE_TRIP", ActiveTripEntity.STATUS_COMPLETED)
     }
 
-    /**
-     * Marks the active trip as completed and clears it.
-     */
     suspend fun completeActiveTrip() {
         cancelActiveTrip()
     }
 
     private fun mapEntityToState(entity: ActiveTripEntity): ActiveTripState? {
         return try {
-            val itinerary = gson.fromJson(entity.routeDataJson, PlannedItinerary::class.java)
+            val itinerary = gson.fromJson(entity.rawJsonData, PlannedItinerary::class.java)
             ActiveTripState(
-                originName = entity.originName,
+                originName = "Origen",
                 destinationName = entity.destinationName,
                 itinerary = itinerary,
                 status = entity.status,
-                currentLegIndex = entity.currentLegIndex,
-                startTimestamp = entity.startTimestamp,
-                lastUpdatedTimestamp = entity.lastUpdatedTimestamp
+                currentLegIndex = entity.currentStepIndex,
+                startTimestamp = entity.startTime,
+                lastUpdatedTimestamp = System.currentTimeMillis()
             )
         } catch (e: Exception) {
             null

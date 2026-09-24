@@ -734,6 +734,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                 _isEmtScheduledLoaded.value = true
             } catch (e: Exception) {
                 Log.e("EmtBus", "Error loading EMT scheduled times: ${e.message}", e)
+                _isEmtScheduledLoaded.value = true
             } finally {
                 _isEmtScheduledLoading.value = false
             }
@@ -1047,6 +1048,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                 _isMetrobusScheduledLoaded.value = true
             } catch (e: Exception) {
                 Log.e("Metrobus", "Error loading Metrobus scheduled times: ${e.message}", e)
+                _isMetrobusScheduledLoaded.value = true
             } finally {
                 _isMetrobusScheduledLoading.value = false
             }

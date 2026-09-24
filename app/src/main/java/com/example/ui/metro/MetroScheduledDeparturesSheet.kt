@@ -39,6 +39,8 @@ fun MetroScheduledDeparturesSheet(
     isLoading: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    appLanguage: com.example.ui.dashboard.AppLanguage = com.example.ui.dashboard.AppLanguage.ES,
+    isDarkMode: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
     onDepartureClick: ((MetroScheduledDeparture) -> Unit)? = null
 ) {
     ModalBottomSheet(
@@ -76,7 +78,7 @@ fun MetroScheduledDeparturesSheet(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Horarios programados",
+                        text = if (appLanguage == com.example.ui.dashboard.AppLanguage.CA) "Horaris programats" else "Horarios programados",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -108,7 +110,7 @@ fun MetroScheduledDeparturesSheet(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Horario programado de paso según FGV.",
+                        text = if (appLanguage == com.example.ui.dashboard.AppLanguage.CA) "Horari programat de pas segons FGV." else "Horario programado de paso según FGV.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -134,7 +136,7 @@ fun MetroScheduledDeparturesSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No hay salidas programadas para hoy.",
+                        text = if (appLanguage == com.example.ui.dashboard.AppLanguage.CA) "No hi ha eixides programades per a hui." else "No hay salidas programadas para hoy.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp
                     )
@@ -149,6 +151,8 @@ fun MetroScheduledDeparturesSheet(
                     items(scheduledDepartures) { item ->
                         ScheduledDepartureRow(
                             item = item,
+                            appLanguage = appLanguage,
+                            isDarkMode = isDarkMode,
                             onClick = if (onDepartureClick != null) {
                                 { onDepartureClick(item) }
                             } else null

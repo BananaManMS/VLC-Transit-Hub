@@ -63,10 +63,7 @@ object RealTimeTransitRepository {
     }
 
     private val gtfsCacheManager by lazy {
-        GtfsCacheManager(
-            networkDataSource = GtfsNetworkDataSource(),
-            gtfsParser = GtfsParser()
-        )
+        GtfsCacheManager(appContext ?: com.example.MainApplication.instance)
     }
 
     private val standardHttpClient: OkHttpClient by lazy {

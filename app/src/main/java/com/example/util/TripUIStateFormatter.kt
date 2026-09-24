@@ -440,6 +440,69 @@ object TripUIStateFormatter {
                 headline = "Bici · $mins min"
                 subheadline = if (distText != null) "${currentLeg.toName} · $distText" else currentLeg.toName
             }
+
+            TransitMode.METROBUS -> {
+                val busTitle = "Metrobús"
+                val lineName = currentLeg.routeShortName ?: currentLeg.routeLongName ?: ""
+                val destName = currentLeg.headsign ?: currentLeg.toName
+                icon = Icons.Default.DirectionsBus
+                lineBadge = lineName
+
+                if (isBoarded) {
+                    val (h, s, urg) = formatBoardedTransitPrompt(
+                        mode = currentLeg.mode,
+                        modeName = busTitle,
+                        lineName = lineName,
+                        destName = destName,
+                        currentLeg = currentLeg,
+                        realTimeStatus = realTimeStatus,
+                        distanceToTargetMeters = distanceToTargetMeters,
+                        isEs = isEs
+                    )
+                    headline = h
+                    subheadline = s
+                    computedUrgency = urg
+                } else {
+                    val (h, s) = formatWaitingTransitPrompt(busTitle, lineName, currentLeg, realTimeStatus, isEs)
+                    headline = h
+                    subheadline = s
+                }
+            }
+
+            TransitMode.CERCANIAS -> {
+                val railTitle = if (isEs) "Cercanías" else "Rodalia"
+                val lineName = currentLeg.routeShortName ?: currentLeg.routeLongName ?: ""
+                val destName = currentLeg.headsign ?: currentLeg.toName
+                icon = Icons.Default.DirectionsRailway
+                lineBadge = lineName
+
+                if (isBoarded) {
+                    val (h, s, urg) = formatBoardedTransitPrompt(
+                        mode = currentLeg.mode,
+                        modeName = railTitle,
+                        lineName = lineName,
+                        destName = destName,
+                        currentLeg = currentLeg,
+                        realTimeStatus = realTimeStatus,
+                        distanceToTargetMeters = distanceToTargetMeters,
+                        isEs = isEs
+                    )
+                    headline = h
+                    subheadline = s
+                    computedUrgency = urg
+                } else {
+                    val (h, s) = formatWaitingTransitPrompt(railTitle, lineName, currentLeg, realTimeStatus, isEs)
+                    headline = h
+                    subheadline = s
+                }
+            }
+
+            TransitMode.VALENBISI -> {
+                icon = Icons.AutoMirrored.Filled.DirectionsWalk
+                val mins = (currentLeg.durationSeconds / 60).coerceAtLeast(1)
+                headline = "Valenbisi · $mins min"
+                subheadline = if (distText != null) "${currentLeg.toName} · $distText" else currentLeg.toName
+            }
         }
 
         return TripFormattedUIState(

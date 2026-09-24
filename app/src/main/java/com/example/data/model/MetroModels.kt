@@ -37,10 +37,11 @@ data class ForecastHour(
 }
 
 data class MetroScheduledDeparture(
-    val line: String,
-    val destination: String,
-    val departureTime: String,
+    val line: String = "",
+    val destination: String = "",
+    val departureTime: String = "",
     val isRealTime: Boolean = false,
+    val dateIndex: Int = 0,
     val timeMinutes: Int = 0,
     val timeFormatted: String = departureTime,
     val destinationName: String = destination,
@@ -55,17 +56,28 @@ data class MetroScheduledStopPass(
     val stopName: String = "",
     val scheduledTime: String = "",
     val stationName: String = stopName,
+    val stationWebId: Int = 0,
+    val stationFgvId: String = "",
     val timeMinutes: Int = 0,
     val timeFormatted: String = scheduledTime,
-    val isCurrentStation: Boolean = false
+    val isCurrentStation: Boolean = false,
+    val isOrigin: Boolean = false,
+    val isDestination: Boolean = false,
+    val isPassed: Boolean = false
 )
 
 data class MetroTrainTimeline(
-    val tripId: String,
-    val line: String,
-    val currentStationName: String,
-    val nextStationName: String,
-    val remainingMinutes: Int,
+    val tripId: String = "",
+    val trainServiceId: Int = 0,
+    val line: String = "",
+    val originName: String = "",
+    val originWebId: Int? = null,
+    val destinationName: String = "",
+    val destinationWebId: Int? = null,
+    val currentStationName: String = "",
+    val currentStationWebId: Int? = null,
+    val nextStationName: String = "",
+    val remainingMinutes: Int = 0,
     val stops: List<MetroScheduledStopPass> = emptyList()
 )
 

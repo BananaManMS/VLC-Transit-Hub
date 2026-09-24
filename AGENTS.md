@@ -1,5 +1,10 @@
 # Project Notes & Developer Guidelines
 
+## Stability & Model Contract Rules
+1. **Contract Integrity**: Maintain parameter defaults on data classes and repository functions to guarantee backward compatibility with calling components.
+2. **Atomic Upgrades**: Any modification to data layer signatures (DAOs, Repositories, Domain Models) MUST be paired with corresponding updates across ViewModels and UI Composables in the same edit cycle.
+3. **Database Migration Safety**: Room Database builders must specify `fallbackToDestructiveMigration()` or safe schema migrations to prevent cache corruption upon model changes.
+
 ## Map Marker Recycling Strategy (osmdroid)
 To avoid memory leaks, heavy GC pauses, and invisible/disappearing markers during map pan and zoom operations in `MapView`:
 1. **Never create new `Marker` instances dynamically on every render frame.**

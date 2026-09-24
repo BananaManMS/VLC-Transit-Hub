@@ -13,6 +13,7 @@ import com.example.ui.dashboard.DashboardViewModel
 import com.example.ui.theme.VlcMetroTheme
 
 class MainActivity : ComponentActivity() {
+    // App launch activity - VLC Transit
     private val dashboardViewModel: DashboardViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {

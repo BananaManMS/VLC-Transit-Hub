@@ -77,9 +77,9 @@ object CustomPlacesMarkersRenderer {
                 } else {
                     val addrItem = SelectedMapItem.Address(
                         NominatimResult(
-                            displayName = if (place.subtitle.isNotEmpty()) place.title + ", " + place.subtitle else place.title,
-                            latitude = m.position.latitude,
-                            longitude = m.position.longitude,
+                            display_name = if (place.subtitle.isNotEmpty()) place.title + ", " + place.subtitle else place.title,
+                            lat = m.position.latitude.toString(),
+                            lon = m.position.longitude.toString(),
                             type = "favorite",
                             category = "favorite",
                             isLocalStop = false,

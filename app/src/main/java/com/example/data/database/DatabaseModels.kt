@@ -225,18 +225,32 @@ data class TransitCardEntity(
 
 @Entity(tableName = "active_trips")
 data class ActiveTripEntity(
-    @PrimaryKey val tripId: String,
-    val destinationName: String,
-    val status: String,
-    val startTime: Long,
-    val currentStepIndex: Int = 0,
-    val totalSteps: Int = 1,
-    val rawJsonData: String = ""
+    @PrimaryKey val tripId: String = ACTIVE_TRIP_ID,
+    val originName: String = "",
+    val destinationName: String = "",
+    val routeDataJson: String = "",
+    val status: String = STATUS_IN_PROGRESS,
+    val currentLegIndex: Int = 0,
+    val lastLegScheduledArrivalTimeMillis: Long = 0L,
+    val startTimestamp: Long = System.currentTimeMillis(),
+    val lastUpdatedTimestamp: Long = System.currentTimeMillis()
 ) {
+    @get:androidx.room.Ignore
+    val startTime: Long get() = startTimestamp
+
+    @get:androidx.room.Ignore
+    val currentStepIndex: Int get() = currentLegIndex
+
+    @get:androidx.room.Ignore
+    val rawJsonData: String get() = routeDataJson
+
     companion object {
-        const val STATUS_ACTIVE = "ACTIVE"
+        const val ACTIVE_TRIP_ID = "single_active_trip"
+        const val STATUS_IN_PROGRESS = "IN_PROGRESS"
+        const val STATUS_ACTIVE = "IN_PROGRESS"
         const val STATUS_COMPLETED = "COMPLETED"
         const val STATUS_CANCELLED = "CANCELLED"
+        const val EXPIRATION_GRACE_PERIOD_MILLIS = 30 * 60 * 1000L
     }
 }
 

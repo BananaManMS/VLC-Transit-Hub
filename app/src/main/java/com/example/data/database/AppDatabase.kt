@@ -155,14 +155,28 @@ interface CalendarDao {
 
 @Dao
 interface ActiveTripDao {
-    @Query("SELECT * FROM active_trips WHERE status = 'ACTIVE' LIMIT 1")
+    @Query("SELECT * FROM active_trips WHERE status = 'IN_PROGRESS' LIMIT 1")
     suspend fun getActiveTrip(): ActiveTripEntity?
 
-    @Query("SELECT * FROM active_trips WHERE status = 'ACTIVE' LIMIT 1")
+    @Query("SELECT * FROM active_trips WHERE status = 'IN_PROGRESS' LIMIT 1")
     fun getActiveTripFlow(): kotlinx.coroutines.flow.Flow<ActiveTripEntity?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTrip(trip: ActiveTripEntity)
+    suspend fun insertOrUpdateActiveTrip(trip: ActiveTripEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTrip(trip: ActiveTripEntity) {
+        insertOrUpdateActiveTrip(trip)
+    }
+
+    @Query("DELETE FROM active_trips WHERE tripId = 'single_active_trip'")
+    suspend fun deleteActiveTrip()
+
+    @Query("UPDATE active_trips SET currentLegIndex = :newIndex WHERE tripId = 'single_active_trip'")
+    suspend fun updateLegIndex(newIndex: Int)
+
+    @Query("UPDATE active_trips SET status = :status WHERE tripId = 'single_active_trip'")
+    suspend fun updateStatus(status: String)
 
     @Query("UPDATE active_trips SET status = :status WHERE tripId = :tripId")
     suspend fun updateTripStatus(tripId: String, status: String)

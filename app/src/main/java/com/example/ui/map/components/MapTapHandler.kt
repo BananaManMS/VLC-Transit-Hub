@@ -245,9 +245,9 @@ object MapTapHandler {
             if (dx * dx + dy * dy <= thresholdSq) {
                 val favItem = SelectedMapItem.Address(
                     NominatimResult(
-                        displayName = if (fav.subtitle.isNotEmpty()) fav.title + ", " + fav.subtitle else fav.title,
-                        latitude = fav.latitude,
-                        longitude = fav.longitude,
+                        display_name = if (fav.subtitle.isNotEmpty()) fav.title + ", " + fav.subtitle else fav.title,
+                        lat = fav.latitude.toString(),
+                        lon = fav.longitude.toString(),
                         type = "favorite",
                         category = "favorite",
                         isLocalStop = false,

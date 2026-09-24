@@ -34,7 +34,7 @@ fun MetroScheduledDepartureCard(
     item: MetroScheduledDeparture,
     modifier: Modifier = Modifier,
     appLanguage: AppLanguage = AppLanguage.ES,
-    isDarkMode: Boolean = false,
+    isDarkMode: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
     onClick: (() -> Unit)? = null
 ) {
     val badgeColor = remember(item.line) {
@@ -48,6 +48,7 @@ fun MetroScheduledDepartureCard(
     }
 
     val cardTextColor = MaterialTheme.colorScheme.onSurface
+    val timeTextColor = if (isDarkMode) Color.White else Color(0xFF1E293B)
 
     Card(
         modifier = modifier
@@ -102,7 +103,7 @@ fun MetroScheduledDepartureCard(
                     text = item.timeFormatted,
                     fontWeight = FontWeight.ExtraBold,
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.5.sp),
-                    color = if (isDarkMode) Color.White else Color(0xFF1E293B),
+                    color = timeTextColor,
                     textAlign = TextAlign.End
                 )
                 Spacer(modifier = Modifier.height(2.dp))
@@ -136,7 +137,7 @@ fun ScheduledDepartureRow(
     item: MetroScheduledDeparture,
     modifier: Modifier = Modifier,
     appLanguage: AppLanguage = AppLanguage.ES,
-    isDarkMode: Boolean = false,
+    isDarkMode: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
     onClick: (() -> Unit)? = null
 ) {
     MetroScheduledDepartureCard(

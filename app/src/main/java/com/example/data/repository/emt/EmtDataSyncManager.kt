@@ -10,5 +10,9 @@ class EmtDataSyncManager(private val context: Context) {
         fun getLocalStopsFile(context: Context): File {
             return File(context.filesDir, "emt_stops.json")
         }
+
+        fun getLocalShapesFile(context: Context): File {
+            return File(context.filesDir, "emt_shapes.json")
+        }
     }
 }

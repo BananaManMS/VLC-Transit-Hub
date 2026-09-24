@@ -102,9 +102,16 @@ object StationAccessibilityHelper {
         stationName: String,
         incident: com.example.ui.metro.AccessibilityIncident
     ): Boolean {
-        // 1. Direct stationId match
-        if (incident.estacionId != null && incident.estacionId.toString() == stationId.trim()) {
-            return true
+        // 1. Direct stationId match (normalizing numeric IDs to strip leading zeros or prefixes)
+        if (incident.estacionId != null) {
+            val incIdClean = incident.estacionId.toString().replace(Regex("[^0-9]"), "").trimStart('0')
+            val targetIdClean = stationId.replace(Regex("[^0-9]"), "").trimStart('0')
+            if (incIdClean.isNotBlank() && incIdClean == targetIdClean) {
+                return true
+            }
+            if (incident.estacionId.toString().trim() == stationId.trim()) {
+                return true
+            }
         }
 
         // 2. Direct estacionNombre match (if provided by the API, the alert belongs strictly to that station)
@@ -175,3 +182,31 @@ object StationAccessibilityHelper {
         return cleaned.ifBlank { text.trim() }
     }
 }
+
+object AccessibilityNoticeFormatter {
+    fun cleanAccessibilityNoticeText(rawText: String, stationName: String? = null): String {
+        if (rawText.isBlank()) return ""
+        var result = rawText
+        if (!stationName.isNullOrBlank()) {
+            val stationClean = stationName.trim()
+            result = result.replace(Regex("""(?i)\b(?:en|a)\s+(?:la\s+estaci[oó]n|l'estaci[oó])\s+(?:de\s+)?${Regex.escape(stationClean)}\b"""), "")
+        }
+        return StationAccessibilityHelper.cleanAccessibilityAlertText(result)
+    }
+
+    fun deduplicateAccessibilityIncidents(
+        incidents: List<com.example.ui.metro.AccessibilityIncident>,
+        stationName: String? = null
+    ): List<com.example.ui.metro.AccessibilityIncident> {
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<com.example.ui.metro.AccessibilityIncident>()
+        for (inc in incidents) {
+            val key = cleanAccessibilityNoticeText(inc.descripcionEs.ifBlank { inc.tituloEs }, stationName).lowercase(Locale.ROOT)
+            if (seen.add(key)) {
+                result.add(inc)
+            }
+        }
+        return result
+    }
+}
+

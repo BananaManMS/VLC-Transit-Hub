@@ -155,7 +155,7 @@ fun AvisosTab(
 
     data class GroupedStation(val name: String, val id: String?)
 
-    val groupedIncidents = remember(accessibilityIncidents, allNetworkStations) {
+    val groupedIncidents: Map<GroupedStation, List<AccessibilityIncident>> = remember(accessibilityIncidents, allNetworkStations) {
         val map = mutableMapOf<GroupedStation, MutableList<AccessibilityIncident>>()
         for (incident in accessibilityIncidents) {
             val rawName = incident.estacionNombre?.trim()
@@ -171,12 +171,17 @@ fun AvisosTab(
             }
             map.getOrPut(key) { mutableListOf() }.add(incident)
         }
-        map.mapValues { (station, list) ->
-            deduplicateAccessibilityIncidents(list, station.name)
-        }.filterValues { it.isNotEmpty() }
+        val resultMap = mutableMapOf<GroupedStation, List<AccessibilityIncident>>()
+        for ((station, list) in map) {
+            val deduped = deduplicateAccessibilityIncidents(list, station.name)
+            if (deduped.isNotEmpty()) {
+                resultMap[station] = deduped
+            }
+        }
+        resultMap
     }
 
-    val totalUniqueAccessibilityIncidents = remember(groupedIncidents) {
+    val totalUniqueAccessibilityIncidents: Int = remember(groupedIncidents) {
         groupedIncidents.values.sumOf { it.size }
     }
 

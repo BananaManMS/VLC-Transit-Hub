@@ -701,6 +701,8 @@ fun ProximosTrenesScreen(
             scheduledDepartures = scheduledDepartures,
             isLoading = isLoadingScheduled,
             onDismiss = { metroScheduleViewModel.dismissScheduledDepartures() },
+            appLanguage = appLanguage,
+            isDarkMode = isDarkMode,
             onDepartureClick = { scheduledItem ->
                 metroScheduleViewModel.dismissScheduledDepartures()
                 val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))

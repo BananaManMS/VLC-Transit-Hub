@@ -44,15 +44,37 @@ class ValenbisiRepository {
                     for (i in 0 until records.length()) {
                         val rec = records.optJSONObject(i) ?: continue
                         val number = rec.optInt("number", 0)
-                        val name = rec.optString("name", "Station $number")
-                        val address = rec.optString("address", "")
+                            .let { if (it == 0) rec.optInt("numstation", 0) else it }
+                            .let { if (it == 0) rec.optInt("gid", 0) else it }
+
+                        var name = rec.optString("name", "")
+                        var address = rec.optString("address", "")
+                        if (name.isBlank() && address.isNotBlank()) name = address
+                        if (address.isBlank() && name.isNotBlank()) address = name
+                        if (name.isBlank()) name = "Estación Valenbisi $number"
+
                         val status = rec.optString("status", "OPEN")
-                        val available = rec.optInt("available", 0)
-                        val free = rec.optInt("free", 0)
-                        val total = rec.optInt("total", available + free)
-                        val ticket = rec.optInt("ticket", 0) == 1
-                        val lat = rec.optDouble("latitude", 0.0)
-                        val lon = rec.optDouble("longitude", 0.0)
+                        val available = rec.optInt("available", rec.optInt("available_bikes", rec.optInt("bikes", 0)))
+                        val free = rec.optInt("free", rec.optInt("available_slots", rec.optInt("slots", 0)))
+                        val total = rec.optInt("total", rec.optInt("capacity", available + free))
+                        val ticket = rec.optInt("ticket", 0) == 1 || rec.optBoolean("ticket", false)
+
+                        var lat = rec.optDouble("latitude", 0.0)
+                        var lon = rec.optDouble("longitude", 0.0)
+
+                        if (lat == 0.0 || lon == 0.0) {
+                            val geoPointObj = rec.optJSONObject("geo_point_2d")
+                            if (geoPointObj != null) {
+                                if (lat == 0.0) lat = geoPointObj.optDouble("lat", 0.0)
+                                if (lon == 0.0) lon = geoPointObj.optDouble("lon", 0.0)
+                            } else {
+                                val geoPointArr = rec.optJSONArray("geo_point_2d")
+                                if (geoPointArr != null && geoPointArr.length() >= 2) {
+                                    if (lat == 0.0) lat = geoPointArr.optDouble(0, 0.0)
+                                    if (lon == 0.0) lon = geoPointArr.optDouble(1, 0.0)
+                                }
+                            }
+                        }
 
                         list.add(
                             ValenbisiStation(
@@ -99,10 +121,26 @@ class ValenbisiRepository {
                 )
             }
         }
+        if (list.isNotEmpty()) {
+            cachedStationsList = list
+        }
         list
     }
 
     suspend fun getStations(): List<String> {
         return fetchStations().map { it.name }
+    }
+
+    fun getCachedStations(): List<ValenbisiStation> {
+        return cachedStationsList
+    }
+
+    companion object {
+        @Volatile
+        private var cachedStationsList: List<ValenbisiStation> = emptyList()
+
+        fun getCachedStations(): List<ValenbisiStation> {
+            return cachedStationsList
+        }
     }
 }

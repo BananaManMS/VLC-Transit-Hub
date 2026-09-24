@@ -1,6 +1,7 @@
 package com.example.ui.transit
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,12 +11,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -285,10 +290,54 @@ fun UnifiedTransitStopSheetContent(
                 scrollState = scrollState,
                 onLoadScheduled = onLoadScheduled,
                 onLoadMoreScheduled = onLoadMoreScheduled,
-                onCollapse = onCollapseScheduled
+                onCollapse = onCollapseScheduled,
+                isOnline = isOnline
             )
 
             Spacer(modifier = Modifier.height(16.dp + activeTripBottomPadding))
+        }
+    }
+}
+
+@Composable
+fun UnifiedDivertedAlertBanner(
+    divertedLines: List<String>,
+    operator: TransitOperator,
+    isDarkMode: Boolean,
+    appLanguage: AppLanguage
+) {
+    val isDark = isDarkMode || isSystemInDarkTheme()
+    val bg = if (isDark) Color(0xFF3E2723) else Color(0xFFFFEBEE)
+    val textColor = if (isDark) Color(0xFFFFAB91) else Color(0xFFC62828)
+    val linesStr = divertedLines.joinToString(", ")
+    val text = if (appLanguage == AppLanguage.CA) {
+        "Avís: Línia(es) desviada(es): $linesStr"
+    } else {
+        "Aviso: Línea(s) desviada(s): $linesStr"
+    }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = bg,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = textColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = textColor
+            )
         }
     }
 }

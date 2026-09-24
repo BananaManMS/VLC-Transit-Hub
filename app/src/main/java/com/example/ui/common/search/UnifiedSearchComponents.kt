@@ -849,14 +849,12 @@ fun recentSearchToSearchResult(item: RecentSearch): MapSearchResult {
             }
 
             val nomResult = NominatimResult(
-                displayName = fullDisplayName,
-                latitude = item.latitude,
-                longitude = item.longitude,
+                display_name = fullDisplayName,
+                lat = item.latitude.toString(),
+                lon = item.longitude.toString(),
                 type = resolvedType,
                 category = resolvedCat,
                 isLocalStop = false,
-                stopId = item.stopId ?: "",
-                stopType = item.stopType ?: "",
                 placeCategory = resolvedPlaceCategory,
                 placeName = item.placeName ?: item.title,
                 road = item.road ?: "",

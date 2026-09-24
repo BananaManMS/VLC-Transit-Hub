@@ -61,13 +61,14 @@ class DashboardCalendarManager(
     fun deleteItem(item: CalendarItemEntity) {
         scope.launch {
             repository.deleteCalendarItem(item)
-            if (item.calendarEventId.isNotBlank() && item.calendarEventId != "0") {
+            val calId = item.calendarEventId
+            if (!calId.isNullOrBlank() && calId != "0") {
                 try {
                     val now = System.currentTimeMillis()
                     val expiry = item.endMillis
                     val rawDeleted = repository.getPreference("deleted_google_event_ids", "")
                     val list = if (rawDeleted.isBlank()) mutableListOf() else rawDeleted.split(";").toMutableList()
-                    list.add("${item.calendarEventId}:$expiry")
+                    list.add("$calId:$expiry")
                     repository.savePreference("deleted_google_event_ids", list.joinToString(";"))
                 } catch (e: Exception) {
                     Log.e("DashboardCalendarManager", "Error saving deleted event preference", e)
@@ -225,11 +226,11 @@ class DashboardCalendarManager(
                     val existingItems = database.calendarDao().getAllItemsList().toMutableList()
                     newEvents.forEach { event ->
                         val exists = existingItems.any {
-                            (event.calendarEventId.isNotBlank() && event.calendarEventId != "0" && it.calendarEventId == event.calendarEventId) || 
+                            (!event.calendarEventId.isNullOrBlank() && event.calendarEventId != "0" && it.calendarEventId == event.calendarEventId) || 
                             (it.title.trim().lowercase() == event.title.trim().lowercase() && it.startMillis == event.startMillis && it.endMillis == event.endMillis)
                         }
-                        val eventIdNum = event.calendarEventId.toLongOrNull() ?: -1L
-                        if (!exists && (event.calendarEventId.isBlank() || !activeDeletedSet.contains(eventIdNum))) {
+                        val eventIdNum = event.calendarEventId?.toLongOrNull() ?: -1L
+                        if (!exists && (event.calendarEventId.isNullOrBlank() || !activeDeletedSet.contains(eventIdNum))) {
                             repository.insertCalendarItem(event)
                             existingItems.add(event)
                         }

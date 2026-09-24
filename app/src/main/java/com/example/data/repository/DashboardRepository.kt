@@ -29,8 +29,16 @@ class DashboardRepository(
         database.calendarDao().updateCalendarItem(item)
     }
 
+    suspend fun deleteCalendarItem(item: com.example.data.database.CalendarItemEntity) {
+        database.calendarDao().deleteCalendarItem(item.eventId)
+    }
+
     suspend fun deleteCalendarItem(id: String) {
         database.calendarDao().deleteCalendarItem(id)
+    }
+
+    suspend fun deletePastEvents(now: Long) {
+        database.calendarDao().deletePastEvents(now)
     }
 
     suspend fun loadDashboardData(): String {
