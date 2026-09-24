@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.database.AppDatabase
 import com.example.data.repository.DashboardRepository
+import com.example.data.repository.StaticTransitDataCache
 import com.example.data.model.MetroStation
 import com.example.util.LocationUtils
 import kotlinx.coroutines.Dispatchers
@@ -25,25 +26,183 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = DashboardRepository(application, database)
 
     private val client = NetworkModule.okHttpClient
+    private val metrobusRepository = com.example.data.repository.MetrobusRepository(database, client, application.applicationContext)
+    private val valenbisiRepository = com.example.data.repository.ValenbisiRepository(application)
 
+    // Location & Network Stations
     private val _lastLocation = MutableStateFlow<Pair<Double, Double>?>(null)
     val lastLocation = _lastLocation.asStateFlow()
 
+    private val _allNetworkStations = MutableStateFlow<List<MetroStation>>(emptyList())
+    val allNetworkStations = _allNetworkStations.asStateFlow()
+
+    // Valenbisi State
+    private val _favoriteValenbisi = MutableStateFlow<List<String>>(emptyList())
+    val favoriteValenbisi = _favoriteValenbisi.asStateFlow()
+
+    private val _valenbisiAliases = MutableStateFlow<Map<String, String>>(emptyMap())
+    val valenbisiAliases = _valenbisiAliases.asStateFlow()
+
+    private val _currentValenbisiFilterSource = MutableStateFlow(ValenbisiFilterSource.FAVORITES)
+    val currentValenbisiFilterSource = _currentValenbisiFilterSource.asStateFlow()
+
+    private val _valenbisiSearchQuery = MutableStateFlow("")
+    val valenbisiSearchQuery = _valenbisiSearchQuery.asStateFlow()
+
+    private val _selectedMetroStationIdForValenbisi = MutableStateFlow<String?>("15") // Default Colón
+    val selectedMetroStationIdForValenbisi = _selectedMetroStationIdForValenbisi.asStateFlow()
+
+    private val _valenbisiStations = MutableStateFlow<List<com.example.ui.map.components.ValenbisiStation>>(emptyList())
+    val valenbisiStations = _valenbisiStations.asStateFlow()
+
+    private val _valenbisiLoading = MutableStateFlow(false)
+    val valenbisiLoading = _valenbisiLoading.asStateFlow()
+
+    // EMT Bus State
+    private val _favoriteBusStops = MutableStateFlow<List<String>>(emptyList())
+    val favoriteBusStops = _favoriteBusStops.asStateFlow()
+
+    private val _busStopAliases = MutableStateFlow<Map<String, String>>(emptyMap())
+    val busStopAliases = _busStopAliases.asStateFlow()
+
+    private val _currentBusFilterSource = MutableStateFlow(BusFilterSource.FAVORITES_BUS)
+    val currentBusFilterSource = _currentBusFilterSource.asStateFlow()
+
+    private val _busSearchQuery = MutableStateFlow("")
+    val busSearchQuery = _busSearchQuery.asStateFlow()
+
+    private val _selectedMetroStationIdForBus = MutableStateFlow<String?>("15") // Default to Colón
+    val selectedMetroStationIdForBus = _selectedMetroStationIdForBus.asStateFlow()
+
+    private val _busStopsList = MutableStateFlow<List<EmtBusStop>>(emptyList())
+    val busStopsList = _busStopsList.asStateFlow()
+
+    private val _busStopsLoading = MutableStateFlow(false)
+    val busStopsLoading = _busStopsLoading.asStateFlow()
+
+    private val _busTimes = MutableStateFlow<List<EmtBusTime>>(emptyList())
+    val busTimes = _busTimes.asStateFlow()
+
+    private val _busTimesLoading = MutableStateFlow(false)
+    val busTimesLoading = _busTimesLoading.asStateFlow()
+
+    private val _isLoadingMoreScheduled = MutableStateFlow(false)
+    val isLoadingMoreScheduled = _isLoadingMoreScheduled.asStateFlow()
+
+    // Dedicated EMT Scheduled Departures
+    private val _emtScheduledTimes = MutableStateFlow<List<EmtBusTime>>(emptyList())
+    val emtScheduledTimes = _emtScheduledTimes.asStateFlow()
+    private val _isEmtScheduledLoading = MutableStateFlow(false)
+    val isEmtScheduledLoading = _isEmtScheduledLoading.asStateFlow()
+    private val _isEmtScheduledLoaded = MutableStateFlow(false)
+    val isEmtScheduledLoaded = _isEmtScheduledLoaded.asStateFlow()
+    private var emtScheduledLimit = 5
+
+    private val _selectedBusStop = MutableStateFlow<EmtBusStop?>(null)
+    val selectedBusStop = _selectedBusStop.asStateFlow()
+
+    private val _selectedBusTabIndex = MutableStateFlow(0)
+    val selectedBusTabIndex = _selectedBusTabIndex.asStateFlow()
+
+    fun setSelectedBusTabIndex(index: Int) {
+        _selectedBusTabIndex.value = index
+    }
+
+    // Metrobus State
+    private val _favoriteMetrobusStops = MutableStateFlow<List<String>>(emptyList())
+    val favoriteMetrobusStops = _favoriteMetrobusStops.asStateFlow()
+
+    private val _metrobusStopAliases = MutableStateFlow<Map<String, String>>(emptyMap())
+    val metrobusStopAliases = _metrobusStopAliases.asStateFlow()
+
+    private val _metrobusSearchQuery = MutableStateFlow("")
+    val metrobusSearchQuery = _metrobusSearchQuery.asStateFlow()
+
+    private val _metrobusStopsList = MutableStateFlow<List<MetrobusStop>>(emptyList())
+    val metrobusStopsList = _metrobusStopsList.asStateFlow()
+
+    private val _metrobusStopsLoading = MutableStateFlow(false)
+    val metrobusStopsLoading = _metrobusStopsLoading.asStateFlow()
+
+    private val _metrobusTimes = MutableStateFlow<List<MetrobusDepartureUiModel>>(emptyList())
+    val metrobusTimes = _metrobusTimes.asStateFlow()
+
+    private val _metrobusTimesLoading = MutableStateFlow(false)
+    val metrobusTimesLoading = _metrobusTimesLoading.asStateFlow()
+
+    // Dedicated Metrobus Scheduled Departures
+    private val _metrobusScheduledTimes = MutableStateFlow<List<MetrobusDepartureUiModel>>(emptyList())
+    val metrobusScheduledTimes = _metrobusScheduledTimes.asStateFlow()
+    private val _isMetrobusScheduledLoading = MutableStateFlow(false)
+    val isMetrobusScheduledLoading = _isMetrobusScheduledLoading.asStateFlow()
+    private val _isMetrobusScheduledLoaded = MutableStateFlow(false)
+    val isMetrobusScheduledLoaded = _isMetrobusScheduledLoaded.asStateFlow()
+    private var metrobusScheduledLimit = 5
+
+    private val _selectedMetrobusStop = MutableStateFlow<MetrobusStop?>(null)
+    val selectedMetrobusStop = _selectedMetrobusStop.asStateFlow()
+
+    // Jobs
+    private var busCountdownJob: Job? = null
+    private var loadBusStopsJob: Job? = null
+    private var loadMetrobusStopsJob: Job? = null
+    private var metrobusCountdownJob: Job? = null
+
     fun updateLocation(lat: Double, lon: Double) {
         _lastLocation.value = Pair(lat, lon)
-        loadMetrobusStops()
+        if (_currentBusFilterSource.value == BusFilterSource.FAVORITES_BUS || _currentBusFilterSource.value == BusFilterSource.GPS_USER) {
+            loadBusStops()
+        }
     }
 
-    private val _allNetworkStations = MutableStateFlow<List<MetroStation>>(emptyList())
-    
     fun updateNetworkStations(stations: List<MetroStation>) {
-        _allNetworkStations.value = stations
+        if (stations.isNotEmpty()) {
+            _allNetworkStations.value = stations
+            if (_currentBusFilterSource.value == BusFilterSource.METRO_STATION) {
+                loadBusStops()
+                // loadMetrobusStops() // En pausa hasta que la pestaña de Metrobús se active en la UI
+            }
+        }
     }
-
-    private val metrobusRepository = com.example.data.repository.MetrobusRepository(database, client)
 
     init {
         loadPreferences()
+        loadMetroNetworkStations()
+        viewModelScope.launch(Dispatchers.IO) {
+            com.example.data.repository.emt.EmtDataSyncManager(application).syncEmtData()
+            com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(application.applicationContext)
+        }
+    }
+
+    private fun loadMetroNetworkStations() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val dbStations = database.stationDao().getAllStations()
+                if (dbStations.isNotEmpty()) {
+                    _allNetworkStations.value = dbStations.map { entity ->
+                        MetroStation(
+                            id = entity.id.toString(),
+                            name = entity.name,
+                            lines = entity.lines.split(",").filter { it.isNotEmpty() },
+                            latitude = entity.latitude ?: 39.4697,
+                            longitude = entity.longitude ?: -0.3734,
+                            description = entity.zone,
+                            zone = entity.zone
+                        )
+                    }.distinctBy { it.id }
+                } else {
+                    val defaultStations = com.example.data.repository.MetroRepository(getApplication()).loadMetroStations()
+                    if (defaultStations.isNotEmpty()) {
+                        _allNetworkStations.value = defaultStations.distinctBy { it.id }
+                    } else {
+                        _allNetworkStations.value = com.example.data.model.ValenciaMetroData.mainMetroStations
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("BusViewModel", "Error loading metro network stations", e)
+                _allNetworkStations.value = com.example.data.model.ValenciaMetroData.mainMetroStations
+            }
+        }
     }
 
     private fun loadPreferences() {
@@ -102,39 +261,35 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            // Once preferences are loaded, load both stop lists
+            // Once preferences are loaded, ensure stops exist and suppress 2313 once
+            if (database.geoportalStopDao().getStopCount() == 0) {
+                val assetStops = BusMapper.parseStopsFromJsonDirect(getApplication())
+                if (assetStops.isNotEmpty()) {
+                    database.geoportalStopDao().replaceAllStops(assetStops)
+                }
+            }
+            try {
+                val stop2313 = database.geoportalStopDao().getStopById("2313")
+                if (stop2313 != null && stop2313.suprimida == 0) {
+                    database.geoportalStopDao().insertAll(listOf(stop2313.copy(suprimida = 1)))
+                }
+            } catch (e: Exception) {
+                Log.e("EmtBus", "Error marking stop 2313 as suprimida", e)
+            }
+
             loadBusStops()
-            loadMetrobusStops()
+            // loadMetrobusStops() // En pausa hasta que la pestaña de Metrobús se active en la UI
         }
     }
 
     // ==========================================
     // VALENBISI SECTION (API & ROOM STATE)
     // ==========================================
-    private val valenbisiRepository = com.example.data.repository.ValenbisiRepository(client)
-
-    private val _favoriteValenbisi = MutableStateFlow<List<String>>(emptyList())
-    val favoriteValenbisi = _favoriteValenbisi.asStateFlow()
-
-    private val _valenbisiAliases = MutableStateFlow<Map<String, String>>(emptyMap())
-    val valenbisiAliases = _valenbisiAliases.asStateFlow()
-
-    private val _currentValenbisiFilterSource = MutableStateFlow(ValenbisiFilterSource.FAVORITES)
-    val currentValenbisiFilterSource = _currentValenbisiFilterSource.asStateFlow()
-
-    private val _valenbisiSearchQuery = MutableStateFlow("")
-    val valenbisiSearchQuery = _valenbisiSearchQuery.asStateFlow()
-
-    private val _selectedMetroStationIdForValenbisi = MutableStateFlow<String?>("15") // Default Colón
-    val selectedMetroStationIdForValenbisi = _selectedMetroStationIdForValenbisi.asStateFlow()
-
-    private val _valenbisiStations = MutableStateFlow<List<com.example.ui.map.components.ValenbisiStation>>(emptyList())
-    val valenbisiStations = _valenbisiStations.asStateFlow()
-
-    private val _valenbisiLoading = MutableStateFlow(false)
-    val valenbisiLoading = _valenbisiLoading.asStateFlow()
 
     fun setValenbisiFilterSource(source: ValenbisiFilterSource) {
+        if (source != ValenbisiFilterSource.FAVORITES) {
+            _valenbisiSearchQuery.value = ""
+        }
         _currentValenbisiFilterSource.value = source
     }
 
@@ -143,6 +298,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectMetroStationForValenbisi(stationId: String) {
+        _valenbisiSearchQuery.value = ""
         _selectedMetroStationIdForValenbisi.value = stationId
         _currentValenbisiFilterSource.value = ValenbisiFilterSource.METRO_STATION
     }
@@ -193,39 +349,14 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     // EMT VALENCIA BUS SECTION (API & ROOM STATE)
     // ==========================================
 
-    private val _favoriteBusStops = MutableStateFlow<List<String>>(emptyList())
-    val favoriteBusStops = _favoriteBusStops.asStateFlow()
-
-    private val _busStopAliases = MutableStateFlow<Map<String, String>>(emptyMap())
-    val busStopAliases = _busStopAliases.asStateFlow()
-
-    private val _currentBusFilterSource = MutableStateFlow(BusFilterSource.FAVORITES_BUS)
-    val currentBusFilterSource = _currentBusFilterSource.asStateFlow()
-
-    private val _busSearchQuery = MutableStateFlow("")
-    val busSearchQuery = _busSearchQuery.asStateFlow()
-
-    private val _selectedMetroStationIdForBus = MutableStateFlow<String?>("15") // Default to Colón
-    val selectedMetroStationIdForBus = _selectedMetroStationIdForBus.asStateFlow()
-
-    private val _busStopsList = MutableStateFlow<List<EmtBusStop>>(emptyList())
-    val busStopsList = _busStopsList.asStateFlow()
-
-    private val _busStopsLoading = MutableStateFlow(false)
-    val busStopsLoading = _busStopsLoading.asStateFlow()
-
-    private val _busTimes = MutableStateFlow<List<EmtBusTime>>(emptyList())
-    val busTimes = _busTimes.asStateFlow()
-
-    private val _busTimesLoading = MutableStateFlow(false)
-    val busTimesLoading = _busTimesLoading.asStateFlow()
-
-    private val _selectedBusStop = MutableStateFlow<EmtBusStop?>(null)
-    val selectedBusStop = _selectedBusStop.asStateFlow()
-
     fun setBusFilterSource(source: BusFilterSource) {
+        if (source != BusFilterSource.FAVORITES_BUS) {
+            _busSearchQuery.value = ""
+            _metrobusSearchQuery.value = ""
+        }
         _currentBusFilterSource.value = source
         loadBusStops()
+        loadMetrobusStops()
     }
 
     fun setBusSearchQuery(query: String) {
@@ -234,19 +365,26 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectMetroStationForBus(stationId: String) {
+        _busSearchQuery.value = ""
+        _metrobusSearchQuery.value = ""
         _selectedMetroStationIdForBus.value = stationId
         _currentBusFilterSource.value = BusFilterSource.METRO_STATION
-        _selectedMetroStationIdForBus.value = stationId
+        loadBusStops()
+        loadMetrobusStops()
     }
-
-    private var busCountdownJob: Job? = null
 
     fun selectBusStop(stop: EmtBusStop?) {
         _selectedBusStop.value = stop
+        isEmtScheduledExpanded = false
+        scheduledLimitPerLine = 3
+        _emtScheduledTimes.value = emptyList()
+        _isEmtScheduledLoaded.value = false
+        _isEmtScheduledLoading.value = false
+        emtScheduledLimit = 5
         viewModelScope.launch {
             busCountdownJob?.cancelAndJoin()
             if (stop != null) {
-                fetchBusTimes(stop.opId)
+                fetchBusTimes(stop.opId, limitPerLine = scheduledLimitPerLine, isSilent = false, includeScheduled = false)
                 startBusCountdownTicker()
             } else {
                 _busTimes.value = emptyList()
@@ -254,11 +392,26 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun selectBusStopFromEntity(stop: com.example.data.database.GeoportalStopEntity) {
+        val existing = _busStopsList.value.find { it.opId == stop.id_parada }
+        val emtStop = existing ?: EmtBusStop(
+            t = stop.lat.toString(),
+            n = stop.lon.toString(),
+            me = stop.denominacion,
+            utes = BusMapper.getLinesForStop(stop),
+            opId = stop.id_parada,
+            ica = "Parada " + stop.id_parada
+        )
+        selectBusStop(emtStop)
+    }
+
     private fun startBusCountdownTicker() {
         busCountdownJob = viewModelScope.launch {
+            var tickCount = 0
             while (isActive) {
                 delay(1000)
                 if (!isActive) break
+                tickCount++
                 val currentList = _busTimes.value
                 if (currentList.isNotEmpty()) {
                     var changed = false
@@ -279,6 +432,19 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     if (changed && isActive) {
                         _busTimes.value = updated
+                    }
+                }
+
+                // Poll real-time updates silently every 30 seconds
+                if (tickCount % 30 == 0 && isActive) {
+                    val stop = _selectedBusStop.value
+                    if (stop != null) {
+                        fetchBusTimes(
+                            stopId = stop.opId,
+                            limitPerLine = scheduledLimitPerLine,
+                            isSilent = true,
+                            includeScheduled = isEmtScheduledExpanded
+                        )
                     }
                 }
             }
@@ -332,7 +498,56 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private var loadBusStopsJob: Job? = null
+    private suspend fun processEmtStops(
+        baseStops: List<com.example.data.database.GeoportalStopEntity>,
+        query: String,
+        aliases: Map<String, String>,
+        refLat: Double,
+        refLon: Double,
+        maxDistanceMeters: Double?,
+        filterIds: List<String>? = null,
+        sortByDistance: Boolean = true
+    ): List<EmtBusStop> {
+        val stopsToProcess = if (filterIds != null) {
+            val stopMap = baseStops.associateBy { it.id_parada }
+            filterIds.mapNotNull { stopMap[it] ?: database.geoportalStopDao().getStopById(it) }
+        } else if (query.isNotEmpty()) {
+            baseStops.mapNotNull { stop ->
+                val score = computeSearchScore(stop.id_parada, stop.denominacion, query, aliases[stop.id_parada])
+                if (score > 0.0) Pair(stop, score) else null
+            }.sortedByDescending { it.second }
+             .map { it.first }
+        } else {
+            baseStops
+        }
+
+        val mapped = stopsToProcess.mapNotNull { stop ->
+            if (stop.lineas.isNullOrBlank()) return@mapNotNull null
+            val lines = BusMapper.getLinesForStop(stop)
+            if (lines.isEmpty()) return@mapNotNull null
+            val dist = LocationUtils.calculateDistanceMeters(refLat, refLon, stop.lat, stop.lon)
+            if (maxDistanceMeters != null && dist > maxDistanceMeters) return@mapNotNull null
+
+            Pair(
+                EmtBusStop(
+                    t = stop.lat.toString(),
+                    n = stop.lon.toString(),
+                    me = stop.denominacion,
+                    utes = lines,
+                    opId = stop.id_parada,
+                    ica = "Parada " + stop.id_parada,
+                    distanceText = LocationUtils.formatDistance(dist)
+                ),
+                dist
+            )
+        }
+
+        return if (sortByDistance) {
+            mapped.sortedBy { it.second }.map { it.first }
+        } else {
+            mapped.map { it.first }
+        }
+    }
 
     fun loadBusStops() {
         loadBusStopsJob?.cancel()
@@ -349,22 +564,12 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
 
                 val aliases = _busStopAliases.value
 
-                // Ensure stops from assets exist in DB
+                // Ensure stops from assets/JSON exist in DB
                 if (database.geoportalStopDao().getStopCount() == 0) {
-                    val assetStops = BusMapper.loadStopsFromAssets(getApplication())
+                    val assetStops = BusMapper.parseStopsFromJsonDirect(getApplication())
                     if (assetStops.isNotEmpty()) {
-                        database.geoportalStopDao().insertAll(assetStops)
+                        database.geoportalStopDao().replaceAllStops(assetStops)
                     }
-                }
-
-                // Ensure stop 2313 is suprimida
-                try {
-                    val stop2313 = database.geoportalStopDao().getStopById("2313")
-                    if (stop2313 != null && stop2313.suprimida == 0) {
-                        database.geoportalStopDao().insertAll(listOf(stop2313.copy(suprimida = 1)))
-                    }
-                } catch (e: Exception) {
-                    Log.e("EmtBus", "Error marking stop 2313 as suprimida", e)
                 }
 
                 // Base coordinates defaults
@@ -376,147 +581,55 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                     refLon = loc.second
                 }
 
-                val list = when (source) {
-                    BusFilterSource.FAVORITES_BUS -> {
-                        if (query.isNotEmpty()) {
-                            val dbStops = database.geoportalStopDao().getAllActiveStops()
-                            val filteredStops = dbStops.filter { !it.lineas.isNullOrBlank() }
-                            val scoredStops = filteredStops.map { stop ->
-                                val score = computeSearchScore(stop.id_parada, stop.denominacion, query, aliases[stop.id_parada])
-                                Pair(stop, score)
-                            }.filter { it.second > 0.0 }
-                             .sortedByDescending { it.second }
-                             .map { it.first }
+                val baseActiveStops: List<com.example.data.database.GeoportalStopEntity> = 
+                    database.geoportalStopDao().getAllActiveStops()
 
-                            scoredStops.map { stop ->
-                                val dist = LocationUtils.calculateDistanceMeters(refLat, refLon, stop.lat, stop.lon)
-                                EmtBusStop(
-                                    t = stop.lat.toString(),
-                                    n = stop.lon.toString(),
-                                    me = stop.denominacion,
-                                    utes = BusMapper.getLinesForStop(stop),
-                                    opId = stop.id_parada,
-                                    ica = "Parada " + stop.id_parada,
-                                    distanceText = LocationUtils.formatDistance(dist)
-                                )
-                            }.filter { it.utes.isNotEmpty() }
-                        } else {
-                            val dbStops = mutableListOf<com.example.data.database.GeoportalStopEntity>()
-                            for (id in favs) {
-                                database.geoportalStopDao().getStopById(id)?.let { dbStops.add(it) }
-                            }
-                            val filteredStops = dbStops.filter { !it.lineas.isNullOrBlank() }
-                            filteredStops.map { stop ->
-                                val dist = LocationUtils.calculateDistanceMeters(refLat, refLon, stop.lat, stop.lon)
-                                EmtBusStop(
-                                    t = stop.lat.toString(),
-                                    n = stop.lon.toString(),
-                                    me = stop.denominacion,
-                                    utes = BusMapper.getLinesForStop(stop),
-                                    opId = stop.id_parada,
-                                    ica = "Parada " + stop.id_parada,
-                                    distanceText = LocationUtils.formatDistance(dist)
-                                )
-                            }.filter { it.utes.isNotEmpty() }
-                        }
+                val list: List<EmtBusStop> = when (source) {
+                    BusFilterSource.FAVORITES_BUS -> {
+                        val filterIds = if (query.isEmpty()) favs else null
+                        processEmtStops(
+                            baseStops = baseActiveStops,
+                            query = query,
+                            aliases = aliases,
+                            refLat = refLat,
+                            refLon = refLon,
+                            maxDistanceMeters = null,
+                            filterIds = filterIds,
+                            sortByDistance = true
+                        )
                     }
                     BusFilterSource.GPS_USER -> {
-                        val allStops = database.geoportalStopDao().getAllActiveStops()
-                        val filteredStops = allStops.filter { !it.lineas.isNullOrBlank() }
-                        
-                        if (query.isNotEmpty()) {
-                            val scoredStops = filteredStops.map { stop ->
-                                val score = computeSearchScore(stop.id_parada, stop.denominacion, query, aliases[stop.id_parada])
-                                Pair(stop, score)
-                            }.filter { it.second > 0.0 }
-                             .sortedByDescending { it.second }
-                             .map { it.first }
-
-                            scoredStops.map { stop ->
-                                val dist = LocationUtils.calculateDistanceMeters(refLat, refLon, stop.lat, stop.lon)
-                                EmtBusStop(
-                                    t = stop.lat.toString(),
-                                    n = stop.lon.toString(),
-                                    me = stop.denominacion,
-                                    utes = BusMapper.getLinesForStop(stop),
-                                    opId = stop.id_parada,
-                                    ica = "Parada " + stop.id_parada,
-                                    distanceText = LocationUtils.formatDistance(dist)
-                                )
-                            }.filter { it.utes.isNotEmpty() }
-                        } else {
-                            val sortedAllByDist = filteredStops.sortedBy { stop ->
-                                LocationUtils.calculateDistanceMeters(refLat, refLon, stop.lat, stop.lon)
-                            }
-                            
-                            var inRadius = sortedAllByDist.filter { stop ->
-                                val latDiff = Math.abs(stop.lat - refLat)
-                                val lonDiff = Math.abs(stop.lon - refLon)
-                                latDiff <= 0.015 && lonDiff <= 0.015
-                            }
-                            
-                            if (inRadius.size < 10) {
-                                inRadius = sortedAllByDist.take(25)
-                            }
-                            
-                            val starred = inRadius.filter { favs.contains(it.id_parada) }
-                            val nonStarred = inRadius.filter { !favs.contains(it.id_parada) }
-                            val sortedNonStarred = nonStarred.sortedBy { stop ->
-                                LocationUtils.calculateDistanceMeters(refLat, refLon, stop.lat, stop.lon)
-                            }
-                            
-                            val finalEntities = starred + sortedNonStarred
-                            finalEntities.map { stop ->
-                                val dist = LocationUtils.calculateDistanceMeters(refLat, refLon, stop.lat, stop.lon)
-                                EmtBusStop(
-                                    t = stop.lat.toString(),
-                                    n = stop.lon.toString(),
-                                    me = stop.denominacion,
-                                    utes = BusMapper.getLinesForStop(stop),
-                                    opId = stop.id_parada,
-                                    ica = "Parada " + stop.id_parada,
-                                    distanceText = LocationUtils.formatDistance(dist)
-                                )
-                            }.filter { it.utes.isNotEmpty() }
-                        }
+                        processEmtStops(
+                            baseStops = baseActiveStops,
+                            query = query,
+                            aliases = aliases,
+                            refLat = refLat,
+                            refLon = refLon,
+                            maxDistanceMeters = if (loc != null) 2000.0 else null,
+                            filterIds = null,
+                            sortByDistance = true
+                        )
                     }
                     BusFilterSource.METRO_STATION -> {
                         val stationId = _selectedMetroStationIdForBus.value ?: "15"
                         val station = _allNetworkStations.value.find { it.id == stationId }
+                            ?: com.example.data.model.ValenciaMetroData.mainMetroStations.find { it.id == stationId }
                         val (targetLat, targetLon) = if (station != null) {
                             Pair(station.latitude, station.longitude)
                         } else {
-                            BusMapper.getCoordinatesForStation(getApplication(), stationId.toIntOrNull() ?: 15)
+                            BusMapper.getCoordinatesForStation(getApplication(), stationId)
                         }
                         
-                        val allStops = database.geoportalStopDao().getAllActiveStops()
-                        val filteredStops = allStops.filter { !it.lineas.isNullOrBlank() }
-                        val inQuadrant = filteredStops.filter { stop ->
-                            val latDiff = Math.abs(stop.lat - targetLat)
-                            val lonDiff = Math.abs(stop.lon - targetLon)
-                            latDiff <= 0.005 && lonDiff <= 0.005
-                        }
-                        
-                        // Prioritization Algorithm: Favorites pinned, rest sorted by distance from metro station
-                        val starred = inQuadrant.filter { favs.contains(it.id_parada) }
-                        val nonStarred = inQuadrant.filter { !favs.contains(it.id_parada) }
-                        val sortedNonStarred = nonStarred.sortedBy { stop ->
-                            LocationUtils.calculateDistanceMeters(targetLat, targetLon, stop.lat, stop.lon)
-                        }
-                        
-                        val finalEntities = starred + sortedNonStarred
-                        finalEntities.map { stop ->
-                            val dist = LocationUtils.calculateDistanceMeters(targetLat, targetLon, stop.lat, stop.lon)
-                            EmtBusStop(
-                                t = stop.lat.toString(),
-                                n = stop.lon.toString(),
-                                me = stop.denominacion,
-                                utes = BusMapper.getLinesForStop(stop),
-                                opId = stop.id_parada,
-                                ica = "Parada " + stop.id_parada,
-                                distanceText = LocationUtils.formatDistance(dist)
-                            )
-                        }.filter { it.utes.isNotEmpty() }
+                        processEmtStops(
+                            baseStops = baseActiveStops,
+                            query = query,
+                            aliases = aliases,
+                            refLat = targetLat,
+                            refLon = targetLon,
+                            maxDistanceMeters = 2000.0,
+                            filterIds = null,
+                            sortByDistance = true
+                        )
                     }
                 }
                 _busStopsList.value = list
@@ -548,18 +661,81 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun fetchBusTimes(stopId: String) {
-        _busTimesLoading.value = true
-        _busTimes.value = emptyList()
+    private var isEmtScheduledExpanded = false
+    private var scheduledLimitPerLine = 3
+
+    fun fetchBusTimes(
+        stopId: String,
+        limitPerLine: Int = 3,
+        isLoadMore: Boolean = false,
+        isSilent: Boolean = false,
+        includeScheduled: Boolean = isEmtScheduledExpanded
+    ) {
+        scheduledLimitPerLine = limitPerLine
+        val startTime = System.currentTimeMillis()
+        if (!isLoadMore && !isSilent) {
+            _busTimesLoading.value = true
+            if (_selectedBusStop.value?.opId != stopId) {
+                _busTimes.value = emptyList()
+            }
+        } else if (isLoadMore) {
+            _isLoadingMoreScheduled.value = true
+        }
         viewModelScope.launch {
             try {
-                val arrivals = com.example.data.repository.RealTimeTransitRepository.getEmtLiveArrivals(stopId)
-                _busTimes.value = arrivals
+                val stopName = _selectedBusStop.value?.n
+                val arrivals = com.example.data.repository.RealTimeTransitRepository.getEmtLiveArrivals(
+                    stopNumber = stopId,
+                    stopName = stopName,
+                    limitPerLine = scheduledLimitPerLine,
+                    includeScheduled = includeScheduled
+                )
+                if (arrivals.isNotEmpty() || !isSilent) {
+                    _busTimes.value = arrivals
+                }
             } catch (e: Exception) {
                 Log.e("EmtBus", "Error fetching real bus times", e)
-                _busTimes.value = emptyList()
+                if (!isSilent && _busTimes.value.isEmpty()) {
+                    _busTimes.value = emptyList()
+                }
             } finally {
-                _busTimesLoading.value = false
+                if (!isLoadMore && !isSilent) {
+                    val elapsed = System.currentTimeMillis() - startTime
+                    if (elapsed < 400L) {
+                        delay(400L - elapsed)
+                    }
+                    _busTimesLoading.value = false
+                } else if (isLoadMore) {
+                    _isLoadingMoreScheduled.value = false
+                }
+            }
+        }
+    }
+
+    fun loadMoreScheduledTimes(stopId: String) {
+        // Progressive in-memory reveal is managed smoothly via UnifiedScheduledSection scroll
+        fetchEmtScheduledTimes(stopId, isLoadMore = false)
+    }
+
+    fun fetchEmtScheduledTimes(stopId: String, isLoadMore: Boolean = false) {
+        if (_isEmtScheduledLoaded.value && _emtScheduledTimes.value.isNotEmpty() && !isLoadMore) {
+            return
+        }
+        viewModelScope.launch {
+            _isEmtScheduledLoading.value = true
+            try {
+                val stopName = _selectedBusStop.value?.n
+                val sched = com.example.data.repository.RealTimeTransitRepository.getEmtScheduledDepartures(
+                    stopNumber = stopId,
+                    stopName = stopName,
+                    limitPerLine = 100
+                )
+                _emtScheduledTimes.value = sched
+                _isEmtScheduledLoaded.value = true
+            } catch (e: Exception) {
+                Log.e("EmtBus", "Error loading EMT scheduled times: ${e.message}", e)
+            } finally {
+                _isEmtScheduledLoading.value = false
             }
         }
     }
@@ -567,30 +743,6 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     // ==========================================
     // METROBUS VALENCIA BUS SECTION
     // ==========================================
-
-    private val _favoriteMetrobusStops = MutableStateFlow<List<String>>(emptyList())
-    val favoriteMetrobusStops = _favoriteMetrobusStops.asStateFlow()
-
-    private val _metrobusStopAliases = MutableStateFlow<Map<String, String>>(emptyMap())
-    val metrobusStopAliases = _metrobusStopAliases.asStateFlow()
-
-    private val _metrobusSearchQuery = MutableStateFlow("")
-    val metrobusSearchQuery = _metrobusSearchQuery.asStateFlow()
-
-    private val _metrobusStopsList = MutableStateFlow<List<MetrobusStop>>(emptyList())
-    val metrobusStopsList = _metrobusStopsList.asStateFlow()
-
-    private val _metrobusStopsLoading = MutableStateFlow(false)
-    val metrobusStopsLoading = _metrobusStopsLoading.asStateFlow()
-
-    private val _metrobusTimes = MutableStateFlow<List<MetrobusDepartureUiModel>>(emptyList())
-    val metrobusTimes = _metrobusTimes.asStateFlow()
-
-    private val _metrobusTimesLoading = MutableStateFlow(false)
-    val metrobusTimesLoading = _metrobusTimesLoading.asStateFlow()
-
-    private val _selectedMetrobusStop = MutableStateFlow<MetrobusStop?>(null)
-    val selectedMetrobusStop = _selectedMetrobusStop.asStateFlow()
 
     fun setMetrobusSearchQuery(query: String) {
         _metrobusSearchQuery.value = query
@@ -628,8 +780,6 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private var loadMetrobusStopsJob: Job? = null
-
     fun refreshMetrobusDatabase() {
         viewModelScope.launch(Dispatchers.IO) {
             _metrobusStopsLoading.value = true
@@ -644,6 +794,66 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                 _metrobusStopsLoading.value = false
                 loadMetrobusStops()
             }
+        }
+    }
+
+    private fun processMetrobusStops(
+        dbStops: List<com.example.data.database.MetrobusStopEntity>,
+        query: String,
+        aliases: Map<String, String>,
+        refLat: Double?,
+        refLon: Double?,
+        maxDistanceMeters: Double?,
+        filterIds: Set<String>? = null
+    ): List<MetrobusStop> {
+        val stopsToProcess = if (filterIds != null) {
+            val stopMap = dbStops.associateBy { it.id_parada }
+            filterIds.mapNotNull { stopMap[it] }
+        } else if (query.isNotEmpty()) {
+            dbStops.mapNotNull { stop ->
+                val linesList = stop.lineas?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+                val score = computeSearchScore(stop.id_parada, stop.denominacion, query, aliases[stop.id_parada], linesList)
+                if (score > 0.0) Pair(stop, score) else null
+            }.sortedByDescending { it.second }
+             .map { it.first }
+        } else {
+            dbStops
+        }
+
+        if (refLat == null || refLon == null) {
+            return stopsToProcess.map { entity ->
+                val linesList = entity.lineas?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+                MetrobusStop(
+                    idParada = entity.id_parada,
+                    denominacion = entity.denominacion,
+                    lat = entity.lat,
+                    lon = entity.lon,
+                    lineas = linesList,
+                    distanceText = ""
+                )
+            }
+        }
+
+        val mapped = stopsToProcess.mapNotNull { entity ->
+            val dist = LocationUtils.calculateDistanceMeters(refLat, refLon, entity.lat, entity.lon)
+            if (maxDistanceMeters != null && dist > maxDistanceMeters) return@mapNotNull null
+            Pair(
+                MetrobusStop(
+                    idParada = entity.id_parada,
+                    denominacion = entity.denominacion,
+                    lat = entity.lat,
+                    lon = entity.lon,
+                    lineas = entity.lineas?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList(),
+                    distanceText = LocationUtils.formatDistance(dist)
+                ),
+                dist
+            )
+        }
+
+        return if (query.isEmpty()) {
+            mapped.sortedBy { it.second }.map { it.first }
+        } else {
+            mapped.map { it.first }
         }
     }
 
@@ -662,90 +872,60 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
 
                 metrobusRepository.ensureStopsCached()
 
-                val dbStops = if (query.isNotEmpty()) {
-                    database.metrobusStopDao().searchActiveStops("%$query%")
-                } else {
-                    database.metrobusStopDao().getAllActiveStops()
-                }
+                val aliases = _metrobusStopAliases.value
+                val baseActiveStops = database.metrobusStopDao().getAllActiveStops()
 
+                var refLat = 39.46975
+                var refLon = -0.37739
                 val loc = _lastLocation.value
-                val refLat = loc?.first ?: 39.46975
-                val refLon = loc?.second ?: -0.37739
-
-                val mapped = dbStops.map { entity ->
-                    val linesList = entity.lineas?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
-                    val dist = if (loc != null) {
-                        LocationUtils.calculateDistanceMeters(loc.first, loc.second, entity.lat, entity.lon)
-                    } else -1.0
-
-                    MetrobusStop(
-                        idParada = entity.id_parada,
-                        denominacion = entity.denominacion,
-                        lat = entity.lat,
-                        lon = entity.lon,
-                        lineas = linesList,
-                        distanceText = if (dist >= 0) LocationUtils.formatDistance(dist) else ""
-                    )
+                if (loc != null) {
+                    refLat = loc.first
+                    refLon = loc.second
                 }
 
-                var filtered = mapped
-                when (source) {
+                val filtered: List<MetrobusStop> = when (source) {
                     BusFilterSource.FAVORITES_BUS -> {
-                        filtered = filtered.filter { favs.contains(it.idParada) }
+                        val filterIds = if (query.isEmpty()) favs.toSet() else null
+                        processMetrobusStops(
+                            dbStops = baseActiveStops,
+                            query = query,
+                            aliases = aliases,
+                            refLat = refLat,
+                            refLon = refLon,
+                            maxDistanceMeters = null,
+                            filterIds = filterIds
+                        )
                     }
                     BusFilterSource.GPS_USER -> {
-                        if (loc != null) {
-                            val sortedAllByDist = filtered.sortedBy { stop ->
-                                LocationUtils.calculateDistanceMeters(loc.first, loc.second, stop.lat, stop.lon)
-                            }
-                            var inRadius = sortedAllByDist.filter { stop ->
-                                val latDiff = Math.abs(stop.lat - refLat)
-                                val lonDiff = Math.abs(stop.lon - refLon)
-                                latDiff <= 0.015 && lonDiff <= 0.015
-                            }
-                            if (inRadius.size < 10) {
-                                inRadius = sortedAllByDist.take(25)
-                            }
-                            val starred = inRadius.filter { favs.contains(it.idParada) }
-                            val nonStarred = inRadius.filter { !favs.contains(it.idParada) }
-                            filtered = starred + nonStarred
-                        } else {
-                            filtered = emptyList()
-                        }
+                        processMetrobusStops(
+                            dbStops = baseActiveStops,
+                            query = query,
+                            aliases = aliases,
+                            refLat = refLat,
+                            refLon = refLon,
+                            maxDistanceMeters = if (query.isEmpty()) (if (loc != null) 2000.0 else null) else null,
+                            filterIds = null
+                        )
                     }
                     BusFilterSource.METRO_STATION -> {
                         val stationId = _selectedMetroStationIdForBus.value ?: "15"
                         val station = _allNetworkStations.value.find { it.id == stationId }
+                            ?: com.example.data.model.ValenciaMetroData.mainMetroStations.find { it.id == stationId }
                         val (targetLat, targetLon) = if (station != null) {
                             Pair(station.latitude, station.longitude)
                         } else {
-                            BusMapper.getCoordinatesForStation(getApplication(), stationId.toIntOrNull() ?: 15)
+                            BusMapper.getCoordinatesForStation(getApplication(), stationId)
                         }
 
-                        val inQuadrant = filtered.filter { stop ->
-                            val latDiff = Math.abs(stop.lat - targetLat)
-                            val lonDiff = Math.abs(stop.lon - targetLon)
-                            latDiff <= 0.005 && lonDiff <= 0.005
-                        }
-                        val starred = inQuadrant.filter { favs.contains(it.idParada) }
-                        val nonStarred = inQuadrant.filter { !favs.contains(it.idParada) }
-                        val sortedNonStarred = nonStarred.sortedBy { stop ->
-                            LocationUtils.calculateDistanceMeters(targetLat, targetLon, stop.lat, stop.lon)
-                        }
-                        filtered = starred + sortedNonStarred
-                    }
-                }
-
-                // Default sorting and constraints for ALL or query searches
-                if (source == BusFilterSource.FAVORITES_BUS && query.isEmpty() && filtered.isEmpty()) {
-                    // Keep empty to show prompt
-                } else if (query.isEmpty() && source != BusFilterSource.GPS_USER && source != BusFilterSource.METRO_STATION) {
-                    if (loc != null) {
-                        filtered = filtered.sortedBy { stop ->
-                            LocationUtils.calculateDistanceMeters(loc.first, loc.second, stop.lat, stop.lon)
-                        }.take(50)
-                    } else {
-                        filtered = filtered.take(50)
+                        processMetrobusStops(
+                            dbStops = baseActiveStops,
+                            query = query,
+                            aliases = aliases,
+                            refLat = targetLat,
+                            refLon = targetLon,
+                            maxDistanceMeters = if (query.isEmpty()) 2000.0 else null,
+                            filterIds = null
+                        )
                     }
                 }
 
@@ -762,14 +942,28 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private var metrobusCountdownJob: Job? = null
+    private var isMetrobusScheduledExpanded = false
+    private var scheduledMetrobusLimitPerLine = 3
+    private val _isLoadingMoreMetrobusScheduled = MutableStateFlow(false)
+    val isLoadingMoreMetrobusScheduled = _isLoadingMoreMetrobusScheduled.asStateFlow()
 
     fun selectMetrobusStop(stop: MetrobusStop?) {
         _selectedMetrobusStop.value = stop
+        isMetrobusScheduledExpanded = false
+        scheduledMetrobusLimitPerLine = 3
+        _metrobusScheduledTimes.value = emptyList()
+        _isMetrobusScheduledLoaded.value = false
+        _isMetrobusScheduledLoading.value = false
+        metrobusScheduledLimit = 5
         viewModelScope.launch {
             metrobusCountdownJob?.cancelAndJoin()
             if (stop != null) {
-                fetchMetrobusTimes(stop.idParada)
+                fetchMetrobusTimes(
+                    stop.idParada,
+                    limitPerLine = scheduledMetrobusLimitPerLine,
+                    isSilent = false,
+                    includeScheduled = false
+                )
                 startMetrobusCountdownTicker()
             } else {
                 _metrobusTimes.value = emptyList()
@@ -777,39 +971,131 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun fetchMetrobusTimes(stopId: String) {
-        _metrobusTimesLoading.value = true
-        _metrobusTimes.value = emptyList()
+    fun selectMetrobusStopFromEntity(stop: com.example.data.database.MetrobusStopEntity) {
+        val existing = _metrobusStopsList.value.find { it.idParada == stop.id_parada }
+        val linesList = stop.lineas?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+        val mbStop = existing ?: MetrobusStop(
+            idParada = stop.id_parada,
+            denominacion = stop.denominacion,
+            lat = stop.lat,
+            lon = stop.lon,
+            lineas = linesList
+        )
+        selectMetrobusStop(mbStop)
+    }
+
+    fun fetchMetrobusTimes(
+        stopId: String,
+        limitPerLine: Int = scheduledMetrobusLimitPerLine,
+        isLoadMore: Boolean = false,
+        isSilent: Boolean = false,
+        includeScheduled: Boolean = isMetrobusScheduledExpanded
+    ) {
+        scheduledMetrobusLimitPerLine = limitPerLine
+        if (!isLoadMore && !isSilent) {
+            _metrobusTimesLoading.value = true
+            if (_selectedMetrobusStop.value?.idParada != stopId) {
+                _metrobusTimes.value = emptyList()
+            }
+        } else if (isLoadMore) {
+            _isLoadingMoreMetrobusScheduled.value = true
+        }
         viewModelScope.launch {
             try {
-                val linesMap = metrobusRepository.getLinesMap()
-                val detail = metrobusRepository.fetchStopDetail(stopId)
-                if (detail != null) {
-                    _metrobusTimes.value = MetrobusTimeCalculator.getActiveDeparturesForToday(detail, linesMap)
-                    // Once lines are enriched, reload stops to update line badges
-                    loadMetrobusStops()
-                } else {
-                    _metrobusTimes.value = emptyList()
+                val times = metrobusRepository.getMetrobusArrivals(
+                    stopId = stopId,
+                    limitPerLine = scheduledMetrobusLimitPerLine,
+                    includeScheduled = includeScheduled
+                )
+                if (times.isNotEmpty() || !isSilent) {
+                    _metrobusTimes.value = times
                 }
+                // Once times are loaded, ensure stops are loaded to update line badges
+                loadMetrobusStops()
             } catch (e: Exception) {
                 Log.e("Metrobus", "Error fetching metrobus times", e)
-                _metrobusTimes.value = emptyList()
+                if (!isSilent && _metrobusTimes.value.isEmpty()) {
+                    _metrobusTimes.value = emptyList()
+                }
             } finally {
-                _metrobusTimesLoading.value = false
+                if (!isLoadMore && !isSilent) {
+                    _metrobusTimesLoading.value = false
+                } else if (isLoadMore) {
+                    _isLoadingMoreMetrobusScheduled.value = false
+                }
+            }
+        }
+    }
+
+    fun loadMoreMetrobusScheduledTimes(stopId: String) {
+        // Progressive in-memory reveal is managed smoothly via UnifiedScheduledSection scroll
+        fetchMetrobusScheduledTimes(stopId, isLoadMore = false)
+    }
+
+    fun fetchMetrobusScheduledTimes(stopId: String, isLoadMore: Boolean = false) {
+        if (_isMetrobusScheduledLoaded.value && _metrobusScheduledTimes.value.isNotEmpty() && !isLoadMore) {
+            return
+        }
+        viewModelScope.launch {
+            _isMetrobusScheduledLoading.value = true
+            try {
+                val sched = metrobusRepository.getMetrobusScheduledDepartures(
+                    stopId = stopId,
+                    limitPerLine = 100
+                )
+                _metrobusScheduledTimes.value = sched
+                _isMetrobusScheduledLoaded.value = true
+            } catch (e: Exception) {
+                Log.e("Metrobus", "Error loading Metrobus scheduled times: ${e.message}", e)
+            } finally {
+                _isMetrobusScheduledLoading.value = false
             }
         }
     }
 
     private fun startMetrobusCountdownTicker() {
         metrobusCountdownJob = viewModelScope.launch {
+            var tickCount = 0
             while (isActive) {
-                delay(30000) // Recalculate remaining minutes every 30 seconds
+                delay(1000)
                 if (!isActive) break
-                val stop = _selectedMetrobusStop.value ?: break
-                val linesMap = metrobusRepository.getLinesMap()
-                val detail = metrobusRepository.fetchStopDetail(stop.idParada)
-                if (detail != null && isActive) {
-                    _metrobusTimes.value = MetrobusTimeCalculator.getActiveDeparturesForToday(detail, linesMap)
+                tickCount++
+                val currentList = _metrobusTimes.value
+                if (currentList.isNotEmpty()) {
+                    var changed = false
+                    val updated = currentList.map { time ->
+                        val secs = time.secondsRemaining
+                        if (secs <= 0) {
+                            time
+                        } else {
+                            changed = true
+                            val newSecs = secs - 1
+                            val newMinsVal = (newSecs + 59) / 60
+                            val newMinsStr = if (newMinsVal <= 1) "1" else newMinsVal.toString()
+                            val newLabel = if (newMinsVal <= 1) "Inminente" else "$newMinsVal min"
+                            time.copy(
+                                secondsRemaining = newSecs,
+                                minutesRemaining = newMinsVal,
+                                timeLabel = newLabel
+                            )
+                        }
+                    }
+                    if (changed && isActive) {
+                        _metrobusTimes.value = updated
+                    }
+                }
+
+                // Poll real-time / scheduled silently in background every 30s
+                if (tickCount % 30 == 0 && isActive) {
+                    val stop = _selectedMetrobusStop.value ?: break
+                    if (isActive) {
+                        fetchMetrobusTimes(
+                            stop.idParada,
+                            limitPerLine = scheduledMetrobusLimitPerLine,
+                            isSilent = true,
+                            includeScheduled = isMetrobusScheduledExpanded
+                        )
+                    }
                 }
             }
         }

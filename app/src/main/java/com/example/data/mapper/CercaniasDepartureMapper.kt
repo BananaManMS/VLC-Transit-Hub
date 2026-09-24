@@ -50,8 +50,6 @@ object CercaniasDepartureMapper {
         val normCurrent = normalizeStationName(currentStationName)
         val normDest = normalizeStationName(destinationName)
         
-        println("Debug: normCurrent=$normCurrent, normDest=$normDest")
-        
         // Allow trains arriving at València Nord, as they are not terminal arrivals for the user
         if (normCurrent == "valencia nord") return false
         

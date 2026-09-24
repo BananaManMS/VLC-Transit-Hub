@@ -39,16 +39,6 @@ object TripStepProgressionEngine {
     const val CAPTURE_RADIUS_METERS: Double = 30.0
 
     /**
-     * Station Proximity Radius: Within 50 meters of origin station to detect transit wait.
-     */
-    const val STATION_PROXIMITY_RADIUS_METERS: Double = 50.0
-
-    /**
-     * Threshold in meters to consider the user deviated from the planned route.
-     */
-    const val OFF_ROUTE_THRESHOLD_METERS: Double = 150.0
-
-    /**
      * Number of consecutive GPS readings required above the threshold before raising an Off-Route alert.
      */
     const val CONSECUTIVE_OFF_ROUTE_REQUIRED: Int = 3
@@ -73,6 +63,7 @@ object TripStepProgressionEngine {
      */
     fun markLegBoarded(legIndex: Int) {
         boardedLegIndices.add(legIndex)
+        ActiveTripProgressTracker.markAsBoarded(legIndex)
     }
 
     /**
@@ -86,7 +77,12 @@ object TripStepProgressionEngine {
     ) {
         boardedLegIndices.add(legIndex)
         val now = System.currentTimeMillis()
-        val departureTimeMs = ActiveTripProgressTracker.progressState.value.transitDepartureTimeMs.takeIf { it > 0L } ?: now
+        val currentTracker = ActiveTripProgressTracker.progressState.value
+        val departureTimeMs = if (currentTracker.trackedLegIndex == legIndex && currentTracker.transitDepartureTimeMs > 0L) {
+            currentTracker.transitDepartureTimeMs
+        } else {
+            now
+        }
         ActiveTripProgressTracker.updateProgress(
             progressWithinLeg = 0.05f,
             waitTimeMessage = null,
@@ -113,8 +109,9 @@ object TripStepProgressionEngine {
     /**
      * Calculates remaining walking time dynamically.
      * Prioritizes the Transitous routing street-network walk duration (leg.durationSeconds)
-     * scaled by the percentage of remaining distance to the target.
-     * Falls back to Haversine speed calculation if leg data is unavailable.
+     * scaled proportionally by the ratio of remaining straight-line distance to the target
+     * over the initial straight-line distance from origin to target.
+     * Falls back to Haversine speed calculation only if leg data is unavailable.
      */
     fun calculateDynamicWalkMinutes(
         distanceMeters: Double,
@@ -122,21 +119,23 @@ object TripStepProgressionEngine {
     ): Int {
         if (distanceMeters <= 0.0) return 0
 
-        if (leg != null && leg.mode == TransitMode.WALK && leg.durationSeconds > 0) {
+        if (leg != null && (leg.mode == TransitMode.WALK || leg.mode == TransitMode.BICYCLE) && leg.durationSeconds > 0) {
             val transitousBaseMins = (leg.durationSeconds / 60.0).coerceAtLeast(1.0)
             val originCoords = getLegOriginCoordinates(leg)
             val targetCoords = getLegTargetCoordinates(leg)
-            val totalLegDist = if (leg.distanceMeters > 0.0) {
-                leg.distanceMeters
-            } else if (originCoords != null && targetCoords != null) {
+            val totalStraightLineDist = if (originCoords != null && targetCoords != null) {
                 calculateDistanceMeters(originCoords.first, originCoords.second, targetCoords.first, targetCoords.second)
+            } else if (leg.distanceMeters > 0.0) {
+                leg.distanceMeters
             } else 0.0
 
-            if (totalLegDist > 10.0) {
-                val remainingFraction = (distanceMeters / totalLegDist).coerceIn(0.0, 1.0)
+            if (totalStraightLineDist > 10.0) {
+                val remainingFraction = (distanceMeters / totalStraightLineDist).coerceIn(0.0, 1.0)
                 val remainingMins = kotlin.math.ceil(transitousBaseMins * remainingFraction).toInt()
                 return if (distanceMeters < 25.0) 0 else remainingMins.coerceAtLeast(1)
             }
+
+            return if (distanceMeters < 25.0) 0 else transitousBaseMins.toInt().coerceAtLeast(1)
         }
 
         // Fallback: 1.4 m/s sustained speed + 1.10 urban tortuosity factor
@@ -253,6 +252,9 @@ object TripStepProgressionEngine {
         if (lastStop != null) {
             return Pair(lastStop.lat, lastStop.lon)
         }
+        if (leg.toLat != 0.0 && leg.toLon != 0.0) {
+            return Pair(leg.toLat, leg.toLon)
+        }
         return null
     }
 
@@ -267,6 +269,9 @@ object TripStepProgressionEngine {
         val firstStop = leg.intermediateStops.firstOrNull()
         if (firstStop != null) {
             return Pair(firstStop.lat, firstStop.lon)
+        }
+        if (leg.fromLat != 0.0 && leg.fromLon != 0.0) {
+            return Pair(leg.fromLat, leg.fromLon)
         }
         return null
     }
@@ -298,7 +303,8 @@ object TripStepProgressionEngine {
                 val distToStation = calculateDistanceMeters(userLat, userLon, stationCoords.first, stationCoords.second)
                 if (distToStation <= 75.0) {
                     boardedLegIndices.remove(0)
-                    ActiveTripProgressTracker.updateProgress(0.0f)
+                    boardedLegIndices.remove(1)
+                    ActiveTripProgressTracker.resetForNewLeg(1)
                     return StepProgressionResult.LegCompleted(
                         completedLegIndex = 0,
                         nextLegIndex = 1,
@@ -331,15 +337,20 @@ object TripStepProgressionEngine {
 
         val captureRadius = if (isTransitLeg) 75.0 else CAPTURE_RADIUS_METERS
 
-        // Capture condition: Within capture radius of leg destination
+        // Capture condition: Within capture radius of leg destination (Only for WALK or if already boarded/moving on transit)
         if (distanceToTarget <= captureRadius) {
             val nextIndex = currentIndex + 1
             val isFinalLeg = nextIndex >= legs.size
             boardedLegIndices.remove(currentIndex)
+            boardedLegIndices.remove(nextIndex)
             if (!isFinalLeg) {
-                ActiveTripProgressTracker.updateProgress(0.0f)
+                ActiveTripProgressTracker.resetForNewLeg(nextIndex)
             } else {
-                ActiveTripProgressTracker.updateProgress(1.0f)
+                ActiveTripProgressTracker.updateProgress(
+                    progressWithinLeg = 1.0f,
+                    isBoarded = true,
+                    legIndex = currentIndex
+                )
             }
             return StepProgressionResult.LegCompleted(
                 completedLegIndex = currentIndex,
@@ -349,21 +360,27 @@ object TripStepProgressionEngine {
         }
 
         // Also check if user has already entered within range of the NEXT leg's path/origin
+        // Safeguard: Only jump to next leg if this leg is WALK, or if current transit leg was actually boarded and progressed!
         if (currentIndex + 1 < legs.size) {
             val nextLeg = legs[currentIndex + 1]
             val nextOriginCoords = getLegOriginCoordinates(nextLeg)
-            if (nextOriginCoords != null) {
+            val currentProgress = ActiveTripProgressTracker.progressState.value
+            val isCurrentTransitBoardedOrAdvanced = !isTransitLeg || (currentProgress.isBoarded && currentProgress.trackedLegIndex == currentIndex) || (currentProgress.progressWithinLeg >= 0.70f)
+
+            if (nextOriginCoords != null && isCurrentTransitBoardedOrAdvanced) {
                 val distanceToNextOrigin = calculateDistanceMeters(
                     userLat, userLon,
                     nextOriginCoords.first, nextOriginCoords.second
                 )
-                val nextCaptureRadius = if (nextLeg.mode != TransitMode.WALK) 80.0 else 60.0
+                val nextCaptureRadius = if (nextLeg.mode != TransitMode.WALK) 70.0 else 50.0
                 if (distanceToNextOrigin <= nextCaptureRadius) {
+                    val nextIndex = currentIndex + 1
                     boardedLegIndices.remove(currentIndex)
-                    ActiveTripProgressTracker.updateProgress(0.0f)
+                    boardedLegIndices.remove(nextIndex)
+                    ActiveTripProgressTracker.resetForNewLeg(nextIndex)
                     return StepProgressionResult.LegCompleted(
                         completedLegIndex = currentIndex,
-                        nextLegIndex = currentIndex + 1,
+                        nextLegIndex = nextIndex,
                         isFinalLeg = false
                     )
                 }
@@ -386,9 +403,30 @@ object TripStepProgressionEngine {
                 calculateDistanceMeters(originCoords.first, originCoords.second, targetCoords.first, targetCoords.second)
             } else 0.0
 
-            val hasMovedAwayByGps = distanceToOrigin > 120.0 && distanceToTarget < (totalLegDist - 80.0)
+            // Distance threshold to consider departed: for TRAM/BUS in city center, 80m is enough to confirm vehicle departure
+            val minDepartureDist = when (currentLeg.mode) {
+                TransitMode.SUBWAY, TransitMode.RAIL -> 150.0
+                TransitMode.TRAM -> 80.0
+                TransitMode.BUS -> 70.0
+                else -> 80.0
+            }
+
+            // Check if user has passed intermediate stops (e.g. at stop 2, 3...)
+            var hasPassedAnyIntermediateStop = false
+            if (currentLeg.intermediateStops.isNotEmpty() && userLat != 0.0 && userLon != 0.0) {
+                for (stop in currentLeg.intermediateStops) {
+                    val distToStop = calculateDistanceMeters(userLat, userLon, stop.lat, stop.lon)
+                    if (distToStop <= 100.0) {
+                        hasPassedAnyIntermediateStop = true
+                        break
+                    }
+                }
+            }
+
+            val hasMovedAwayByGps = (distanceToOrigin > minDepartureDist && (totalLegDist <= 10.0 || distanceToTarget < (totalLegDist - 50.0))) || hasPassedAnyIntermediateStop
             val isManuallyBoarded = boardedLegIndices.contains(currentIndex)
-            val isCurrentlyBoarded = isManuallyBoarded || currentProgressInfo.isBoarded || hasMovedAwayByGps
+            val isTrackerBoarded = currentProgressInfo.isBoarded && currentProgressInfo.trackedLegIndex == currentIndex
+            val isCurrentlyBoarded = isManuallyBoarded || isTrackerBoarded || hasMovedAwayByGps
 
             if (isCurrentlyBoarded) {
                 boardedLegIndices.add(currentIndex)
@@ -406,21 +444,27 @@ object TripStepProgressionEngine {
                 }
                 val waitMins = ((currentLeg.durationSeconds / 60) / 2).coerceAtLeast(1)
                 val waitMessage = "$modeLabel: $waitMins min"
+                val initialRemainingStops = (currentLeg.intermediateStops.size + 1).coerceAtLeast(1)
 
                 ActiveTripProgressTracker.updateProgress(
                     progressWithinLeg = 0.05f,
                     waitTimeMessage = waitMessage,
                     isDeadReckoning = false,
                     isBoarded = false,
-                    legIndex = currentIndex
+                    transitDepartureTimeMs = 0L,
+                    legIndex = currentIndex,
+                    remainingStopsCount = initialRemainingStops
                 )
             } else {
                 // User HAS BOARDED / DEPARTED station!
-                val departureTimeMs = if (currentProgressInfo.transitDepartureTimeMs > 0L) {
+                val departureTimeMs = if (currentProgressInfo.trackedLegIndex == currentIndex && currentProgressInfo.transitDepartureTimeMs > 0L) {
                     currentProgressInfo.transitDepartureTimeMs
                 } else {
                     now
                 }
+
+                val totalStopsInLeg = (currentLeg.intermediateStops.size + 1).coerceAtLeast(1)
+                val intermediateStops = currentLeg.intermediateStops
 
                 if (isGpsInaccurate) {
                     // Underground tunnel / weak GPS: Time-based Dead Reckoning FROM ACTUAL DEPARTURE TIME
@@ -428,13 +472,21 @@ object TripStepProgressionEngine {
                     val elapsedSec = ((now - departureTimeMs) / 1000).coerceAtLeast(0).toFloat()
                     val deadReckoningProgress = (elapsedSec / legDuration).coerceIn(0.05f, 0.98f)
 
+                    val passedStops = (deadReckoningProgress * totalStopsInLeg).toInt().coerceIn(0, intermediateStops.size)
+                    val remainingStops = if (distanceToTarget <= captureRadius || deadReckoningProgress >= 0.98f) {
+                        0
+                    } else {
+                        (totalStopsInLeg - passedStops).coerceAtLeast(1)
+                    }
+
                     ActiveTripProgressTracker.updateProgress(
                         progressWithinLeg = deadReckoningProgress,
                         waitTimeMessage = null,
                         isDeadReckoning = true,
                         isBoarded = true,
                         transitDepartureTimeMs = departureTimeMs,
-                        legIndex = currentIndex
+                        legIndex = currentIndex,
+                        remainingStopsCount = remainingStops
                     )
                 } else {
                     // Normal GPS continuous tracking
@@ -442,13 +494,36 @@ object TripStepProgressionEngine {
                         (1.0 - (distanceToTarget / totalLegDist)).toFloat().coerceIn(0.05f, 0.98f)
                     } else 0.5f
 
+                    var passedStops = 0
+                    if (intermediateStops.isNotEmpty() && userLat != 0.0 && userLon != 0.0) {
+                        for (i in intermediateStops.indices) {
+                            val stop = intermediateStops[i]
+                            val distToStop = calculateDistanceMeters(userLat, userLon, stop.lat, stop.lon)
+                            val distFromStopToTarget = if (targetCoords != null) {
+                                calculateDistanceMeters(stop.lat, stop.lon, targetCoords.first, targetCoords.second)
+                            } else 0.0
+                            if (distToStop <= 90.0 || (distanceToTarget < distFromStopToTarget - 40.0)) {
+                                passedStops = i + 1
+                            }
+                        }
+                    } else {
+                        passedStops = (progress * totalStopsInLeg).toInt().coerceIn(0, intermediateStops.size)
+                    }
+
+                    val remainingStops = if (distanceToTarget <= captureRadius || progress >= 0.98f) {
+                        0
+                    } else {
+                        (totalStopsInLeg - passedStops).coerceAtLeast(1)
+                    }
+
                     ActiveTripProgressTracker.updateProgress(
                         progressWithinLeg = progress,
                         waitTimeMessage = null,
                         isDeadReckoning = false,
                         isBoarded = true,
                         transitDepartureTimeMs = departureTimeMs,
-                        legIndex = currentIndex
+                        legIndex = currentIndex,
+                        remainingStopsCount = remainingStops
                     )
                 }
             }

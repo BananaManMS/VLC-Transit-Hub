@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Notification padding for Android versions < 31 (Android 11 and lower) -->
+    <dimen name="notification_padding_horizontal">12dp</dimen>
+    <dimen name="notification_padding_vertical">8dp</dimen>
+    <dimen name="notification_padding_compact_vertical">6dp</dimen>
+</resources>

@@ -49,6 +49,8 @@ import java.util.Locale
 import com.example.util.normalizeForSearch
 
 class MetroViewModel(application: Application, private val metroRepository: MetroRepository) : AndroidViewModel(application) {
+    constructor(application: Application) : this(application, MetroRepository(application))
+
     private val database = AppDatabase.getDatabase(application)
     private val repository = DashboardRepository(application, database)
     private val metroCardRepository = MetroCardRepository(application, database)
@@ -73,26 +75,27 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
     private val _allNetworkStations = MutableStateFlow<List<MetroStation>>(emptyList())
     val allNetworkStations = _allNetworkStations.asStateFlow()
 
-    private val _lineStationsMap = MutableStateFlow<Map<String, com.example.data.repository.LineStationInfo>>(emptyMap())
-    val lineStationsMap = MutableStateFlow<Map<String, List<com.example.data.repository.LineStationInfo>>>(emptyMap()).asStateFlow()
     private val _internalLineStationsMap = MutableStateFlow<Map<String, List<com.example.data.repository.LineStationInfo>>>(emptyMap())
     val lineStationsState = _internalLineStationsMap.asStateFlow()
 
-    private val _selectedStationId = MutableStateFlow("15")
+    private val _selectedStationId = MutableStateFlow("")
     val selectedStationId = _selectedStationId.asStateFlow()
 
-    private var hasAutoSelectedClosestOnLaunch = false
+    var hasUserManuallySelectedStation = false
+        private set
 
-    private val _favoriteStations = MutableStateFlow<List<String>>(listOf("16", "15", "14"))
+    private val _favoriteStations = MutableStateFlow<List<String>>(emptyList())
     val favoriteStations = _favoriteStations.asStateFlow()
 
     private val _lastLocation = MutableStateFlow<Location?>(null)
     val lastLocation = _lastLocation.asStateFlow()
 
-    private val _departures = MutableStateFlow<List<RealTimeDeparture>>(emptyList())
-    val departures = _departures.asStateFlow()
     private val _realTimeDepartures = MutableStateFlow<List<RealTimeDeparture>>(emptyList())
     val realTimeDepartures = _realTimeDepartures.asStateFlow()
+    val departures = realTimeDepartures // Alias para compatibilidad con código existente
+
+    private val _stationAforoBloqueado = MutableStateFlow<AforoBloqueado?>(null)
+    val stationAforoBloqueado = _stationAforoBloqueado.asStateFlow()
 
     private val _realTimeError = MutableStateFlow<String?>(null)
     val realTimeError = _realTimeError.asStateFlow()
@@ -100,11 +103,12 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
     val activeIncidents = metroAlertsRepository.activeIncidents
     val isMetroAlertsLoading = metroAlertsRepository.isAlertsLoading
 
-    val twitterIncidents = metroAlertsRepository.twitterIncidents
-
     val accessibilityIncidents = metroAlertsRepository.accessibilityIncidents
+    val specialNotices = metroAlertsRepository.specialNotices
+    val metroNews = metroAlertsRepository.metroNews
+    val isNewsLoading = metroAlertsRepository.isNewsLoading
 
-    private val _realTimeSelectedStationId = MutableStateFlow<String?>("15")
+    private val _realTimeSelectedStationId = MutableStateFlow<String?>("")
     val realTimeSelectedStationId = _realTimeSelectedStationId.asStateFlow()
 
     private val _selectedDepartureForDetails = MutableStateFlow<RealTimeDeparture?>(null)
@@ -116,18 +120,15 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
     private val _isStationInfoExpanded = MutableStateFlow(false)
     val isStationInfoExpanded = _isStationInfoExpanded.asStateFlow()
 
-
     private val _realTimeLoading = MutableStateFlow(false)
     val realTimeLoading = _realTimeLoading.asStateFlow()
 
-    val twitterLoading = metroAlertsRepository.twitterLoading
-
-    private var lastTwitterFetchTime = 0L
     private var lastAlertsFetchTime = 0L
     private val _isAppInForeground = MutableStateFlow(true)
     
 
     
+    private var fetchDeparturesJob: Job? = null
     private var realTimeRefreshJob: Job? = null
     private var alertsRefreshJob: Job? = null
 
@@ -196,7 +197,19 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
         loadLineStationsData()
         loadPreferences()
         fetchAllAlerts()
-        fetchTwitterIncidents()
+        startAlertsRefreshTicker()
+        autoRefreshCardsIfNeeded()
+
+        viewModelScope.launch {
+            sortedFavoriteStations.collect { sorted ->
+                if (!hasUserManuallySelectedStation && sorted.isNotEmpty()) {
+                    val topFav = sorted.first()
+                    if (_realTimeSelectedStationId.value != topFav) {
+                        selectRealTimeStation(topFav, isUserAction = false)
+                    }
+                }
+            }
+        }
     }
 
     private fun loadLineStationsData() {
@@ -207,17 +220,13 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
 
     private fun loadPreferences() {
         viewModelScope.launch(Dispatchers.IO) {
-            val savedMetroFavs = repository.getPreference("favorite_stations", "16,15,14")
+            val savedMetroFavs = repository.getPreference("favorite_stations", "")
             _favoriteStations.value = savedMetroFavs.split(",").filter { it.isNotEmpty() }
             
-            val savedMetroStation = repository.getPreference("selected_station", "15")
-            _selectedStationId.value = savedMetroStation
-            _realTimeSelectedStationId.value = savedMetroStation
-            
             withContext(Dispatchers.Main) {
-                updateDeparturesList()
-                fetchRealTimeDepartures(savedMetroStation)
-                startRealTimeRefreshTicker()
+                if (!hasUserManuallySelectedStation) {
+                    autoSelectNearestMetroStationIfNeeded()
+                }
             }
         }
     }
@@ -226,10 +235,10 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val currentVersion = repository.getPreference("metro_stations_json_version", "0")
-                val defaultStations = metroRepository.loadMetroStations(forceReload = true)
-                val currentDbStations = database.stationDao().getAllStations()
+                var currentDbStations = database.stationDao().getAllStations()
 
-                if (currentVersion != "8" || currentDbStations.size != defaultStations.size) {
+                if (currentVersion != "8" || currentDbStations.isEmpty()) {
+                    val defaultStations = metroRepository.loadMetroStations(forceReload = true)
                     database.stationDao().deleteAllStations()
                     database.stationDao().insertAll(defaultStations.map { station ->
                         StationEntity(
@@ -242,25 +251,11 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
                         )
                     })
                     repository.savePreference("metro_stations_json_version", "8")
+                    currentDbStations = database.stationDao().getAllStations()
                 }
 
-                var dbStations = database.stationDao().getAllStations()
-                if (dbStations.isEmpty()) {
-                    database.stationDao().insertAll(defaultStations.map { station ->
-                        StationEntity(
-                            id = station.id.toIntOrNull() ?: Math.abs(station.id.hashCode()),
-                            name = station.name,
-                            lines = station.lines.joinToString(","),
-                            zone = station.zone,
-                            latitude = station.latitude,
-                            longitude = station.longitude
-                        )
-                    })
-                    dbStations = database.stationDao().getAllStations()
-                }
-
-                if (dbStations.isNotEmpty()) {
-                    val stations = dbStations.map { entity ->
+                if (currentDbStations.isNotEmpty()) {
+                    val stations = currentDbStations.map { entity ->
                         MetroStation(
                             id = entity.id.toString(),
                             name = entity.name,
@@ -274,7 +269,8 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
                     _allNetworkStations.value = stations
                     Log.d("MetroViewModel", "Loaded ${stations.size} stations from database")
                 } else {
-                    _allNetworkStations.value = defaultStations.distinctBy { it.id }
+                    val fallbackStations = metroRepository.loadMetroStations(forceReload = true)
+                    _allNetworkStations.value = fallbackStations.distinctBy { it.id }
                     Log.d("MetroViewModel", "Loaded stations from assets")
                 }
             } catch (e: Exception) {
@@ -287,38 +283,23 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
 
     fun setLocation(location: Location?) {
         _lastLocation.value = location
-    }
-
-
-
-
-private fun updateDeparturesList() {
-        val stationId = _selectedStationId.value
-        val slug = getStationSlug(stationId)
-        val station = _allNetworkStations.value.find { it.id == stationId || getStationSlug(it.id) == slug }
-        val stationLines = station?.lines ?: emptyList()
-
-        _departures.value = emptyList()
-    }
-
-fun selectStation(stationId: String) {
-        _selectedStationId.value = stationId
-        _realTimeSelectedStationId.value = stationId
-        viewModelScope.launch {
-            repository.savePreference("selected_station", stationId)
-            updateDeparturesList()
-            fetchRealTimeDepartures(stationId)
-            startRealTimeRefreshTicker()
+        if (!hasUserManuallySelectedStation) {
+            autoSelectNearestMetroStationIfNeeded()
         }
     }
 
-fun toggleFavoriteMetroStation(stationId: String) {
+
+
+
+    fun selectStation(stationId: String) {
+        selectRealTimeStation(stationId)
+    }
+
+    fun toggleFavoriteMetroStation(stationId: String) {
         val current = _favoriteStations.value.toMutableList()
         if (current.contains(stationId)) {
-            if (current.size > 1) { // Mantener al menos 1 estación favorita
-                current.remove(stationId)
-                updateFavoriteStations(current)
-            }
+            current.remove(stationId)
+            updateFavoriteStations(current)
         } else {
             if (current.size < 10) { // Límite de 10 favoritas
                 current.add(stationId)
@@ -327,16 +308,13 @@ fun toggleFavoriteMetroStation(stationId: String) {
         }
     }
 
-fun updateFavoriteStations(stationIds: List<String>) {
-        if (stationIds.size in 1..10) {
+    fun updateFavoriteStations(stationIds: List<String>) {
+        if (stationIds.size <= 10) {
             _favoriteStations.value = stationIds
             viewModelScope.launch {
                 repository.savePreference("favorite_stations", stationIds.joinToString(","))
-                if (!stationIds.contains(_selectedStationId.value)) {
+                if (stationIds.isNotEmpty() && !stationIds.contains(_selectedStationId.value)) {
                     selectStation(stationIds.first())
-                } else {
-                    updateDeparturesList()
-                    // generateSmartAdvisory()
                 }
             }
         }
@@ -350,16 +328,28 @@ fun getSortedStations(): List<MetroStation> {
         return favorites + nonFavorites
     }
 
-fun fetchRealTimeDepartures(stationId: String, isAutoRefresh: Boolean = false) {
-        viewModelScope.launch {
+    fun fetchRealTimeDepartures(stationId: String, isAutoRefresh: Boolean = false) {
+        if (!isAutoRefresh) {
+            fetchDeparturesJob?.cancel()
+        }
+        fetchDeparturesJob = viewModelScope.launch {
+            val startTime = System.currentTimeMillis()
             if (!isAutoRefresh) {
                 _realTimeLoading.value = true
                 _realTimeError.value = null
             }
             try {
+                if (!com.example.util.isNetworkAvailable(getApplication())) {
+                    if (_realTimeSelectedStationId.value == stationId) {
+                        _realTimeDepartures.value = emptyList()
+                        _realTimeError.value = "Sin conexión a internet"
+                    }
+                    return@launch
+                }
+
                 val numericId = stationId.toIntOrNull()
                 if (numericId == null) {
-                    if (!isAutoRefresh) {
+                    if (!isAutoRefresh && _realTimeSelectedStationId.value == stationId) {
                         _realTimeDepartures.value = emptyList()
                         _realTimeError.value = "Estación no encontrada"
                         _realTimeLoading.value = false
@@ -370,33 +360,103 @@ fun fetchRealTimeDepartures(stationId: String, isAutoRefresh: Boolean = false) {
                 val currentStation = _allNetworkStations.value.find { it.id == stationId || getStationSlug(it.id) == getStationSlug(stationId) }
                 val stationLines = currentStation?.lines ?: emptyList()
 
-                val rawArrivals = com.example.data.repository.RealTimeTransitRepository.getMetroLiveArrivals(numericId.toString())
+                val rawArrivals = com.example.data.repository.RealTimeTransitRepository.getMetroLiveArrivals(
+                    stationId = numericId.toString(),
+                    forceRefresh = !isAutoRefresh
+                )
+
+                // If user switched stations while network request was running, discard result
+                if (_realTimeSelectedStationId.value != stationId) {
+                    return@launch
+                }
+
+                val nowMs = System.currentTimeMillis()
                 val departuresList = rawArrivals.map { arrival ->
-                    val lineObj = ValenciaMetroData.lines.find { it.id == arrival.line }
+                    val lineObj = ValenciaMetroData.lines.find { 
+                        it.id.equals(arrival.line, ignoreCase = true) ||
+                        it.id.replace("L", "").trim().equals(arrival.line.replace("L", "").trim(), ignoreCase = true)
+                    }
                     val colorHex = lineObj?.colorHex ?: "#7F8C8D"
+                    val targetArrivalEpochMs = nowMs + arrival.seconds * 1000L
+                    val targetMinuteBucket = targetArrivalEpochMs / 60_000L
+                    val departureId = if (!arrival.vehicleId.isNullOrBlank()) {
+                        "${arrival.line}_${arrival.destination}_${arrival.vehicleId}"
+                    } else {
+                        "${arrival.line}_${arrival.destination}_$targetMinuteBucket"
+                    }
                     RealTimeDeparture(
+                        id = departureId,
                         lineId = arrival.line,
                         destination = arrival.destination,
                         minutesRemaining = arrival.minutes,
                         secondsRemaining = arrival.seconds,
-                        colorHex = colorHex
+                        colorHex = colorHex,
+                        estimatedTime = arrival.estimatedTime,
+                        status = arrival.status,
+                        track = arrival.track,
+                        capacidad = arrival.capacidad,
+                        aforoBloqueado = arrival.aforoBloqueado,
+                        vehicleId = arrival.vehicleId,
+                        targetArrivalEpochMs = targetArrivalEpochMs,
+                        isRealTime = arrival.isRealTime
                     )
                 }.sortedBy { it.secondsRemaining }
 
-                val filteredList = if (stationLines.isNotEmpty()) {
-                    departuresList.filter { dep -> stationLines.contains(dep.lineId) }
-                } else {
-                    departuresList
+                val detectedAforo = rawArrivals.firstOrNull { it.aforoBloqueado != null }?.aforoBloqueado
+                    ?: com.example.data.repository.RealTimeTransitRepository.getAforoBloqueadoForStation(stationId)
+
+                val filteredList = departuresList.filter { dep ->
+                    val cleanDep = dep.lineId.replace("L", "").trim()
+                    if (com.example.util.MetroDepotFilterHelper.isDepotExcludedStationLine(stationId, currentStation?.name, cleanDep)) {
+                        return@filter false
+                    }
+                    if (stationLines.isNotEmpty()) {
+                        stationLines.any { sl ->
+                            sl.equals(dep.lineId, ignoreCase = true) ||
+                            sl.replace("L", "").trim().equals(cleanDep, ignoreCase = true)
+                        }
+                    } else {
+                        true
+                    }
                 }
 
-                _realTimeDepartures.value = filteredList
-                _realTimeError.value = null
+                if (_realTimeSelectedStationId.value == stationId) {
+                    if (filteredList.isNotEmpty() || !isAutoRefresh) {
+                        _realTimeDepartures.value = filteredList
+                    } else if (filteredList.isEmpty() && isAutoRefresh && _realTimeDepartures.value.isNotEmpty()) {
+                        // On auto-refresh, if empty received from transient network, keep existing non-expired departures
+                        val elapsedSeconds = 30
+                        val updated = _realTimeDepartures.value.mapNotNull { dep ->
+                            val newSec = dep.secondsRemaining - elapsedSeconds
+                            if (newSec >= -10) {
+                                dep.copy(
+                                    secondsRemaining = newSec,
+                                    minutesRemaining = kotlin.math.max(0, newSec / 60)
+                                )
+                            } else null
+                        }
+                        if (updated.isNotEmpty()) {
+                            _realTimeDepartures.value = updated
+                        } else {
+                            _realTimeDepartures.value = emptyList()
+                        }
+                    }
+                    _stationAforoBloqueado.value = detectedAforo
+                    _realTimeError.value = null
+                }
             } catch (e: Exception) {
                 Log.w("RealTimeMetro", "Could not fetch live departures for $stationId: ${e.message}")
-                _realTimeDepartures.value = emptyList()
-                _realTimeError.value = null
+                if (_realTimeSelectedStationId.value == stationId && !isAutoRefresh) {
+                    _realTimeDepartures.value = emptyList()
+                    val isOffline = !com.example.util.isNetworkAvailable(getApplication())
+                    _realTimeError.value = if (isOffline) "Sin conexión a internet" else null
+                }
             } finally {
-                if (!isAutoRefresh) {
+                if (!isAutoRefresh && _realTimeSelectedStationId.value == stationId) {
+                    val elapsed = System.currentTimeMillis() - startTime
+                    if (elapsed < 300L) {
+                        delay(300L - elapsed)
+                    }
                     _realTimeLoading.value = false
                 }
             }
@@ -412,30 +472,19 @@ fun fetchRealTimeDepartures(stationId: String, isAutoRefresh: Boolean = false) {
     fun startRealTimeRefreshTicker() {
         realTimeRefreshJob?.cancel()
         realTimeRefreshJob = viewModelScope.launch {
-            while (true) {
-                val currentStation = _realTimeSelectedStationId.value ?: return@launch
-                fetchRealTimeDepartures(currentStation, isAutoRefresh = true)
+            try {
+                while (true) {
+                    val currentStation = _realTimeSelectedStationId.value ?: return@launch
+                    fetchRealTimeDepartures(currentStation, isAutoRefresh = true)
 
-                // Adaptive polling delay based on closest departure
-                val minMins = _realTimeDepartures.value.minOfOrNull { it.minutesRemaining } ?: 999
-                val nextDelayMs = when {
-                    minMins < 3 -> 20000L   // <3 min -> 20s
-                    minMins <= 10 -> 30000L // 3 to 10 min -> 30s
-                    else -> 60000L          // >10 min or empty -> 60s
+                    // Metrovalencia live API refresh interval: 30 seconds
+                    val nextDelayMs = 30000L
+                    delay(nextDelayMs)
                 }
-
-                // Check if Geoportal stops sync is needed (every 1 hour in foreground)
-                try {
-                    val lastSyncStr = repository.getPreference("last_geoportal_sync", "0")
-                    val lastSync = lastSyncStr.toLongOrNull() ?: 0L
-                    val now = System.currentTimeMillis()
-                    if (now - lastSync > 3600000L) { // 1 hour
-                    }
-                } catch (e: Exception) {
-                    Log.e("GeoportalSync", "Error in foreground hourly sync", e)
-                }
-
-                delay(nextDelayMs)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Expected when ticker is cancelled/restarted
+            } catch (e: Exception) {
+                Log.e("MetroViewModel", "Error in real-time refresh ticker", e)
             }
         }
     }
@@ -448,16 +497,29 @@ fun fetchRealTimeDepartures(stationId: String, isAutoRefresh: Boolean = false) {
 
 
     fun getIncidentsForLine(lineId: String): List<MetroIncident> {
-        val numericDigit = lineId.filter { it.isDigit() }
+        val numericDigit = lineId.filter { it.isDigit() }.trimStart('0')
         if (numericDigit.isEmpty()) return emptyList()
         return activeIncidents.value.filter { incident ->
-            val matchesFgv = incident.lineaFgv == numericDigit
+            val fgvDigits = incident.lineaFgv?.split(",", " ")
+                ?.map { it.filter { c -> c.isDigit() }.trimStart('0') }
+                ?.filter { it.isNotEmpty() } ?: emptyList()
+
+            val matchesFgv = fgvDigits.contains(numericDigit) ||
+                    incident.lineaFgv?.contains("L$numericDigit") == true ||
+                    incident.lineaFgv?.contains("L $numericDigit") == true
+
             val esLines = MetroMapper.extractLineNumbersFromText(incident.descriptionEs)
             val caLines = MetroMapper.extractLineNumbersFromText(incident.descriptionCa)
             val enLines = MetroMapper.extractLineNumbersFromText(incident.descriptionEn)
             val mentionsLine = esLines?.contains(numericDigit) == true ||
                     caLines?.contains(numericDigit) == true ||
-                    enLines?.contains(numericDigit) == true
+                    enLines?.contains(numericDigit) == true ||
+                    incident.descriptionEs.contains("Línea $numericDigit", ignoreCase = true) ||
+                    incident.descriptionEs.contains("Línea L$numericDigit", ignoreCase = true) ||
+                    incident.descriptionEs.contains("L$numericDigit", ignoreCase = true) ||
+                    incident.descriptionCa.contains("Línia $numericDigit", ignoreCase = true) ||
+                    incident.descriptionCa.contains("Línia L$numericDigit", ignoreCase = true) ||
+                    incident.descriptionCa.contains("L$numericDigit", ignoreCase = true)
 
             val isGeneralNetworkIncident = (incident.lineaFgv.isNullOrBlank() || incident.lineaFgv == "0") &&
                     esLines.isNullOrEmpty() && caLines.isNullOrEmpty() && enLines.isNullOrEmpty()
@@ -469,16 +531,28 @@ fun fetchRealTimeDepartures(stationId: String, isAutoRefresh: Boolean = false) {
         }
     }
 
-fun autoSelectNearestMetroStationIfNeeded() {
-        if (hasAutoSelectedClosestOnLaunch) return
-        val favorites = _favoriteStations.value
-        if (favorites.isEmpty()) return
-
+fun autoSelectNearestMetroStationIfNeeded(force: Boolean = false) {
+        if (hasUserManuallySelectedStation && !force) return
         val sorted = sortedFavoriteStations.value
-        if (sorted.isEmpty()) return
-
-        hasAutoSelectedClosestOnLaunch = true
-        // selectRealTimeStation(sorted.first())
+        if (sorted.isNotEmpty()) {
+            val topFav = sorted.first()
+            if (_realTimeSelectedStationId.value != topFav) {
+                selectRealTimeStation(topFav, isUserAction = false)
+            }
+        } else {
+            val all = _allNetworkStations.value
+            if (all.isNotEmpty()) {
+                val loc = _lastLocation.value
+                val (lat, lon) = if (loc != null) Pair(loc.latitude, loc.longitude) else Pair(valenciaCenterLat, valenciaCenterLon)
+                val closest = all.minByOrNull { LocationUtils.calculateDistanceMeters(lat, lon, it.latitude, it.longitude) }
+                val targetId = closest?.id ?: "15"
+                if (_realTimeSelectedStationId.value != targetId) {
+                    selectRealTimeStation(targetId, isUserAction = false)
+                }
+            } else if (_realTimeSelectedStationId.value.isNullOrBlank()) {
+                selectRealTimeStation("15", isUserAction = false)
+            }
+        }
     }
 
 private fun startAlertsRefreshTicker() {
@@ -496,24 +570,7 @@ private fun startAlertsRefreshTicker() {
         }
     }
 
-    fun fetchAccessibilityAlerts() {
-        viewModelScope.launch {
-            metroAlertsRepository.fetchAccessibilityAlerts()
-        }
-    }
-
-
-
-
-
-    fun fetchTwitterIncidents() {
-        viewModelScope.launch {
-            metroAlertsRepository.fetchTwitterIncidents()
-            lastTwitterFetchTime = System.currentTimeMillis()
-        }
-    }
-
-fun getStationInfo(stationId: String): MetroStation? {
+    fun getStationInfo(stationId: String): MetroStation? {
         return _allNetworkStations.value.find { it.id == stationId }
     }
 
@@ -526,22 +583,25 @@ fun getStationInfo(stationId: String): MetroStation? {
 
 
 
-    fun selectRealTimeStation(stationId: String) {
+    fun selectRealTimeStation(stationId: String, isUserAction: Boolean = true) {
+        if (isUserAction) {
+            hasUserManuallySelectedStation = true
+        }
         val sameStation = _realTimeSelectedStationId.value == stationId
         _realTimeSelectedStationId.value = stationId
         _selectedStationId.value = stationId
+
+        if (!sameStation) {
+            fetchDeparturesJob?.cancel()
+            _realTimeDepartures.value = emptyList()
+            _realTimeLoading.value = true
+            _realTimeError.value = null
+        }
+
         viewModelScope.launch {
             repository.savePreference("selected_station", stationId)
-            if (!sameStation || _realTimeDepartures.value.isEmpty()) {
-                fetchRealTimeDepartures(stationId)
-            }
+            fetchRealTimeDepartures(stationId, isAutoRefresh = false)
             startRealTimeRefreshTicker()
-        }
-    }
-
-    fun fetchRealTimeAlerts() {
-        viewModelScope.launch {
-            metroAlertsRepository.fetchRealTimeAlerts()
         }
     }
 
@@ -618,6 +678,44 @@ fun getStationInfo(stationId: String): MetroStation? {
         }
     }
 
+    fun updateCardHomeVisibility(cardNumber: String, showOnHome: Boolean) {
+        viewModelScope.launch {
+            metroCardRepository.updateCardHomeVisibility(cardNumber, showOnHome)
+        }
+    }
+
+    fun updateCardsOrder(cardNumbersInOrder: List<String>) {
+        viewModelScope.launch {
+            metroCardRepository.updateCardsOrder(cardNumbersInOrder)
+        }
+    }
+
+    fun moveCardUp(cardNumber: String) {
+        viewModelScope.launch {
+            val currentCards = transitCardsFlow.value
+            val index = currentCards.indexOfFirst { it.cardNumber == cardNumber }
+            if (index > 0) {
+                val mutable = currentCards.map { it.cardNumber }.toMutableList()
+                val item = mutable.removeAt(index)
+                mutable.add(index - 1, item)
+                metroCardRepository.updateCardsOrder(mutable)
+            }
+        }
+    }
+
+    fun moveCardDown(cardNumber: String) {
+        viewModelScope.launch {
+            val currentCards = transitCardsFlow.value
+            val index = currentCards.indexOfFirst { it.cardNumber == cardNumber }
+            if (index in 0 until currentCards.size - 1) {
+                val mutable = currentCards.map { it.cardNumber }.toMutableList()
+                val item = mutable.removeAt(index)
+                mutable.add(index + 1, item)
+                metroCardRepository.updateCardsOrder(mutable)
+            }
+        }
+    }
+
     fun deleteTransitCard(cardNumber: String) {
         viewModelScope.launch {
             metroCardRepository.deleteTransitCard(cardNumber)
@@ -650,5 +748,13 @@ fun getStationInfo(stationId: String): MetroStation? {
         }
     }
 
-
+    fun autoRefreshCardsIfNeeded() {
+        viewModelScope.launch {
+            try {
+                metroCardRepository.refreshTransitCardsIfNeeded()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 }

@@ -16,10 +16,13 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -34,6 +37,7 @@ import com.example.ui.theme.appCardBorder
 import com.example.data.model.WeatherCondition
 import com.example.data.model.WeatherData
 import com.example.data.model.ForecastHour
+import coil.compose.AsyncImage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -56,8 +60,8 @@ fun WeatherCard(
     data: WeatherData?,
     isFahrenheit: Boolean,
     isDarkMode: Boolean,
-    currentTime: String = "",
-    appLanguage: AppLanguage = AppLanguage.ES
+    appLanguage: AppLanguage = AppLanguage.ES,
+    isOnline: Boolean = true
 ) {
     val context = LocalContext.current
 
@@ -65,58 +69,72 @@ fun WeatherCard(
     val cardTextColor = MaterialTheme.colorScheme.onSurface
     val cardTextSecondaryColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-    Box(
+    val onWeatherClick = {
+        val cityName = data?.cityName ?: "Valencia"
+        val intent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://www.google.com/search?q=tiempo+en+${cityName}")
+        )
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            val toastMsg = if (appLanguage == AppLanguage.CA) "No s'ha pogut obrir el cercador de l'oratge." else "No se pudo abrir el buscador del tiempo."
+            Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    Card(
+        onClick = onWeatherClick,
         modifier = Modifier
             .fillMaxWidth()
             .wrapContentHeight()
-            .clip(RoundedCornerShape(16.dp))
-            .background(cardBg)
-            .border(
-                appCardBorder(),
-                RoundedCornerShape(16.dp)
-            )
-            .clickable {
-                val cityName = data?.cityName ?: "Valencia"
-                val intent = Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://www.google.com/search?q=tiempo+en+${cityName}")
-                )
-                try {
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    val toastMsg = if (appLanguage == AppLanguage.CA) "No s'ha pogut obrir el cercador de l'oratge." else "No se pudo abrir el buscador del tiempo."
-                    Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
-                }
-            }
-            .testTag("weather_widget_card")
+            .testTag("weather_widget_card"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
-                .padding(horizontal = 18.dp, vertical = 16.dp)
+                .padding(16.dp)
         ) {
             // Location Header Row
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(bottom = 10.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
             ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = cardTextSecondaryColor,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Text(
+                        text = (data?.cityName ?: "VALENCIA").uppercase(),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = cardTextSecondaryColor,
+                        letterSpacing = 1.sp
+                    )
+                }
                 Icon(
-                    imageVector = Icons.Default.LocationOn,
+                    imageVector = Icons.Default.OpenInNew,
                     contentDescription = null,
-                    tint = cardTextSecondaryColor,
-                    modifier = Modifier.size(11.dp)
-                )
-                Text(
-                    text = (data?.cityName ?: "VALENCIA").uppercase(),
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = cardTextSecondaryColor,
-                    letterSpacing = 1.sp
+                    tint = cardTextSecondaryColor.copy(alpha = 0.6f),
+                    modifier = Modifier.size(13.dp)
                 )
             }
+
+            Spacer(modifier = Modifier.height(6.dp))
 
             if (data == null) {
                 Row(
@@ -126,19 +144,55 @@ fun WeatherCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.5.dp
-                    )
-                    Text(
-                        text = if (appLanguage == AppLanguage.CA) "Carregant dades de l'oratge..." else "Cargando datos meteorológicos...",
-                        fontSize = 14.sp,
-                        color = cardTextSecondaryColor,
-                        fontWeight = FontWeight.Medium
-                    )
+                    if (!isOnline) {
+                        Icon(
+                            imageVector = Icons.Default.WifiOff,
+                            contentDescription = null,
+                            tint = cardTextSecondaryColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = if (appLanguage == AppLanguage.CA) "Oratge no disponible sense connexió" else "Tiempo no disponible sin conexión",
+                            fontSize = 14.sp,
+                            color = cardTextSecondaryColor,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.5.dp
+                        )
+                        Text(
+                            text = if (appLanguage == AppLanguage.CA) "Carregant dades de l'oratge..." else "Cargando datos meteorológicos...",
+                            fontSize = 14.sp,
+                            color = cardTextSecondaryColor,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             } else {
+                val currentHour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
+                val isNight = currentHour >= 21 || currentHour < 6
+                 val conditionText = when (data.condition) {
+                    WeatherCondition.SUNNY -> if (isNight) {
+                        if (appLanguage == AppLanguage.CA) "Clar" else "Despejado"
+                    } else {
+                        if (appLanguage == AppLanguage.CA) "Solejat" else "Soleado"
+                    }
+                    WeatherCondition.PARTLY_CLOUDY -> if (appLanguage == AppLanguage.CA) "Parcialment ennuvolat" else "Parcialmente nublado"
+                    WeatherCondition.CLOUDY -> if (appLanguage == AppLanguage.CA) "Ennuvolat" else "Nublado"
+                    WeatherCondition.DRIZZLE -> if (appLanguage == AppLanguage.CA) "Boirim" else "Llovizna"
+                    WeatherCondition.LIGHT_RAIN -> if (appLanguage == AppLanguage.CA) "Pluja lleugera" else "Lluvia ligera"
+                    WeatherCondition.MODERATE_RAIN -> if (appLanguage == AppLanguage.CA) "Pluja moderada" else "Lluvia moderada"
+                    WeatherCondition.HEAVY_RAIN -> if (appLanguage == AppLanguage.CA) "Pluja forta" else "Lluvia fuerte"
+                    WeatherCondition.RAINY -> if (appLanguage == AppLanguage.CA) "Pluja" else "Lluvia"
+                    WeatherCondition.STORMY -> if (appLanguage == AppLanguage.CA) "Tempestuós" else "Tormentoso"
+                    WeatherCondition.WINDY -> if (appLanguage == AppLanguage.CA) "Ventós" else "Ventoso"
+                    WeatherCondition.SNOWY -> if (appLanguage == AppLanguage.CA) "Nevant" else "Nieve"
+                    WeatherCondition.FOGGY -> if (appLanguage == AppLanguage.CA) "Boira" else "Niebla"
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -149,35 +203,11 @@ fun WeatherCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        val currentHour = try {
-                            if (currentTime.contains(":")) currentTime.substringBefore(":").toInt() else java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-                        } catch (e: Exception) {
-                            java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-                        }
-                        val isNight = currentHour >= 21 || currentHour < 6
-                        val conditionText = when (data.condition) {
-                            WeatherCondition.SUNNY -> if (isNight) {
-                                if (appLanguage == AppLanguage.CA) "Clar" else "Despejado"
-                            } else {
-                                if (appLanguage == AppLanguage.CA) "Solejat" else "Soleado"
-                            }
-                            WeatherCondition.PARTLY_CLOUDY -> if (appLanguage == AppLanguage.CA) "Parcialment ennuvolat" else "Parcialmente nublado"
-                            WeatherCondition.CLOUDY -> if (appLanguage == AppLanguage.CA) "Ennuvolat" else "Nublado"
-                            WeatherCondition.RAINY -> if (appLanguage == AppLanguage.CA) "Pluja" else "Lluvia"
-                            WeatherCondition.STORMY -> if (appLanguage == AppLanguage.CA) "Tempestuós" else "Tormentoso"
-                            WeatherCondition.WINDY -> if (appLanguage == AppLanguage.CA) "Ventós" else "Ventoso"
-                        }
-
-                        Icon(
-                            imageVector = when (data.condition) {
-                                WeatherCondition.SUNNY, WeatherCondition.PARTLY_CLOUDY -> {
-                                    if (isNight) Icons.Default.DarkMode else Icons.Default.WbSunny
-                                }
-                                else -> Icons.Default.Cloud
-                            },
-                            contentDescription = conditionText,
+                        WeatherConditionIcon(
+                            condition = data.condition,
+                            isNight = isNight,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(34.dp)
+                            modifier = Modifier.size(72.dp)
                         )
 
                         val tempText = if (isFahrenheit) "${data.currentTempFahrenheit()}°" else "${data.currentTempCelsius}°"
@@ -206,25 +236,6 @@ fun WeatherCard(
                             modifier = Modifier.padding(bottom = 3.dp)
                         )
 
-                        val currentHour = try {
-                            if (currentTime.contains(":")) currentTime.substringBefore(":").toInt() else java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-                        } catch (e: Exception) {
-                            java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-                        }
-                        val isNight = currentHour >= 21 || currentHour < 6
-                        val conditionText = when (data.condition) {
-                            WeatherCondition.SUNNY -> if (isNight) {
-                                if (appLanguage == AppLanguage.CA) "Clar" else "Despejado"
-                            } else {
-                                if (appLanguage == AppLanguage.CA) "Solejat" else "Soleado"
-                            }
-                            WeatherCondition.PARTLY_CLOUDY -> if (appLanguage == AppLanguage.CA) "Parcialment ennuvolat" else "Parcialmente nublado"
-                            WeatherCondition.CLOUDY -> if (appLanguage == AppLanguage.CA) "Ennuvolat" else "Nublado"
-                            WeatherCondition.RAINY -> if (appLanguage == AppLanguage.CA) "Pluja" else "Lluvia"
-                            WeatherCondition.STORMY -> if (appLanguage == AppLanguage.CA) "Tempestuós" else "Tormentoso"
-                            WeatherCondition.WINDY -> if (appLanguage == AppLanguage.CA) "Ventós" else "Ventoso"
-                        }
-                        
                         Text(
                             text = conditionText,
                             fontSize = 12.sp,
@@ -240,11 +251,7 @@ fun WeatherCard(
                         data.hourlyForecast
                     } else {
                         val baseTemp = data.currentTempCelsius
-                        val currentHourVal = try {
-                            if (currentTime.contains(":")) currentTime.substringBefore(":").toInt() else java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-                        } catch (e: Exception) {
-                            java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-                        }
+                        val currentHourVal = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
                         (0 until 24).map { i ->
                             val h = (currentHourVal + i) % 24
                             val timeLabel = if (i == 0) (if (appLanguage == AppLanguage.CA) "Ara" else "Ahora") else String.format(java.util.Locale.getDefault(), "%02d:00", h)
@@ -253,7 +260,7 @@ fun WeatherCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 val nowLabel = if (appLanguage == AppLanguage.CA) "Ara" else "Ahora"
 
                 LazyRow(
@@ -262,7 +269,10 @@ fun WeatherCard(
                         .fillMaxWidth()
                         .testTag("hourly_weather_forecast")
                 ) {
-                    items(hourlyList.size) { index ->
+                    items(
+                        count = hourlyList.size,
+                        key = { index -> "${hourlyList[index].time}_$index" }
+                    ) { index ->
                         val item = hourlyList[index]
                         val isNow = index == 0
                         val displayTime = if (isNow) nowLabel else item.time
@@ -292,15 +302,11 @@ fun WeatherCard(
                                 color = if (isNow) MaterialTheme.colorScheme.primary else cardTextSecondaryColor
                             )
                             Spacer(modifier = Modifier.height(4.dp))
-                            Icon(
-                                imageVector = when (item.condition) {
-                                    WeatherCondition.SUNNY, WeatherCondition.PARTLY_CLOUDY -> if (itemIsNight) Icons.Default.DarkMode else Icons.Default.WbSunny
-                                    WeatherCondition.RAINY, WeatherCondition.STORMY -> Icons.Default.Grain
-                                    else -> Icons.Default.Cloud
-                                },
-                                contentDescription = null,
+                             WeatherConditionIcon(
+                                condition = item.condition,
+                                isNight = itemIsNight,
                                 tint = if (isNow) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(36.dp)
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
@@ -313,9 +319,15 @@ fun WeatherCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(color = cardTextSecondaryColor.copy(alpha = 0.2f), thickness = 0.5.dp)
                 Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    color = cardTextSecondaryColor.copy(alpha = 0.2f),
+                    thickness = 0.5.dp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
 
                 // Details Stats Row
                 Row(
@@ -435,27 +447,26 @@ fun EventCard(
     val cardTextSecondaryColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Card(
-        border = appCardBorder(),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable {
+        onClick = {
+            try {
+                val eventId = event.calendarEventId ?: event.id.toLong()
+                val uri = android.content.ContentUris.withAppendedId(android.provider.CalendarContract.Events.CONTENT_URI, eventId)
+                val intent = Intent(Intent.ACTION_VIEW).setData(uri)
+                context.startActivity(intent)
+            } catch (e: Exception) {
                 try {
-                    val eventId = event.calendarEventId ?: event.id.toLong()
-                    val uri = android.content.ContentUris.withAppendedId(android.provider.CalendarContract.Events.CONTENT_URI, eventId)
-                    val intent = Intent(Intent.ACTION_VIEW).setData(uri)
+                    val builder = android.provider.CalendarContract.CONTENT_URI.buildUpon()
+                    builder.appendPath("time")
+                    android.content.ContentUris.appendId(builder, event.startMillis ?: System.currentTimeMillis())
+                    val intent = Intent(Intent.ACTION_VIEW).setData(builder.build())
                     context.startActivity(intent)
-                } catch (e: Exception) {
-                    try {
-                        val builder = android.provider.CalendarContract.CONTENT_URI.buildUpon()
-                        builder.appendPath("time")
-                        android.content.ContentUris.appendId(builder, event.startMillis ?: System.currentTimeMillis())
-                        val intent = Intent(Intent.ACTION_VIEW).setData(builder.build())
-                        context.startActivity(intent)
-                    } catch (e2: Exception) {
-                        Toast.makeText(context, if (appLanguage == AppLanguage.CA) "No s'ha pogut obrir el calendari" else "No se pudo abrir el calendario", Toast.LENGTH_SHORT).show()
-                    }
+                } catch (e2: Exception) {
+                    Toast.makeText(context, if (appLanguage == AppLanguage.CA) "No s'ha pogut obrir el calendari" else "No se pudo abrir el calendario", Toast.LENGTH_SHORT).show()
                 }
             }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
             .testTag("event_card_${event.id}"),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
@@ -574,93 +585,86 @@ fun EventCard(
     }
 }
 
-// GOOGLE CALENDAR TASK CHECKBOX ROW COMPONENT
 @Composable
-fun TaskRow(
-    task: CalendarItemEntity,
-    onToggle: () -> Unit,
-    onDelete: () -> Unit
+fun DashboardClockWidget(
+    currentTimeFlow: kotlinx.coroutines.flow.StateFlow<String>,
+    appLanguage: AppLanguage,
+    isTablet: Boolean,
+    modifier: Modifier = Modifier
 ) {
-    val taskColor = remember(task.colorHex) {
-        Color(task.colorHex.toColorInt())
-    }
+    val currentTimeState = currentTimeFlow.collectAsState()
+    val currentTime: String = currentTimeState.value
 
-    OutlinedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = if (task.isCompleted) {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
-        ),
-        border = appCardBorder()
+    Column(
+        modifier = modifier.testTag("clock_widget")
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                IconButton(
-                    onClick = onToggle,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("toggle_task_${task.id}")
-                ) {
-                    Icon(
-                        imageVector = if (task.isCompleted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                        contentDescription = "Toggle completion",
-                        tint = if (task.isCompleted) taskColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                Column {
-                    Text(
-                        text = task.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (task.isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface,
-                        textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (task.description.isNotBlank()) {
-                        Text(
-                            text = task.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier
-                    .size(36.dp)
-                    .testTag("delete_task_${task.id}")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete Task",
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                    modifier = Modifier.size(16.dp)
-                )
+        val (hoursMinutes, seconds) = remember(currentTime) {
+            if (currentTime.length >= 8 && currentTime[2] == ':' && currentTime[5] == ':') {
+                Pair(currentTime.substring(0, 5), currentTime.substring(6))
+            } else if (currentTime.count { it == ':' } == 2) {
+                val parts = currentTime.split(":")
+                Pair("${parts[0]}:${parts[1]}", parts[2])
+            } else {
+                val clean = if (currentTime.isEmpty()) "09:12" else currentTime
+                Pair(clean, "00")
             }
         }
+        Row(
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                text = hoursMinutes,
+                fontSize = if (isTablet) 54.sp else 44.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = com.example.ui.theme.SpaceGroteskFontFamily,
+                style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onBackground,
+                letterSpacing = (-1.5).sp,
+                modifier = Modifier.alignByBaseline()
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = seconds,
+                fontSize = if (isTablet) 24.sp else 20.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = com.example.ui.theme.SpaceGroteskFontFamily,
+                style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                modifier = Modifier.alignByBaseline()
+            )
+        }
+
+        val isMidnightCross = currentTime.startsWith("00:00")
+        val formattedDate = remember(appLanguage, isMidnightCross) {
+            try {
+                val locale = if (appLanguage == AppLanguage.CA) java.util.Locale.forLanguageTag("ca-ES") else java.util.Locale.forLanguageTag("es-ES")
+                java.text.SimpleDateFormat("EEEE, d 'de' MMMM 'de' yyyy", locale).format(java.util.Date())
+            } catch (e: Exception) {
+                if (appLanguage == AppLanguage.CA) "diumenge, 19 de juliol de 2026" else "domingo, 19 de julio de 2026"
+            }
+        }
+        Text(
+            text = formattedDate,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.padding(top = 2.dp)
+        )
     }
 }
+
+@Composable
+fun WeatherConditionIcon(
+    condition: WeatherCondition,
+    isNight: Boolean,
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    AsyncImage(
+        model = condition.getIconUrl(isNight),
+        contentDescription = condition.description,
+        colorFilter = ColorFilter.tint(tint),
+        modifier = modifier
+    )
+}
+

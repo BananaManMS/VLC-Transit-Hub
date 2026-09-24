@@ -36,12 +36,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import com.example.data.model.PlaceCategory
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -75,14 +78,13 @@ fun UnifiedSearchSuggestionsPanel(
     onSaveLocationShortcutClick: ((isHome: Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val visibleCustomFavorites = remember(customFavorites) { customFavorites.filter { it.showOnMap } }
+    val topRecentSearches = remember(recentSearches) { recentSearches.take(8) }
+
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
-        shadowElevation = 10.dp,
-        border = BorderStroke(
-            1.dp,
-            if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
-        ),
+        color = com.example.ui.theme.AppThemeColors.cardBackground(isDarkMode),
+        shadowElevation = 6.dp,
         modifier = modifier
             .fillMaxWidth()
             .widthIn(max = 600.dp)
@@ -127,7 +129,18 @@ fun UnifiedSearchSuggestionsPanel(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.padding(vertical = 8.dp)
                 ) {
-                    items(searchResults) { result ->
+                    items(
+                        items = searchResults,
+                        key = { result ->
+                            when (result) {
+                                is MapSearchResult.BusStop -> "bus_${result.stop.id_parada}"
+                                is MapSearchResult.MetrobusStop -> "metrobus_${result.stop.id_parada}"
+                                is MapSearchResult.Metro -> "metro_${result.station.id}"
+                                is MapSearchResult.Cercanias -> "cercanias_${result.station.stop_id}"
+                                is MapSearchResult.Address -> "addr_${result.result.latitude}_${result.result.longitude}_${result.result.displayName.hashCode()}"
+                            }
+                        }
+                    ) { result ->
                         SearchResultRow(
                             result = result,
                             isDarkMode = isDarkMode,
@@ -212,9 +225,18 @@ fun UnifiedSearchSuggestionsPanel(
                                     )
                                 }
                             }
-                            items(customFavorites) { fav ->
+                            items(
+                                items = visibleCustomFavorites,
+                                key = { "custom_fav_${it.id}" }
+                            ) { fav ->
+                                val favColor = remember(fav.colorHex) {
+                                    fav.colorHex?.let {
+                                        try { Color(android.graphics.Color.parseColor(it)) } catch (_: Exception) { null }
+                                    } ?: Color(0xFFF59E0B)
+                                }
                                 ShortcutPill(
                                     icon = Icons.Default.Star,
+                                    iconTint = favColor,
                                     label = fav.title,
                                     onClick = {
                                         val nominatimResult = NominatimResult(
@@ -243,7 +265,10 @@ fun UnifiedSearchSuggestionsPanel(
                             onActionClick = onClearRecentSearches
                         )
                     }
-                    items(recentSearches) { item ->
+                    items(
+                        items = topRecentSearches,
+                        key = { "recent_${it.type}_${it.id}" }
+                    ) { item ->
                         RecentSearchRow(
                             item = item,
                             isDarkMode = isDarkMode,
@@ -265,7 +290,10 @@ fun UnifiedSearchSuggestionsPanel(
                             isDarkMode = isDarkMode
                         )
                     }
-                    items(unifiedTransitFavorites) { item ->
+                    items(
+                        items = unifiedTransitFavorites,
+                        key = { "transit_fav_${it.type}_${it.id}" }
+                    ) { item ->
                         RecentSearchRow(
                             item = item,
                             isDarkMode = isDarkMode,
@@ -295,9 +323,20 @@ fun SearchResultRow(
             val alias = result.alias
             if (!alias.isNullOrBlank()) alias else result.stop.denominacion
         }
+        is MapSearchResult.MetrobusStop -> {
+            val alias = result.alias
+            if (!alias.isNullOrBlank()) alias else result.stop.denominacion
+        }
         is MapSearchResult.Metro -> result.station.name
         is MapSearchResult.Cercanias -> result.station.displayName
-        is MapSearchResult.Address -> result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName
+        is MapSearchResult.Address -> {
+            val pName = result.result.placeName
+            if (!pName.isNullOrBlank()) {
+                pName
+            } else {
+                result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName
+            }
+        }
     }
 
     val subtitle = when (result) {
@@ -309,68 +348,101 @@ fun SearchResultRow(
                 "Parada ${result.stop.id_parada}"
             }
         }
+        is MapSearchResult.MetrobusStop -> {
+            val alias = result.alias
+            if (!alias.isNullOrBlank()) {
+                "${result.stop.denominacion} • Metrobús • Parada ${result.stop.id_parada}"
+            } else {
+                "Metrobús • Parada ${result.stop.id_parada}"
+            }
+        }
         is MapSearchResult.Metro -> {
             val z = com.example.data.model.cleanZoneCode(result.station.zone)
             if (z.isNotEmpty()) "Zona $z" else "Estación Metro"
         }
         is MapSearchResult.Cercanias -> "Estación Renfe"
         is MapSearchResult.Address -> {
-            val parts = result.result.displayName.split(",").map { it.trim() }
-            if (parts.size > 1) parts.drop(1).take(3).joinToString(", ") else if (appLanguage == AppLanguage.CA) "Ubicació / Adreça" else "Ubicación / Dirección"
+            val addr = result.result
+            val road = addr.road
+            val hn = if (!addr.houseNumber.isNullOrBlank()) " ${addr.houseNumber}" else ""
+            val area = addr.suburb ?: addr.city
+
+            if (!road.isNullOrBlank()) {
+                if (!area.isNullOrBlank() && !area.equals(road, ignoreCase = true)) {
+                    "$road$hn • $area"
+                } else {
+                    "$road$hn"
+                }
+            } else {
+                val parts = result.result.displayName.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                if (parts.size > 1) parts.drop(1).take(2).joinToString(", ") else result.result.placeCategory.getLabel(appLanguage)
+            }
         }
     }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val isFavAddr = result is MapSearchResult.Address && (result.result.category == "favorite" || result.result.type == "favorite")
-        
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = when (result) {
-                is MapSearchResult.BusStop,
-                is MapSearchResult.Metro,
-                is MapSearchResult.Cercanias -> if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)
-                is MapSearchResult.Address -> if (isFavAddr) Color(0xFFF59E0B) else Color(0xFF10B981)
-            },
-            modifier = Modifier.size(36.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(4.dp)) {
-                when (result) {
-                    is MapSearchResult.BusStop -> {
-                        Image(
-                            painter = painterResource(id = com.example.R.drawable.logo_emt_valencia),
-                            contentDescription = "EMT València",
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    is MapSearchResult.Metro -> {
-                        Image(
-                            painter = painterResource(id = com.example.R.drawable.logo_metrovalencia),
-                            contentDescription = "Metrovalencia",
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    is MapSearchResult.Cercanias -> {
-                        Image(
-                            painter = painterResource(id = com.example.R.drawable.logo_cercanias),
-                            contentDescription = "Cercanías",
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    is MapSearchResult.Address -> {
-                        Icon(
-                            imageVector = if (isFavAddr) Icons.Default.Star else Icons.Default.Place,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
+        when (result) {
+            is MapSearchResult.BusStop,
+            is MapSearchResult.MetrobusStop,
+            is MapSearchResult.Metro,
+            is MapSearchResult.Cercanias -> {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(4.dp)) {
+                        when (result) {
+                            is MapSearchResult.BusStop -> {
+                                Image(
+                                    painter = painterResource(id = com.example.R.drawable.logo_emt_valencia),
+                                    contentDescription = "EMT València",
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            is MapSearchResult.MetrobusStop -> {
+                                Image(
+                                    painter = painterResource(id = com.example.R.drawable.logo_metrobus),
+                                    contentDescription = "Metrobús",
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            is MapSearchResult.Metro -> {
+                                Image(
+                                    painter = painterResource(id = com.example.R.drawable.logo_metrovalencia),
+                                    contentDescription = "Metrovalencia",
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            is MapSearchResult.Cercanias -> {
+                                Image(
+                                    painter = painterResource(id = com.example.R.drawable.logo_cercanias),
+                                    contentDescription = "Cercanías",
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            else -> {}
+                        }
                     }
                 }
+            }
+            is MapSearchResult.Address -> {
+                val isFavAddr = result.result.placeCategory == com.example.data.model.PlaceCategory.FAVORITE ||
+                        result.result.category == "favorite" || result.result.type == "favorite"
+                val category = if (isFavAddr) com.example.data.model.PlaceCategory.FAVORITE else result.result.placeCategory
+                com.example.ui.map.components.PlaceCategoryIconBox(
+                    category = category,
+                    isDarkMode = isDarkMode,
+                    boxSize = 36.dp,
+                    iconSize = 18.dp
+                )
             }
         }
 
@@ -381,7 +453,7 @@ fun SearchResultRow(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = if (isDarkMode) Color.White else Color.Black,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -389,7 +461,7 @@ fun SearchResultRow(
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -403,6 +475,17 @@ fun SearchResultRow(
         ) {
             when (result) {
                 is MapSearchResult.BusStop -> {
+                    val lines = (result.stop.lineas ?: "").split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                    lines.take(3).forEach { line ->
+                        LineBadge(text = line, bgColor = Color(0xFF64748B))
+                    }
+                    if (lines.size > 3) {
+                        LineBadge(text = "+${lines.size - 3}", bgColor = Color(0xFF94A3B8))
+                    }
+                }
+                is MapSearchResult.MetrobusStop -> {
                     val lines = (result.stop.lineas ?: "").split(",")
                         .map { it.trim() }
                         .filter { it.isNotEmpty() }
@@ -433,7 +516,7 @@ fun SearchResultRow(
                     }
                 }
                 is MapSearchResult.Address -> {
-                    LineBadge(text = if (appLanguage == AppLanguage.CA) "Destí" else "Destino", bgColor = Color(0xFF10B981))
+                    // Category icon is already shown on the left leading icon box with dedicated color
                 }
             }
         }
@@ -465,13 +548,14 @@ fun ShortcutPill(
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
-    isDarkMode: Boolean
+    isDarkMode: Boolean,
+    iconTint: Color = MaterialTheme.colorScheme.primary
 ) {
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = if (isDarkMode) Color(0xFF334155) else Color(0xFFF1F5F9),
-        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF475569) else Color(0xFFE2E8F0)),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
             .testTag("shortcut_pill_${label.lowercase().replace(" ", "_")}")
     ) {
@@ -483,7 +567,7 @@ fun ShortcutPill(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = iconTint,
                 modifier = Modifier.size(16.dp)
             )
             Text(
@@ -491,7 +575,7 @@ fun ShortcutPill(
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 12.sp,
-                    color = if (isDarkMode) Color.White else Color.Black
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -517,7 +601,7 @@ fun SectionHeader(
             style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
-                color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         )
         if (actionLabel != null && onActionClick != null) {
@@ -529,6 +613,7 @@ fun SectionHeader(
                     color = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
                     .clickable(onClick = onActionClick)
                     .padding(horizontal = 4.dp, vertical = 2.dp)
             )
@@ -544,10 +629,32 @@ fun RecentSearchRow(
     onItemClick: () -> Unit,
     onDeleteClick: (() -> Unit)? = null
 ) {
+    val resolvedCategory = if (item.type == "favorite") {
+        PlaceCategory.FAVORITE
+    } else if (item.type == "address" || item.type == "place") {
+        if (!item.categoryName.isNullOrBlank()) {
+            try {
+                PlaceCategory.valueOf(item.categoryName)
+            } catch (e: Exception) {
+                val parts = item.categoryType?.split(":")
+                PlaceCategory.resolveFromOsm(parts?.getOrNull(0), parts?.getOrNull(1))
+            }
+        } else {
+            val parts = item.categoryType?.split(":")
+            PlaceCategory.resolveFromOsm(parts?.getOrNull(0), parts?.getOrNull(1))
+        }
+    } else {
+        null
+    }
+
     val iconBgColor = when (item.type) {
-        "bus", "metro", "cercanias", "valenbisi" -> if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)
-        "favorite" -> Color(0xFFF59E0B)
-        else -> Color(0xFF10B981)
+        "bus", "metro", "cercanias", "valenbisi" -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        "favorite" -> {
+            item.colorHex?.let {
+                try { Color(android.graphics.Color.parseColor(it)) } catch (_: Exception) { null }
+            } ?: Color(0xFFF59E0B)
+        }
+        else -> resolvedCategory?.brandColor ?: Color(0xFF64748B)
     }
 
     val displayTitle = if (item.type == "bus" && item.title.startsWith("Parada ") && item.subtitle.isNotBlank() && !item.subtitle.startsWith("Parada ")) {
@@ -565,6 +672,7 @@ fun RecentSearchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onItemClick)
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .testTag("recent_search_row_${item.id}"),
@@ -615,7 +723,7 @@ fun RecentSearchRow(
                     }
                     else -> {
                         Icon(
-                            imageVector = Icons.Default.Place,
+                            imageVector = resolvedCategory?.icon ?: Icons.Default.Place,
                             contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier.size(18.dp)
@@ -632,7 +740,7 @@ fun RecentSearchRow(
                 text = displayTitle,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = if (isDarkMode) Color.White else Color.Black,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -640,7 +748,7 @@ fun RecentSearchRow(
             Text(
                 text = displaySubtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -655,7 +763,7 @@ fun RecentSearchRow(
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Remove recent search",
-                    tint = if (isDarkMode) Color(0xFF64748B) else Color(0xFF94A3B8),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -682,9 +790,19 @@ fun recentSearchToSearchResult(item: RecentSearch): MapSearchResult {
                 suprimida = 0,
                 lat = item.latitude,
                 lon = item.longitude,
-                lineas = item.extraData
+                lineas = item.extraData ?: ""
             )
             MapSearchResult.BusStop(geoportalStop, null, 1.0)
+        }
+        "metrobus" -> {
+            val metrobusStop = com.example.data.database.MetrobusStopEntity(
+                id_parada = item.id,
+                denominacion = item.title,
+                lat = item.latitude,
+                lon = item.longitude,
+                lineas = item.extraData ?: ""
+            )
+            MapSearchResult.MetrobusStop(metrobusStop, null, 1.0)
         }
         "metro" -> {
             val z = com.example.data.model.cleanZoneCode(item.subtitle)
@@ -692,7 +810,6 @@ fun recentSearchToSearchResult(item: RecentSearch): MapSearchResult {
                 id = item.id,
                 name = item.title,
                 lines = item.extraData?.split(",") ?: emptyList(),
-                description = "Zona $z",
                 latitude = item.latitude,
                 longitude = item.longitude,
                 zone = z
@@ -710,20 +827,56 @@ fun recentSearchToSearchResult(item: RecentSearch): MapSearchResult {
         }
         else -> {
             val isFav = item.type == "favorite"
-            val fullDisplayName = if (item.subtitle.isNotBlank() && item.subtitle != "Dirección" && item.subtitle != "Ubicación") {
+            val fullDisplayName = if (item.subtitle.isNotBlank() && item.subtitle != "Dirección" && item.subtitle != "Ubicación" && item.subtitle != "València") {
                 "${item.title}, ${item.subtitle}"
             } else {
                 item.title
             }
+            val parts = item.categoryType?.split(":")
+            val resolvedCat = parts?.getOrNull(0) ?: (if (isFav) "favorite" else "place")
+            val resolvedType = parts?.getOrNull(1) ?: (if (isFav) "favorite" else item.type)
+
+            val resolvedPlaceCategory = if (isFav) {
+                PlaceCategory.FAVORITE
+            } else if (!item.categoryName.isNullOrBlank()) {
+                try {
+                    PlaceCategory.valueOf(item.categoryName)
+                } catch (e: Exception) {
+                    PlaceCategory.resolveFromOsm(resolvedCat, resolvedType)
+                }
+            } else {
+                PlaceCategory.resolveFromOsm(resolvedCat, resolvedType)
+            }
+
             val nomResult = NominatimResult(
                 displayName = fullDisplayName,
                 latitude = item.latitude,
                 longitude = item.longitude,
-                type = if (isFav) "favorite" else item.type,
-                category = if (isFav) "favorite" else "place",
+                type = resolvedType,
+                category = resolvedCat,
                 isLocalStop = false,
-                stopId = null,
-                stopType = null
+                stopId = item.stopId ?: "",
+                stopType = item.stopType ?: "",
+                placeCategory = resolvedPlaceCategory,
+                placeName = item.placeName ?: item.title,
+                road = item.road ?: "",
+                houseNumber = item.houseNumber ?: "",
+                suburb = item.suburb ?: "",
+                city = item.city ?: "",
+                postcode = item.postcode ?: "",
+                openingHours = item.openingHours ?: "",
+                wheelchair = item.wheelchair ?: "",
+                brand = item.brand ?: "",
+                operator = item.operator ?: "",
+                phone = item.phone ?: "",
+                email = item.email ?: "",
+                website = item.website ?: "",
+                wikipedia = item.wikipedia ?: "",
+                wikidata = item.wikidata ?: "",
+                fee = item.fee ?: "",
+                charge = item.charge ?: "",
+                startDate = item.startDate ?: "",
+                historicType = item.historicType ?: ""
             )
             MapSearchResult.Address(nomResult, 1.0)
         }
@@ -748,6 +901,19 @@ fun mapSearchResultToPlannerLocation(result: MapSearchResult, appLanguage: AppLa
                 stopType = "bus"
             )
         }
+        is MapSearchResult.MetrobusStop -> {
+            val alias = result.alias
+            val displayTitle = if (!alias.isNullOrBlank()) alias else result.stop.denominacion
+            val displaySubtitle = if (!alias.isNullOrBlank()) "${result.stop.denominacion} • Metrobús • Parada ${result.stop.id_parada}" else "Metrobús • Parada ${result.stop.id_parada}"
+            PlannerLocation(
+                title = displayTitle,
+                subtitle = displaySubtitle,
+                latitude = result.stop.lat,
+                longitude = result.stop.lon,
+                stopId = result.stop.id_parada,
+                stopType = "metrobus"
+            )
+        }
         is MapSearchResult.Metro -> {
             PlannerLocation(
                 title = result.station.name,
@@ -769,8 +935,18 @@ fun mapSearchResultToPlannerLocation(result: MapSearchResult, appLanguage: AppLa
             )
         }
         is MapSearchResult.Address -> {
-            val mainTitle = result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName
-            val secondary = result.result.displayName.split(",").drop(1).take(2).joinToString(", ").trim()
+            val mainTitle = result.result.placeName ?: (result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName)
+            val secondary = if (!result.result.road.isNullOrBlank()) {
+                val hn = if (!result.result.houseNumber.isNullOrBlank()) " ${result.result.houseNumber}" else ""
+                val area = result.result.suburb ?: result.result.city ?: ""
+                if (area.isNotEmpty() && !area.equals(result.result.road, ignoreCase = true)) {
+                    "${result.result.road}$hn • $area"
+                } else {
+                    "${result.result.road}$hn"
+                }
+            } else {
+                result.result.displayName.split(",").drop(1).take(2).joinToString(", ").trim()
+            }
             PlannerLocation(
                 title = mainTitle,
                 subtitle = secondary.ifEmpty { "València" },

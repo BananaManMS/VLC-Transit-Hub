@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.data.repository.renfe.RenfeRepository
+import com.example.data.repository.MetroCardRepository
 import com.example.data.database.AppDatabase
 
 class ScheduleUpdateWorker(
@@ -16,6 +17,13 @@ class ScheduleUpdateWorker(
             val db = AppDatabase.getDatabase(applicationContext)
             val renfeRepository = RenfeRepository(applicationContext, db)
             renfeRepository.syncScheduleFromRemoteIfNeeded()
+
+            val metroScheduleRepository = com.example.data.repository.MetroScheduleRepository.getInstance(applicationContext)
+            metroScheduleRepository.syncScheduleFromRemoteIfNeeded()
+
+            val metroCardRepository = MetroCardRepository(applicationContext, db)
+            metroCardRepository.refreshTransitCardsIfNeeded()
+
             Result.success()
         } catch (e: Exception) {
             e.printStackTrace()

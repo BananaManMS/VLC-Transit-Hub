@@ -8,7 +8,13 @@ import com.example.util.levenshteinDistance
 import com.example.util.normalizeForSearch
 import java.util.Locale
 
-fun computeSearchScore(stopId: String, stopName: String, query: String, alias: String? = null): Double {
+fun computeSearchScore(
+    stopId: String,
+    stopName: String,
+    query: String,
+    alias: String? = null,
+    lines: List<String> = emptyList()
+): Double {
     val qNorm = query.normalizeForSearch()
     if (qNorm.isEmpty()) return 0.0
 
@@ -24,6 +30,15 @@ fun computeSearchScore(stopId: String, stopName: String, query: String, alias: S
 
     if (numberNorm == qNorm) return 1000.0
     if (numberNorm.startsWith(qNorm)) return 800.0 + (100.0 / numberNorm.length)
+
+    if (lines.isNotEmpty()) {
+        for (line in lines) {
+            val lineNorm = line.normalizeForSearch()
+            if (lineNorm == qNorm) return 950.0
+            if (lineNorm.startsWith(qNorm)) return 750.0 + (50.0 / lineNorm.length)
+            if (lineNorm.contains(qNorm)) return 600.0
+        }
+    }
 
     if (nameNorm == qNorm) return 700.0
     if (nameNorm.startsWith(qNorm)) return 500.0 + (50.0 / nameNorm.length)
@@ -52,7 +67,8 @@ fun computeSearchScore(stopId: String, stopName: String, query: String, alias: S
 }
 
 fun computeSearchScore(stop: GeoportalStopEntity, query: String, alias: String? = null): Double {
-    return computeSearchScore(stop.id_parada, stop.denominacion, query, alias)
+    val linesList = stop.lineas?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+    return computeSearchScore(stop.id_parada, stop.denominacion, query, alias, linesList)
 }
 
 /**
@@ -72,7 +88,7 @@ fun computeAddressSearchScore(address: NominatimResult, query: String): Double {
     if (mainTitle.startsWith(qNorm)) return 500.0 + (50.0 / mainTitle.length)
     if (mainTitle.contains(qNorm)) return 350.0
 
-    // 2. Token-level matching evaluated strictly on the primary name/title
+    // 2. Token-level matching evaluated on the primary name/title
     val nameWords = mainTitle.split(" ").filter { it.isNotEmpty() }
     val queryWords = qNorm.split(" ").filter { it.isNotEmpty() }
 
@@ -91,15 +107,30 @@ fun computeAddressSearchScore(address: NominatimResult, query: String): Double {
     }
     if (matchedTokens > 0 && wordMatchScore > 0) return wordMatchScore
 
-    // 3. Subsequence match on primary title
-    if (isSubsequence(qNorm, mainTitle)) return 40.0
+    // 3. Check full display name for token matches (e.g. house number + street name across commas)
+    val fullNorm = address.displayName.normalizeForSearch()
+    if (fullNorm.contains(qNorm)) return 250.0
 
-    // 4. Levenshtein fuzzy match on primary title
+    val fullWords = fullNorm.split(" ", ",").map { it.trim() }.filter { it.isNotEmpty() }
+    var fullWordMatchScore = 0.0
+    for (qWord in queryWords) {
+        if (fullWords.any { isBilingualTokenMatch(qWord, it) || it.startsWith(qWord) }) {
+            fullWordMatchScore += 70.0
+        }
+    }
+    if (fullWordMatchScore > 0) return fullWordMatchScore
+
+    // 4. Subsequence match on primary title or full title
+    if (isSubsequence(qNorm, mainTitle)) return 50.0
+    if (isSubsequence(qNorm, fullNorm)) return 30.0
+
+    // 5. Levenshtein fuzzy match on primary title
     if (qNorm.length >= 4) {
         val dist = levenshteinDistance(qNorm, mainTitle)
         if (dist <= 2) return 30.0 - dist * 5.0
     }
 
-    return 0.0
+    // Default base score for any valid result returned by Nominatim for this query
+    return 20.0
 }
 

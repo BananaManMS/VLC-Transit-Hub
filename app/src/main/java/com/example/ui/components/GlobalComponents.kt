@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -14,10 +15,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -25,7 +28,16 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DirectionsBike
+import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material.icons.filled.Train
+import com.example.R
+import com.example.ui.map.SelectedMapItem
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +47,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -80,23 +94,6 @@ fun Modifier.shimmerEffect(
 }
 
 /**
- * Box component representing a shimmer placeholder element.
- */
-@Composable
-fun ShimmerBox(
-    modifier: Modifier = Modifier,
-    height: Dp = 20.dp,
-    shape: Shape = RoundedCornerShape(8.dp)
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height)
-            .shimmerEffect(shape = shape)
-    )
-}
-
-/**
  * Reusable skeleton card for list items while loading.
  */
 @Composable
@@ -106,8 +103,7 @@ fun SkeletonCardItem(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -141,6 +137,160 @@ fun SkeletonCardItem(
 }
 
 /**
+ * Dedicated high-fidelity Skeleton Loading card for Metro departures.
+ */
+@Composable
+fun MetroDepartureSkeletonCard(
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Metro line badge placeholder
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .shimmerEffect(shape = RoundedCornerShape(8.dp))
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Destination and sub-info
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.62f)
+                        .height(16.dp)
+                        .shimmerEffect(shape = RoundedCornerShape(4.dp))
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.38f)
+                        .height(11.dp)
+                        .shimmerEffect(shape = RoundedCornerShape(4.dp))
+                )
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            // Time / Countdown pill placeholder
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(52.dp)
+                        .height(22.dp)
+                        .shimmerEffect(shape = RoundedCornerShape(6.dp))
+                )
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(10.dp)
+                        .shimmerEffect(shape = RoundedCornerShape(3.dp))
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Dedicated high-fidelity Skeleton Loading card for Cercanías departures.
+ */
+@Composable
+fun CercaniasDepartureSkeletonCard(
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Cercanías Line Badge (C1, C2...)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .shimmerEffect(shape = RoundedCornerShape(10.dp))
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Destination and delay/status info
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.68f)
+                        .height(16.dp)
+                        .shimmerEffect(shape = RoundedCornerShape(4.dp))
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .width(55.dp)
+                            .height(12.dp)
+                            .shimmerEffect(shape = RoundedCornerShape(3.dp))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(45.dp)
+                            .height(12.dp)
+                            .shimmerEffect(shape = RoundedCornerShape(3.dp))
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            // Departure time countdown badge
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(56.dp)
+                        .height(22.dp)
+                        .shimmerEffect(shape = RoundedCornerShape(6.dp))
+                )
+                Box(
+                    modifier = Modifier
+                        .width(40.dp)
+                        .height(11.dp)
+                        .shimmerEffect(shape = RoundedCornerShape(3.dp))
+                )
+            }
+        }
+    }
+}
+
+/**
  * Standardized Material 3 Empty State visual card.
  */
 @Composable
@@ -157,8 +307,7 @@ fun EmptyStateCard(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        )
     ) {
         Column(
             modifier = Modifier
@@ -203,6 +352,83 @@ fun EmptyStateCard(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(text = actionText, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun OperatorLogo(
+    item: SelectedMapItem,
+    modifier: Modifier = Modifier
+) {
+    when (item) {
+        is SelectedMapItem.Metro -> {
+            Image(
+                painter = painterResource(id = R.drawable.logo_metrovalencia),
+                contentDescription = "Metrovalencia",
+                contentScale = ContentScale.Fit,
+                modifier = modifier.clip(CircleShape)
+            )
+        }
+        is SelectedMapItem.Cercanias -> {
+            Image(
+                painter = painterResource(id = R.drawable.logo_cercanias),
+                contentDescription = "Cercanías",
+                contentScale = ContentScale.Fit,
+                modifier = modifier.clip(CircleShape)
+            )
+        }
+        is SelectedMapItem.MetrobusStopItem -> {
+            Image(
+                painter = painterResource(id = R.drawable.logo_metrobus),
+                contentDescription = "Metrobús",
+                contentScale = ContentScale.Fit,
+                modifier = modifier.clip(RoundedCornerShape(8.dp))
+            )
+        }
+        is SelectedMapItem.BusStop -> {
+            Image(
+                painter = painterResource(id = R.drawable.logo_emt_valencia),
+                contentDescription = "EMT València",
+                contentScale = ContentScale.Fit,
+                modifier = modifier
+            )
+        }
+        is SelectedMapItem.Valenbisi -> {
+            Surface(
+                modifier = modifier,
+                shape = CircleShape,
+                color = Color(0xFF009688),
+                shadowElevation = 2.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_bike),
+                        contentDescription = "Valenbisi",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .padding(6.dp)
+                            .size(24.dp)
+                    )
+                }
+            }
+        }
+        is SelectedMapItem.Address -> {
+            Surface(
+                modifier = modifier,
+                shape = CircleShape,
+                color = Color(0xFF3B82F6),
+                shadowElevation = 2.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "Dirección",
+                        tint = Color.White,
+                        modifier = Modifier.padding(6.dp)
+                    )
                 }
             }
         }

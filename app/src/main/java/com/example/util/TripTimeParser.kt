@@ -39,16 +39,28 @@ object TripTimeParser {
                 } catch (_: Exception) {
                     try {
                         return java.time.OffsetDateTime.parse(trimmed).toInstant().toEpochMilli()
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                        try {
+                            val parsed = java.time.format.DateTimeFormatter.ISO_DATE_TIME.parse(trimmed)
+                            return java.time.OffsetDateTime.from(parsed).toInstant().toEpochMilli()
+                        } catch (_: Exception) {}
+                    }
                 }
             }
         } catch (_: Exception) {}
 
-        // Fallback ISO check using local timezone if no explicit zone offset
+        // Fallback ISO check respecting timezone
         if (trimmed.contains("T")) {
             try {
+                if (trimmed.contains("+") || trimmed.contains("-", true)) {
+                    val sdfX = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault())
+                    sdfX.parse(trimmed)?.time?.let { return it }
+                }
+                val isUtc = trimmed.endsWith("Z")
                 val cleanIso = trimmed.substringBefore("Z").substringBefore("+")
-                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).apply {
+                    if (isUtc) timeZone = TimeZone.getTimeZone("UTC")
+                }
                 sdf.parse(cleanIso)?.time?.let { return it }
             } catch (_: Exception) {}
         }

@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/notif_expanded_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingHorizontal="6dp"
-    android:paddingVertical="8dp">
+    android:paddingStart="@dimen/notification_padding_horizontal"
+    android:paddingEnd="@dimen/notification_padding_horizontal"
+    android:paddingTop="@dimen/notification_padding_vertical"
+    android:paddingBottom="@dimen/notification_padding_vertical">
 
-    <!-- Top Action Row: Header Icon + Title & Subtitle + Cancel Button -->
+    <!-- Top Action Row: Header Icon + Title & Subtitle -->
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
@@ -20,27 +23,15 @@
             android:layout_centerVertical="true"
             android:contentDescription="Icono de transporte" />
 
-        <!-- Cancel / Finish Trip Button -->
-        <ImageButton
-            android:id="@+id/notif_btn_cancel"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_close_notification"
-            android:contentDescription="Finalizar viaje" />
-
         <!-- Step Title & Subtitle -->
         <LinearLayout
             android:id="@+id/notif_text_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_toEndOf="@id/notif_mode_icon"
-            android:layout_toStartOf="@id/notif_btn_cancel"
+            android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
             android:layout_marginStart="10dp"
-            android:layout_marginEnd="8dp"
             android:orientation="vertical">
 
             <TextView
@@ -90,8 +81,7 @@
     <!-- Bottom Row: Arrival Time & Total Duration -->
     <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingHorizontal="2dp">
+        android:layout_height="wrap_content">
 
         <LinearLayout
             android:layout_width="wrap_content"

@@ -1,397 +1,275 @@
 package com.example.data.database
 
-import androidx.room.Dao
-import androidx.room.Delete
 import androidx.room.Entity
 import androidx.room.Ignore
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
-import androidx.room.Query
-import androidx.room.TypeConverter
-import androidx.room.TypeConverters
-import androidx.room.Update
-import kotlinx.coroutines.flow.Flow
-
-@Entity(tableName = "calendar_items")
-data class CalendarItemEntity(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val title: String,
-    val description: String,
-    val startMillis: Long? = null,
-    val endMillis: Long? = null,
-    val dueMillis: Long? = null,
-    val isCompleted: Boolean = false,
-    val itemType: String, // "EVENT" or "TASK"
-    val colorHex: String = "#3B82F6",
-    val calendarEventId: Long? = null,
-    val isAllDay: Boolean = false
-)
-
-@Entity(tableName = "preferences")
-data class PreferenceEntity(
-    @PrimaryKey val key: String,
-    val value: String
-)
 
 @Entity(tableName = "stations")
 data class StationEntity(
-    @PrimaryKey val id: Int,
+    @PrimaryKey val id: String,
     val name: String,
-    val lines: String, // Comma-separated line IDs
-    val zone: String,
-    val latitude: Double? = null,
-    val longitude: Double? = null
-)
+    val code: String = "",
+    val lat: Double = 0.0,
+    val lon: Double = 0.0,
+    val lines: String = "",
+    val zone: String = "",
+    val accessibility: Boolean = true,
+    val isFavorite: Boolean = false
+) {
+    @get:Ignore
+    val latitude: Double get() = lat
 
-@Dao
-interface StationDao {
-    @Query("SELECT * FROM stations ORDER BY name ASC")
-    suspend fun getAllStations(): List<StationEntity>
+    @get:Ignore
+    val longitude: Double get() = lon
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(stations: List<StationEntity>)
-
-    @Query("SELECT COUNT(*) FROM stations")
-    suspend fun getStationCount(): Int
-
-    @Query("DELETE FROM stations")
-    suspend fun deleteAllStations()
+    @get:Ignore
+    val description: String get() = zone
 }
 
-@Dao
-interface CalendarDao {
-    @Query("SELECT * FROM calendar_items ORDER BY COALESCE(startMillis, dueMillis) ASC")
-    fun getAllItems(): Flow<List<CalendarItemEntity>>
+@Entity(tableName = "cercanias_stations")
+data class CercaniasStationEntity(
+    @PrimaryKey val stop_id: String = "",
+    val nombre: String = "",
+    val lat: Double = 0.0,
+    val lon: Double = 0.0,
+    val lines: String = "",
+    val zone: String = "1",
+    val isFavorite: Boolean = false
+) {
+    @Ignore
+    var lineas: List<String> = emptyList()
 
-    @Query("SELECT * FROM calendar_items")
-    suspend fun getAllItemsList(): List<CalendarItemEntity>
+    @Ignore
+    var horarios: List<RenfeScheduleItem> = emptyList()
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertItem(item: CalendarItemEntity): Long
+    @Ignore
+    constructor(
+        stopId: String,
+        nombre: String,
+        lat: Double,
+        lon: Double,
+        lineas: List<String>,
+        horarios: List<RenfeScheduleItem>,
+        isFavorite: Boolean
+    ) : this(
+        stop_id = stopId,
+        nombre = nombre,
+        lat = lat,
+        lon = lon,
+        lines = lineas.joinToString(","),
+        zone = "1",
+        isFavorite = isFavorite
+    ) {
+        this.lineas = lineas
+        this.horarios = horarios
+    }
 
-    @Update
-    suspend fun updateItem(item: CalendarItemEntity)
+    @get:Ignore
+    val id: String get() = stop_id
 
-    @Delete
-    suspend fun deleteItem(item: CalendarItemEntity)
+    @get:Ignore
+    val code: String get() = stop_id
 
-    @Query("DELETE FROM calendar_items WHERE id = :id")
-    suspend fun deleteById(id: Int)
+    @get:Ignore
+    val name: String get() = nombre
 
-    @Query("DELETE FROM calendar_items WHERE itemType = 'EVENT' AND COALESCE(endMillis, startMillis, 0) < :nowMillis")
-    suspend fun deletePastEvents(nowMillis: Long)
-}
+    @get:Ignore
+    val displayName: String get() = nombre
 
-@Dao
-interface PreferenceDao {
-    @Query("SELECT * FROM preferences WHERE `key` = :key LIMIT 1")
-    suspend fun getPreference(key: String): PreferenceEntity?
+    @get:Ignore
+    val latitud: Double get() = lat
 
-    @Query("SELECT * FROM preferences")
-    fun getAllPreferencesFlow(): Flow<List<PreferenceEntity>>
-
-    @Query("SELECT * FROM preferences")
-    suspend fun getAllPreferences(): List<PreferenceEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertPreference(preference: PreferenceEntity)
-}
-
-@Entity(tableName = "transit_cards")
-data class TransitCardEntity(
-    @PrimaryKey val cardNumber: String, // 12-digit number
-    val assignedName: String, // Name assigned by user, or default name
-    val defaultName: String, // Default name from API (e.g. Móbilis, SUMA)
-    val cardType: String, // "viajes", "saldo", "mensual"
-    val remainingValue: String, // Trips remaining, balance remaining, or renewal date
-    val detailsJson: String, // Complete JSON string from the API for the detail view
-    val lastUpdated: Long = System.currentTimeMillis()
-)
-
-@Dao
-interface TransitCardDao {
-    @Query("SELECT * FROM transit_cards ORDER BY lastUpdated DESC")
-    fun getAllCardsFlow(): Flow<List<TransitCardEntity>>
-
-    @Query("SELECT * FROM transit_cards ORDER BY lastUpdated DESC")
-    suspend fun getAllCards(): List<TransitCardEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCard(card: TransitCardEntity)
-
-    @Query("DELETE FROM transit_cards WHERE cardNumber = :cardNumber")
-    suspend fun deleteCardByNumber(cardNumber: String)
-
-    @Query("SELECT * FROM transit_cards WHERE cardNumber = :cardNumber LIMIT 1")
-    suspend fun getCardByNumber(cardNumber: String): TransitCardEntity?
+    @get:Ignore
+    val longitud: Double get() = lon
 }
 
 @Entity(tableName = "geoportal_stops")
 data class GeoportalStopEntity(
     @PrimaryKey val id_parada: String,
     val denominacion: String,
-    val suprimida: Int,
-    val lat: Double,
-    val lon: Double,
-    val lineas: String? = null
-)
-
-@Dao
-interface GeoportalStopDao {
-    @Query("SELECT * FROM geoportal_stops WHERE suprimida = 0 ORDER BY denominacion ASC")
-    suspend fun getAllActiveStops(): List<GeoportalStopEntity>
-
-    @Query("SELECT * FROM geoportal_stops WHERE suprimida = 0 AND (id_parada LIKE :query OR denominacion LIKE :query) ORDER BY denominacion ASC")
-    suspend fun searchActiveStops(query: String): List<GeoportalStopEntity>
-
-    @Query("SELECT * FROM geoportal_stops WHERE id_parada = :id LIMIT 1")
-    suspend fun getStopById(id: String): GeoportalStopEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(stops: List<GeoportalStopEntity>)
-
-    @Query("SELECT COUNT(*) FROM geoportal_stops")
-    suspend fun getStopCount(): Int
-}
-
-data class RenfeScheduleItem(
-    val linea: String = "",
-    val trip_ids: List<String> = emptyList(),
-    val llegada: String = ""
-)
-
-class CercaniasTypeConverters {
-    @TypeConverter
-    fun fromStringList(list: List<String>?): String {
-        if (list.isNullOrEmpty()) return "[]"
-        val array = org.json.JSONArray()
-        list.forEach { array.put(it) }
-        return array.toString()
-    }
-
-    @TypeConverter
-    fun toStringList(data: String?): List<String> {
-        if (data.isNullOrEmpty()) return emptyList()
-        return try {
-            val array = org.json.JSONArray(data)
-            val list = mutableListOf<String>()
-            for (i in 0 until array.length()) {
-                list.add(array.getString(i))
-            }
-            list
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    @TypeConverter
-    fun fromScheduleItemList(list: List<RenfeScheduleItem>?): String {
-        if (list.isNullOrEmpty()) return "[]"
-        val array = org.json.JSONArray()
-        list.forEach { item ->
-            val obj = org.json.JSONObject()
-            obj.put("linea", item.linea)
-            val tripsArray = org.json.JSONArray()
-            item.trip_ids.forEach { tripsArray.put(it) }
-            obj.put("trip_ids", tripsArray)
-            obj.put("llegada", item.llegada)
-            array.put(obj)
-        }
-        return array.toString()
-    }
-
-    @TypeConverter
-    fun toScheduleItemList(data: String?): List<RenfeScheduleItem> {
-        if (data.isNullOrEmpty()) return emptyList()
-        return try {
-            val array = org.json.JSONArray(data)
-            val list = mutableListOf<RenfeScheduleItem>()
-            for (i in 0 until array.length()) {
-                val obj = array.optJSONObject(i) ?: continue
-                val linea = obj.optString("linea", "")
-                val llegada = obj.optString("llegada", "")
-                val tripsArr = obj.optJSONArray("trip_ids")
-                val tripIds = mutableListOf<String>()
-                if (tripsArr != null) {
-                    for (j in 0 until tripsArr.length()) {
-                        tripIds.add(tripsArr.getString(j))
-                    }
-                }
-                list.add(RenfeScheduleItem(linea = linea, trip_ids = tripIds, llegada = llegada))
-            }
-            list
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-}
-
-@Entity(tableName = "cercanias_stations")
-@TypeConverters(CercaniasTypeConverters::class)
-data class CercaniasStationEntity(
-    @PrimaryKey val stop_id: String,
-    val nombre: String,
-    val lat: Double,
-    val lon: Double,
-    val lineas: List<String> = emptyList(),
-    val horarios: List<RenfeScheduleItem> = emptyList(),
-    val isFavorite: Boolean = false
+    val lat: Double = 0.0,
+    val lon: Double = 0.0,
+    val lineas: String = "",
+    val suprimida: Int = 0
 ) {
-    @Ignore
-    val id: String = stop_id
-    @Ignore
-    val codigo: String = stop_id
-    @Ignore
-    val latitud: Double = lat
-    @Ignore
-    val longitud: Double = lon
-    @Ignore
-    val lines: String = lineas.joinToString(",")
-    
-    val displayName: String
-        get() = when (nombre) {
-            "Valencia-Estacio del Nord" -> "Valencia Nord"
-            "Valencia-La Font de Sant Lluis" -> "Valencia F. S. Lluís"
-            "València-Cabanyal" -> "Cabanyal"
-            "València Sant Isidre" -> "Valencia St. Isidre"
-            else -> nombre
-        }
-}
+    @get:Ignore
+    val id: String get() = id_parada
 
-@Dao
-interface CercaniasStationDao {
-    @Query("SELECT * FROM cercanias_stations ORDER BY nombre ASC")
-    fun getAllStationsFlow(): Flow<List<CercaniasStationEntity>>
+    @get:Ignore
+    val name: String get() = denominacion
 
-    @Query("SELECT * FROM cercanias_stations ORDER BY nombre ASC")
-    suspend fun getAllStations(): List<CercaniasStationEntity>
+    @get:Ignore
+    val type: String get() = ""
 
-    @Query("SELECT * FROM cercanias_stations WHERE stop_id = :stopId LIMIT 1")
-    suspend fun getStationById(stopId: String): CercaniasStationEntity?
-
-    @Query("SELECT * FROM cercanias_stations WHERE isFavorite = 1")
-    fun getFavoriteStationsFlow(): Flow<List<CercaniasStationEntity>>
-
-    @Query("SELECT * FROM cercanias_stations WHERE isFavorite = 1")
-    suspend fun getFavoriteStations(): List<CercaniasStationEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(stations: List<CercaniasStationEntity>)
-
-    @Query("SELECT COUNT(*) FROM cercanias_stations")
-    suspend fun getStationCount(): Int
-
-    @Query("DELETE FROM cercanias_stations")
-    suspend fun deleteAllStations()
-
-    @Update
-    suspend fun updateStation(station: CercaniasStationEntity)
-
-    @Update
-    suspend fun updateAll(stations: List<CercaniasStationEntity>)
-}
-
-@Entity(tableName = "cercanias_schedules")
-data class CercaniasScheduleEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val stopId: String,
-    val line: String,
-    val destination: String,
-    val time: String,
-    val days: String
-)
-
-@Dao
-interface CercaniasScheduleDao {
-    @Query("SELECT * FROM cercanias_schedules WHERE stopId = :stopId")
-    suspend fun getSchedulesForStop(stopId: String): List<CercaniasScheduleEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(schedules: List<CercaniasScheduleEntity>)
-
-    @Query("SELECT COUNT(*) FROM cercanias_schedules")
-    suspend fun getScheduleCount(): Int
-
-    @Query("DELETE FROM cercanias_schedules")
-    suspend fun deleteAll()
+    @get:Ignore
+    val lineCode: String get() = ""
 }
 
 @Entity(tableName = "metrobus_stops")
 data class MetrobusStopEntity(
     @PrimaryKey val id_parada: String,
     val denominacion: String,
-    val lat: Double,
-    val lon: Double,
-    val lineas: String? = null,
+    val lat: Double = 0.0,
+    val lon: Double = 0.0,
+    val lineas: String = "",
     val suprimida: Int = 0
-)
+) {
+    @get:Ignore
+    val stopId: String get() = id_parada
 
-@Dao
-interface MetrobusStopDao {
-    @Query("SELECT * FROM metrobus_stops WHERE suprimida = 0 ORDER BY denominacion ASC")
-    suspend fun getAllActiveStops(): List<MetrobusStopEntity>
+    @get:Ignore
+    val stopName: String get() = denominacion
 
-    @Query("SELECT * FROM metrobus_stops WHERE suprimida = 0 AND (id_parada LIKE :query OR denominacion LIKE :query) ORDER BY denominacion ASC")
-    suspend fun searchActiveStops(query: String): List<MetrobusStopEntity>
+    @get:Ignore
+    val lines: String get() = lineas
 
-    @Query("SELECT * FROM metrobus_stops WHERE id_parada = :id LIMIT 1")
-    suspend fun getStopById(id: String): MetrobusStopEntity?
+    @get:Ignore
+    val zone: String get() = ""
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(stops: List<MetrobusStopEntity>)
+    @get:Ignore
+    val id: String get() = id_parada
 
-    @Query("SELECT COUNT(*) FROM metrobus_stops")
-    suspend fun getStopCount(): Int
-
-    @Query("UPDATE metrobus_stops SET lineas = :lineas WHERE id_parada = :id")
-    suspend fun updateLinesForStop(id: String, lineas: String)
-
-    @Query("DELETE FROM metrobus_stops")
-    suspend fun deleteAll()
+    @get:Ignore
+    val name: String get() = denominacion
 }
 
-@Entity(tableName = "active_trip")
+@Entity(tableName = "renfe_schedule_items")
+data class RenfeScheduleItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val linea: String = "",
+    val llegada: String = "",
+    val destino: String = "",
+    val tripIdsString: String = "",
+    val departureTime: String = llegada,
+    val origin: String = "",
+    val days: String = ""
+) {
+    @Ignore
+    var trip_ids: List<String> = emptyList()
+
+    @Ignore
+    constructor(linea: String, tripIds: List<String>, llegada: String) : this(
+        id = 0,
+        linea = linea,
+        llegada = llegada,
+        destino = "",
+        tripIdsString = tripIds.joinToString(","),
+        departureTime = llegada,
+        origin = "",
+        days = ""
+    ) {
+        this.trip_ids = tripIds
+    }
+
+    @Ignore
+    constructor(linea: String, tripIds: List<String>, llegada: String, destino: String) : this(
+        id = 0,
+        linea = linea,
+        llegada = llegada,
+        destino = destino,
+        tripIdsString = tripIds.joinToString(","),
+        departureTime = llegada,
+        origin = "",
+        days = ""
+    ) {
+        this.trip_ids = tripIds
+    }
+
+    @get:Ignore
+    val line: String get() = linea
+
+    @get:Ignore
+    val destination: String get() = destino
+}
+
+@Entity(tableName = "transit_cards")
+data class TransitCardEntity(
+    @PrimaryKey val cardUid: String,
+    val alias: String,
+    val cardType: String,
+    val balance: Double = 0.0,
+    val remainingTrips: Int = 0,
+    val expiryDate: String = "",
+    val lastSyncTimestamp: Long = System.currentTimeMillis(),
+    val defaultName: String = "Targeta",
+    val remainingValue: String = "",
+    val detailsJson: String = "{}"
+) {
+    @get:androidx.room.Ignore
+    val cardNumber: String get() = cardUid
+
+    @get:androidx.room.Ignore
+    val assignedName: String get() = alias
+
+    @Ignore
+    constructor(
+        cardNumber: String,
+        assignedName: String,
+        defaultName: String,
+        cardType: String,
+        remainingValue: String,
+        detailsJson: String
+    ) : this(
+        cardUid = cardNumber,
+        alias = assignedName,
+        cardType = cardType,
+        balance = 0.0,
+        remainingTrips = 0,
+        expiryDate = "",
+        lastSyncTimestamp = System.currentTimeMillis(),
+        defaultName = defaultName,
+        remainingValue = remainingValue,
+        detailsJson = detailsJson
+    )
+}
+
+@Entity(tableName = "active_trips")
 data class ActiveTripEntity(
-    @PrimaryKey val tripId: String = ACTIVE_TRIP_ID,
-    val originName: String,
+    @PrimaryKey val tripId: String,
     val destinationName: String,
-    val routeDataJson: String,
-    val status: String, // "PLANNED", "IN_PROGRESS", "COMPLETED", "CANCELLED"
-    val currentLegIndex: Int = 0,
-    val lastLegScheduledArrivalTimeMillis: Long,
-    val startTimestamp: Long = System.currentTimeMillis(),
-    val lastUpdatedTimestamp: Long = System.currentTimeMillis()
+    val status: String,
+    val startTime: Long,
+    val currentStepIndex: Int = 0,
+    val totalSteps: Int = 1,
+    val rawJsonData: String = ""
 ) {
     companion object {
-        const val ACTIVE_TRIP_ID = "ACTIVE_TRIP"
-        const val STATUS_PLANNED = "PLANNED"
-        const val STATUS_IN_PROGRESS = "IN_PROGRESS"
+        const val STATUS_ACTIVE = "ACTIVE"
         const val STATUS_COMPLETED = "COMPLETED"
         const val STATUS_CANCELLED = "CANCELLED"
-        const val EXPIRATION_GRACE_PERIOD_MILLIS = 1_800_000L // 30 minutes
     }
 }
 
-@Dao
-interface ActiveTripDao {
-    @Query("SELECT * FROM active_trip WHERE tripId = :tripId LIMIT 1")
-    fun getActiveTripFlow(tripId: String = ActiveTripEntity.ACTIVE_TRIP_ID): Flow<ActiveTripEntity?>
+@Entity(tableName = "calendar_items")
+data class CalendarItemEntity(
+    @PrimaryKey val eventId: String = java.util.UUID.randomUUID().toString(),
+    val title: String = "",
+    val description: String = "",
+    val location: String = "",
+    val startMillis: Long = 0L,
+    val endMillis: Long = 0L,
+    val itemType: String = "event", // "event", "task" etc
+    val isCompleted: Boolean = false,
+    val colorHex: String? = null,
+    val isAllDay: Boolean = false,
+    val isTransitRelevant: Boolean = true,
+    val calendarEventId: String? = null,
+    val dueMillis: Long = endMillis
+) {
+    @get:androidx.room.Ignore
+    val id: String get() = eventId
 
-    @Query("SELECT * FROM active_trip WHERE tripId = :tripId LIMIT 1")
-    suspend fun getActiveTrip(tripId: String = ActiveTripEntity.ACTIVE_TRIP_ID): ActiveTripEntity?
+    @get:androidx.room.Ignore
+    val startTime: Long get() = startMillis
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertOrUpdateActiveTrip(trip: ActiveTripEntity)
-
-    @Query("DELETE FROM active_trip WHERE tripId = :tripId")
-    suspend fun deleteActiveTrip(tripId: String = ActiveTripEntity.ACTIVE_TRIP_ID)
-
-    @Query("UPDATE active_trip SET currentLegIndex = :legIndex, lastUpdatedTimestamp = :updatedAt WHERE tripId = :tripId")
-    suspend fun updateLegIndex(legIndex: Int, updatedAt: Long = System.currentTimeMillis(), tripId: String = ActiveTripEntity.ACTIVE_TRIP_ID)
-
-    @Query("UPDATE active_trip SET status = :status, lastUpdatedTimestamp = :updatedAt WHERE tripId = :tripId")
-    suspend fun updateStatus(status: String, updatedAt: Long = System.currentTimeMillis(), tripId: String = ActiveTripEntity.ACTIVE_TRIP_ID)
+    @get:androidx.room.Ignore
+    val endTime: Long get() = endMillis
 }
 
+@Entity(tableName = "user_preferences")
+data class UserPreferenceEntity(
+    @PrimaryKey val key: String,
+    val value: String
+)
 
+typealias PreferenceEntity = UserPreferenceEntity

@@ -22,9 +22,11 @@ class BoardingSensorFusionEngine {
         private const val TAG = "BoardingSensorFusion"
 
         // Thresholds
-        const val MIN_BOARDING_SPEED_MPS = 4.2 // ~15.1 km/h
+        const val MIN_BOARDING_SPEED_MPS = 2.8 // ~10.0 km/h (supports street trams & city buses in traffic)
         const val SPRINT_SPEED_MAX_MPS = 7.0   // Above this, almost certainly motorized transit
-        const val AZIMUTH_TOLERANCE_DEGREES = 35.0
+        const val CLEAR_TRANSIT_SPEED_MPS = 4.5 // ~16.2 km/h
+        const val AZIMUTH_TOLERANCE_DEGREES = 45.0
+        const val STOP_WAITING_ZONE_RADIUS_METERS = 50.0 // Within this radius from origin stop, user is waiting on sidewalk
         const val RECENT_STOP_ARRIVAL_WINDOW_MS = 90_000L // 90 seconds
     }
 
@@ -43,7 +45,8 @@ class BoardingSensorFusionEngine {
         currentLegIndex: Int,
         realTimeArrivalMinutes: Int?,
         realTimeSecondsRemaining: Int?,
-        isUndergroundMode: Boolean = false
+        isUndergroundMode: Boolean = false,
+        distanceToOriginMeters: Double? = null
     ): Float {
         if (currentLeg == null || currentLeg.mode == TransitMode.WALK || currentLeg.mode == TransitMode.BICYCLE) {
             _confidenceFlow.value = 0.0f
@@ -57,9 +60,24 @@ class BoardingSensorFusionEngine {
             _confidenceFlow.value = 0.0f
         }
 
+        // Calculate distance from leg origin stop if not explicitly provided
+        val distToOrigin = distanceToOriginMeters ?: run {
+            if (location != null) {
+                val originCoords = TripStepProgressionEngine.getLegOriginCoordinates(currentLeg)
+                if (originCoords != null) {
+                    TripStepProgressionEngine.calculateDistanceMeters(
+                        location.latitude, location.longitude,
+                        originCoords.first, originCoords.second
+                    )
+                } else Double.MAX_VALUE
+            } else Double.MAX_VALUE
+        }
+
+        val isWithinStopZone = distToOrigin <= STOP_WAITING_ZONE_RADIUS_METERS
+
         var confidence = 0.0f
 
-        // 1. GPS Kinematics + Persistence (Weight: up to 0.45)
+        // 1. GPS Kinematics + Persistence (Weight: up to 0.50)
         val speed = location?.speed?.toDouble() ?: 0.0
         val hasSpeed = location != null && location.hasSpeed() && speed > 0.1
 
@@ -67,9 +85,10 @@ class BoardingSensorFusionEngine {
             if (speed >= MIN_BOARDING_SPEED_MPS) {
                 consecutiveHighSpeedReadings++
                 val speedConfidence = when {
-                    speed >= SPRINT_SPEED_MAX_MPS -> 0.45f // Motorized speed
-                    consecutiveHighSpeedReadings >= 2 -> 0.40f // Sustained transit speed
-                    else -> 0.25f
+                    speed >= SPRINT_SPEED_MAX_MPS -> 0.50f // Motorized speed (> 25 km/h)
+                    speed >= CLEAR_TRANSIT_SPEED_MPS && consecutiveHighSpeedReadings >= 2 -> 0.45f // Sustained fast transit speed
+                    consecutiveHighSpeedReadings >= 2 -> 0.35f // Sustained transit speed (> 15 km/h)
+                    else -> 0.20f
                 }
                 confidence += speedConfidence
             } else {
@@ -78,6 +97,7 @@ class BoardingSensorFusionEngine {
         }
 
         // 2. Direction / Azimuth Vector Alignment (Weight: up to 0.25)
+        var isDirectionAligned = false
         if (location != null && location.hasBearing() && currentLeg.geometry.size >= 2) {
             val legBearing = calculateInitialLegBearing(currentLeg)
             if (legBearing != null) {
@@ -85,27 +105,54 @@ class BoardingSensorFusionEngine {
                 val angleDiff = abs(normalizeAngle(userBearing - legBearing))
                 if (angleDiff <= AZIMUTH_TOLERANCE_DEGREES) {
                     confidence += 0.25f
+                    isDirectionAligned = true
                 } else if (angleDiff <= AZIMUTH_TOLERANCE_DEGREES * 1.5) {
                     confidence += 0.10f
                 }
             }
         }
 
-        // 3. Real-Time Transit Feed Proximity (Weight: up to 0.30)
+        // 3. Physical Displacement from Stop (Weight: up to 0.30)
+        // Moving away from the origin stop along the route confirms departure
+        if (!isWithinStopZone && distToOrigin in (STOP_WAITING_ZONE_RADIUS_METERS..800.0)) {
+            if (isDirectionAligned || (hasSpeed && speed >= MIN_BOARDING_SPEED_MPS)) {
+                confidence += 0.30f
+            } else {
+                confidence += 0.15f
+            }
+        }
+
+        // 4. Real-Time Transit Feed Proximity (Accessory confirmation only: up to 0.20)
+        // CRITICAL: Real-time arrival at the stop alone NEVER triggers boarding if the user is still in the waiting zone
         val isVehicleJustArrivedOrPast = realTimeArrivalMinutes == 0 ||
                 (realTimeSecondsRemaining != null && realTimeSecondsRemaining <= 20)
         if (isVehicleJustArrivedOrPast) {
-            confidence += 0.30f
+            // Only add RT confidence if user is actually moving or displaced from the stop
+            if (!isWithinStopZone || (hasSpeed && speed >= CLEAR_TRANSIT_SPEED_MPS)) {
+                confidence += 0.20f
+            } else {
+                confidence += 0.05f
+            }
         } else if (realTimeArrivalMinutes != null && realTimeArrivalMinutes <= 1) {
-            confidence += 0.20f
+            if (!isWithinStopZone || (hasSpeed && speed >= CLEAR_TRANSIT_SPEED_MPS)) {
+                confidence += 0.10f
+            }
         }
 
-        // 4. Underground / Tunnel Signal Drop Heuristic (Weight: up to 0.35)
+        // 5. Underground / Tunnel Signal Drop Heuristic (Weight: up to 0.35)
         if (isUndergroundMode && (currentLeg.mode == TransitMode.SUBWAY || currentLeg.mode == TransitMode.RAIL)) {
             val accuracy = if (location?.hasAccuracy() == true) location.accuracy else 999f
             if (accuracy > 60f || location == null) {
                 // Signal degraded or lost in underground station right around scheduled departure
                 confidence += 0.35f
+            }
+        }
+
+        // SAFEGUARD: While inside the stop waiting zone (< 70m), strictly cap confidence for all modes unless speed is unmistakably motorized (> 22 km/h sustained)
+        if (isWithinStopZone) {
+            val isUnmistakablyMotorized = hasSpeed && speed >= CLEAR_TRANSIT_SPEED_MPS && consecutiveHighSpeedReadings >= 2
+            if (!isUnmistakablyMotorized) {
+                confidence = confidence.coerceAtMost(0.40f)
             }
         }
 

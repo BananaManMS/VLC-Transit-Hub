@@ -3,6 +3,9 @@ package com.example.data.repository
 import android.util.Log
 import com.example.ui.metro.AccessibilityIncident
 import com.example.ui.metro.MetroIncident
+import com.example.ui.metro.MetroNewsItem
+import com.example.ui.metro.MetroNotice
+import com.example.ui.metro.MetroNoticeCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,25 +23,28 @@ class MetroAlertsRepository {
     private val _accessibilityIncidents = MutableStateFlow<List<AccessibilityIncident>>(emptyList())
     val accessibilityIncidents = _accessibilityIncidents.asStateFlow()
 
-    private val _twitterIncidents = MutableStateFlow<List<MetroIncident>>(emptyList())
-    val twitterIncidents = _twitterIncidents.asStateFlow()
-
     private val _activeIncidents = MutableStateFlow<List<MetroIncident>>(emptyList())
     val activeIncidents = _activeIncidents.asStateFlow()
+
+    private val _specialNotices = MutableStateFlow<List<MetroNotice>>(emptyList())
+    val specialNotices = _specialNotices.asStateFlow()
+
+    private val _metroNews = MutableStateFlow<List<MetroNewsItem>>(emptyList())
+    val metroNews = _metroNews.asStateFlow()
 
     private val _isAlertsLoading = MutableStateFlow(true)
     val isAlertsLoading = _isAlertsLoading.asStateFlow()
 
-    private val _twitterLoading = MutableStateFlow(false)
-    val twitterLoading = _twitterLoading.asStateFlow()
+    private val _isNewsLoading = MutableStateFlow(false)
+    val isNewsLoading = _isNewsLoading.asStateFlow()
 
-
-    suspend fun fetchAccessibilityAlerts() = withContext(Dispatchers.IO) {
+    suspend fun fetchAllAlerts() = withContext(Dispatchers.IO) {
+        _isAlertsLoading.value = true
         try {
-            val url = "https://metroapi.alexbadi.es/accesibilidad"
+            val url = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/avisos"
             val request = okhttp3.Request.Builder()
                 .url(url)
-                .header("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
+                .header("User-Agent", NetworkModule.USER_AGENT)
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -46,172 +52,244 @@ class MetroAlertsRepository {
                     throw Exception("HTTP Error: ${response.code}")
                 }
                 val responseBody = response.body?.string() ?: throw Exception("Empty response body")
-                val jsonObject = JSONObject(responseBody)
                 
-                val incsArray = jsonObject.optJSONArray("incidencias_accesibilidad") ?: return@use
-                val transArray = jsonObject.optJSONArray("incidencias_accesibilidad_translations") ?: org.json.JSONArray()
+                if (!responseBody.trim().startsWith("<")) {
+                    val rootJson = JSONObject(responseBody)
+                    val success = rootJson.optBoolean("success", false)
+                    if (success) {
+                        val dataObj = rootJson.optJSONObject("data")
+                        if (dataObj != null) {
+                            // Helper function to format lines array
+                            fun formatLines(item: JSONObject): String? {
+                                val lineasArr = item.optJSONArray("lineas_afectadas") ?: return null
+                                if (lineasArr.length() == 0) return null
+                                val list = mutableListOf<String>()
+                                for (l in 0 until lineasArr.length()) {
+                                    val valStr = lineasArr.optString(l, "").trim()
+                                    if (valStr.isNotEmpty()) {
+                                        val formatted = if (valStr.all { it.isDigit() }) "L$valStr" else valStr
+                                        list.add(formatted)
+                                    }
+                                }
+                                return if (list.isNotEmpty()) list.joinToString(", ") else null
+                            }
 
-                // Map of incident_id -> Map of locale -> (titulo, descripcion)
-                val translationsMap = mutableMapOf<Int, MutableMap<String, Pair<String, String>>>()
-                for (i in 0 until transArray.length()) {
-                    val tObj = transArray.optJSONObject(i) ?: continue
-                    if (!tObj.isNull("deleted_at")) continue
-                    
-                    val incId = tObj.optInt("incidencia_id", -1)
-                    val locale = tObj.optString("locale", "")
-                    val titulo = tObj.optString("titulo", "")
-                    val descripcion = tObj.optString("descripcion", "")
-                    
-                    if (incId != -1 && locale.isNotEmpty()) {
-                        translationsMap.getOrPut(incId) { mutableMapOf() }[locale] = Pair(titulo, descripcion)
+                            fun JSONObject.optCleanStr(key: String): String? {
+                                if (this.isNull(key)) return null
+                                val str = this.optString(key, "").trim()
+                                if (str.isEmpty() || str.equals("null", ignoreCase = true)) return null
+                                return str
+                            }
+
+                            // 1. Map accesibilidad
+                            val accArray = dataObj.optJSONArray("accesibilidad") ?: dataObj.optJSONArray("incidencias_accesibilidad") ?: org.json.JSONArray()
+                            val accList = mutableListOf<AccessibilityIncident>()
+                            for (i in 0 until accArray.length()) {
+                                val item = accArray.optJSONObject(i) ?: continue
+                                val id = item.optString("id", "acc-$i")
+                                val titulo = item.optCleanStr("titulo") ?: ""
+                                val rawDescripcion = item.optCleanStr("descripcion") ?: ""
+                                val descripcion = com.example.util.StationAccessibilityHelper.cleanAccessibilityAlertText(rawDescripcion)
+                                if (titulo.isBlank() && descripcion.isBlank()) continue
+
+                                val estIdStr = item.optString("estacion_id", "")
+                                val estacionId = estIdStr.toIntOrNull() ?: if (!item.isNull("estacion_id")) item.optInt("estacion_id") else null
+                                val estacionNombre = item.optCleanStr("estacion_nombre")
+                                val lineasAfectadas = formatLines(item)
+                                val creadoEl = item.optCleanStr("fecha_publicacion")
+                                    ?: item.optCleanStr("fecha")
+                                    ?: item.optCleanStr("updated_at")
+                                    ?: item.optCleanStr("created_at")
+                                accList.add(
+                                    AccessibilityIncident(
+                                        id = id,
+                                        tituloEs = titulo,
+                                        descripcionEs = descripcion,
+                                        tituloCa = titulo,
+                                        descripcionCa = descripcion,
+                                        creadoEl = creadoEl,
+                                        estacionId = estacionId,
+                                        estacionNombre = estacionNombre,
+                                        lineasAfectadas = lineasAfectadas
+                                    )
+                                )
+                            }
+                            _accessibilityIncidents.value = accList
+
+                            // 2. Map prioritarios (Network Incidents) - Only genuine circulation incidents (incidencia, aviso)
+                            val prioArray = dataObj.optJSONArray("prioritarios") ?: org.json.JSONArray()
+                            val prioList = mutableListOf<MetroIncident>()
+                            val prioNoticesForGeneralTab = mutableListOf<MetroNotice>()
+
+                            for (i in 0 until prioArray.length()) {
+                                val item = prioArray.optJSONObject(i) ?: continue
+                                val categoria = item.optCleanStr("categoria") ?: "incidencia"
+                                val catNombre = item.optCleanStr("categoria_nombre") ?: "Incidencia"
+                                val id = item.optString("id", "prio-$i")
+                                val titulo = item.optCleanStr("titulo") ?: ""
+                                val descripcion = item.optCleanStr("descripcion") ?: ""
+                                if (titulo.isBlank() && descripcion.isBlank()) continue
+
+                                val fullDesc = if (descripcion.isNotBlank() && !descripcion.equals(titulo, ignoreCase = true)) {
+                                    if (titulo.isNotBlank()) "$titulo: $descripcion" else descripcion
+                                } else {
+                                    if (titulo.isNotBlank()) titulo else descripcion
+                                }
+                                val lineaFgv = formatLines(item)
+                                val updatedAt = item.optCleanStr("fecha_publicacion")
+                                    ?: item.optCleanStr("updated_at")
+                                    ?: item.optCleanStr("fecha")
+
+                                // Strict filter: only real circulation incidents (incidencia or aviso impacting transit)
+                                if (MetroNoticeCategory.isRealCirculationIncident(categoria, titulo, descripcion)) {
+                                    prioList.add(MetroIncident(id, fullDesc, fullDesc, fullDesc, lineaFgv, updatedAt, categoria))
+                                } else if (!categoria.equals("accesibilidad", ignoreCase = true)) {
+                                    // Non-circulation priority items (e.g. weather alerts, promotions) go to general notices
+                                    prioNoticesForGeneralTab.add(
+                                        MetroNotice(
+                                            id = id,
+                                            category = categoria,
+                                            categoryName = catNombre,
+                                            title = titulo,
+                                            description = descripcion,
+                                            publicationDate = updatedAt,
+                                            lineasAfectadas = lineaFgv
+                                        )
+                                    )
+                                }
+                            }
+                            _activeIncidents.value = prioList
+
+                            // 3. Map avisos (Special Notices, Works & General Announcements - filtering out accessibility)
+                            val avisosArray = dataObj.optJSONArray("avisos") ?: org.json.JSONArray()
+                            val avisosList = mutableListOf<MetroIncident>()
+                            val specialNoticesList = mutableListOf<MetroNotice>()
+                            // Include any non-circulation notices that came from prioritarios
+                            specialNoticesList.addAll(prioNoticesForGeneralTab)
+
+                            for (i in 0 until avisosArray.length()) {
+                                val item = avisosArray.optJSONObject(i) ?: continue
+                                val categoria = item.optCleanStr("categoria") ?: ""
+                                val id = item.optString("id", "av-$i")
+                                val catNombre = item.optCleanStr("categoria_nombre") ?: "Aviso"
+                                val titulo = item.optCleanStr("titulo") ?: ""
+                                val descripcion = item.optCleanStr("descripcion") ?: ""
+                                if (titulo.isBlank() && descripcion.isBlank()) continue
+
+                                val fecha = item.optCleanStr("fecha_publicacion")
+                                    ?: item.optCleanStr("updated_at")
+                                    ?: item.optCleanStr("fecha")
+                                val lineaFgv = formatLines(item)
+
+                                // Add to special notices if category is not accessibility
+                                if (!categoria.equals("accesibilidad", ignoreCase = true)) {
+                                    specialNoticesList.add(
+                                        MetroNotice(
+                                            id = "aviso_$id",
+                                            category = categoria,
+                                            categoryName = catNombre,
+                                            title = titulo,
+                                            description = descripcion,
+                                            publicationDate = fecha,
+                                            lineasAfectadas = lineaFgv
+                                        )
+                                    )
+                                }
+
+                                val fullDesc = if (descripcion.isNotBlank() && !descripcion.equals(titulo, ignoreCase = true)) {
+                                    if (titulo.isNotBlank()) "$titulo: $descripcion" else descripcion
+                                } else {
+                                    if (titulo.isNotBlank()) titulo else descripcion
+                                }
+                                avisosList.add(MetroIncident("aviso_$id", fullDesc, fullDesc, fullDesc, lineaFgv, fecha, categoria))
+                            }
+                            avisosList.sortByDescending { it.updatedAt ?: "" }
+                            _specialNotices.value = specialNoticesList.distinctBy { "${it.category}_${it.title}_${it.publicationDate}" }
+                        }
                     }
                 }
-
-                val list = mutableListOf<AccessibilityIncident>()
-                for (i in 0 until incsArray.length()) {
-                    val item = incsArray.optJSONObject(i) ?: continue
-                    if (!item.isNull("deleted_at")) {
-                        continue
-                    }
-                    
-                    val id = item.optInt("id", -1)
-                    if (id == -1) continue
-                    
-                    val estacionId = if (item.isNull("estacion_id")) null else item.optInt("estacion_id")
-                    val creadoEl = item.optString("created_at", "")
-
-                    val transForInc = translationsMap[id]
-                    val esPair = transForInc?.get("ES") ?: Pair("", "")
-                    val caPair = transForInc?.get("CA") ?: Pair("", "")
-
-                    val titleEs = esPair.first
-                    val descEs = esPair.second
-                    val titleCa = caPair.first
-                    val descCa = caPair.second
-
-                    list.add(
-                        AccessibilityIncident(
-                            id = id.toString(),
-                            tituloEs = titleEs,
-                            descripcionEs = descEs,
-                            tituloCa = titleCa,
-                            descripcionCa = descCa,
-                            creadoEl = creadoEl,
-                            estacionId = estacionId
-                        )
-                    )
-                }
-                _accessibilityIncidents.value = list
             }
         } catch (e: Exception) {
-            Log.w("MetroAlertsRepository", "Error fetching accessibility alerts: ${e.message}")
-        }
-    }
-
-    suspend fun fetchTwitterIncidents() = withContext(Dispatchers.IO) {
-        _twitterLoading.value = true
-        try {
-            val url = "https://metroapi.alexbadi.es/db/incidencias"
-            val request = okhttp3.Request.Builder()
-                .url(url)
-                .header("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w("MetroAlertsRepository", "HTTP error ${response.code} fetching twitter incidents")
-                    return@use
-                }
-                val responseBody = response.body?.string() ?: return@use
-                val jsonObject = JSONObject(responseBody)
-                val resArray = jsonObject.optJSONArray("res") ?: return@use
-
-                val incidentsList = mutableListOf<MetroIncident>()
-                for (i in 0 until resArray.length()) {
-                    val item = resArray.optJSONObject(i) ?: continue
-                    val dataObj = item.optJSONObject("data") ?: continue
-
-                    val id = item.optString("_id", "")
-                    val langsObj = dataObj.optJSONObject("langs")
-                    val caObj = langsObj?.optJSONObject("CA")
-                    val enObj = langsObj?.optJSONObject("EN")
-                    val esObj = langsObj?.optJSONObject("ES")
-
-                    val descEs = esObj?.optString("descripcion") ?: ""
-                    val descCa = caObj?.optString("descripcion") ?: ""
-                    val descEn = enObj?.optString("descripcion") ?: ""
-
-                    val lineaFgv = if (dataObj.isNull("linea_fgv")) null else dataObj.optString("linea_fgv")
-                    val updatedAt = if (dataObj.isNull("updated_at")) null else dataObj.optString("updated_at")
-
-                    incidentsList.add(MetroIncident(id, descEs, descCa, descEn, lineaFgv, updatedAt))
-                }
-                incidentsList.sortByDescending { it.updatedAt ?: "" }
-                _twitterIncidents.value = incidentsList
-            }
-        } catch (e: Exception) {
-            Log.w("MetroAlertsRepository", "Error fetching twitter incidents: ${e.message}")
-        } finally {
-            _twitterLoading.value = false
-        }
-    }
-
-    suspend fun fetchRealTimeAlerts() = withContext(Dispatchers.IO) {
-        _isAlertsLoading.value = true
-        try {
-            val url = "https://metroapi.alexbadi.es/incidencias"
-            val request = okhttp3.Request.Builder()
-                .url(url)
-                .header("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w("MetroAlertsRepository", "HTTP error ${response.code} fetching real-time alerts")
-                    return@use
-                }
-                val responseBody = response.body?.string() ?: return@use
-                val jsonObject = JSONObject(responseBody)
-                val resArray = jsonObject.optJSONArray("incidencias_alexbadi") ?: return@use
-
-                val list = mutableListOf<MetroIncident>()
-                for (i in 0 until resArray.length()) {
-                    val item = resArray.optJSONObject(i) ?: continue
-                    if (!item.isNull("deleted_at")) {
-                        continue
-                    }
-
-                    val id = item.optString("id", "")
-                    val alexbadiId = item.optString("alexbadi_id", id)
-                    val langsObj = item.optJSONObject("langs")
-                    val caObj = langsObj?.optJSONObject("CA")
-                    val enObj = langsObj?.optJSONObject("EN")
-                    val esObj = langsObj?.optJSONObject("ES")
-
-                    val descEs = esObj?.optString("descripcion") ?: ""
-                    val descCa = caObj?.optString("descripcion") ?: ""
-                    val descEn = enObj?.optString("descripcion") ?: ""
-
-                    val lineaFgv = if (item.isNull("linea_fgv")) null else item.optString("linea_fgv")
-                    val updatedAt = if (item.isNull("updated_at")) null else item.optString("updated_at")
-
-                    list.add(MetroIncident(alexbadiId, descEs, descCa, descEn, lineaFgv, updatedAt))
-                }
-                _activeIncidents.value = list.distinctBy { incident ->
-                    val key = if (incident.id.isNotBlank()) incident.id.trim()
-                    else (incident.descriptionEs.trim() + "_" + incident.descriptionCa.trim()).ifBlank { incident.toString() }
-                    Pair(key, incident.lineaFgv)
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("MetroAlertsRepository", "Error fetching active incidents: ${e.message}")
+            Log.w("MetroAlertsRepository", "Notice: Unified alerts unavailable or timed out: ${e.message}")
         } finally {
             _isAlertsLoading.value = false
         }
+
+        // Also fetch news from /v1/noticias
+        fetchNews()
     }
 
-    suspend fun fetchAllAlerts() {
-        fetchRealTimeAlerts()
-        fetchAccessibilityAlerts()
+    suspend fun fetchNews() = withContext(Dispatchers.IO) {
+        _isNewsLoading.value = true
+        try {
+            val url = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/noticias"
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .header("User-Agent", NetworkModule.USER_AGENT)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use
+                val body = response.body?.string() ?: return@use
+                val root = JSONObject(body)
+                if (root.optBoolean("success", false)) {
+                    val dataObj = root.optJSONObject("data")
+                    val noticiasArr = dataObj?.optJSONArray("noticias") ?: root.optJSONArray("noticias")
+                    if (noticiasArr != null) {
+                        val newsList = mutableListOf<MetroNewsItem>()
+                        for (i in 0 until noticiasArr.length()) {
+                            val item = noticiasArr.optJSONObject(i) ?: continue
+                            val id = item.optLong("id", i.toLong())
+                            val idFgv = if (!item.isNull("id_fgv")) item.optLong("id_fgv") else null
+                            val titulo = item.optString("titulo", "")
+                            val rawDesc = item.optString("descripcion", "")
+                            val cleanDesc = rawDesc
+                                .replace("&#8230;", "...")
+                                .replace("&raquo;", "»")
+                                .replace("&laquo;", "«")
+                                .replace("&amp;", "&")
+                                .replace(Regex("<[^>]*>"), "")
+                                .trim()
+                            val rawCont = item.optString("contenido", item.optString("content", item.optString("cuerpo", "")))
+                            val cleanCont = rawCont
+                                .replace("<br>", "\n")
+                                .replace("<br/>", "\n")
+                                .replace("<br />", "\n")
+                                .replace("</p>", "\n\n")
+                                .replace("<p>", "")
+                                .replace("&#8230;", "...")
+                                .replace("&raquo;", "»")
+                                .replace("&laquo;", "«")
+                                .replace("&amp;", "&")
+                                .replace("&nbsp;", " ")
+                                .replace(Regex("<[^>]*>"), "")
+                                .trim()
+                            val rawUrl = if (!item.isNull("url")) item.optString("url", "").trim() else ""
+                            val urlNews = if (rawUrl.isNotEmpty() && !rawUrl.equals("null", ignoreCase = true)) rawUrl else null
+                            val imgUrl = item.optString("url_imagen", "").ifEmpty { null }
+                            val fecha = item.optString("fecha_publicacion", item.optString("created_at", item.optString("fecha", "")))
+
+                            newsList.add(
+                                MetroNewsItem(
+                                    id = id,
+                                    idFgv = idFgv,
+                                    title = titulo,
+                                    description = cleanDesc,
+                                    content = cleanCont.ifEmpty { cleanDesc },
+                                    url = urlNews,
+                                    imageUrl = imgUrl,
+                                    publicationDate = fecha
+                                )
+                            )
+                        }
+                        _metroNews.value = newsList
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("MetroAlertsRepository", "Notice: News service unavailable or timed out: ${e.message}")
+        } finally {
+            _isNewsLoading.value = false
+        }
     }
 }

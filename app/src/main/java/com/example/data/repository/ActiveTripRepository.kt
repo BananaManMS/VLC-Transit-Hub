@@ -124,10 +124,17 @@ class ActiveTripRepository(
     }
 
     /**
+     * Marks the active trip status as COMPLETED so UI and Notification can show arrival card before dismissal.
+     */
+    suspend fun markTripCompleted() {
+        activeTripDao.updateStatus(ActiveTripEntity.STATUS_COMPLETED)
+    }
+
+    /**
      * Marks the active trip as completed and clears it.
      */
     suspend fun completeActiveTrip() {
-        activeTripDao.deleteActiveTrip()
+        cancelActiveTrip()
     }
 
     private fun mapEntityToState(entity: ActiveTripEntity): ActiveTripState? {

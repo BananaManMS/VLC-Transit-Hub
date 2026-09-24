@@ -16,21 +16,43 @@ import javax.xml.parsers.DocumentBuilderFactory
 object BusMapper {
 
     fun loadStopsFromAssets(context: Context): List<GeoportalStopEntity> {
+        return com.example.data.repository.StaticTransitDataCache.getOrLoadEmtStops(context)
+    }
+
+    internal fun parseStopsFromJsonDirect(context: Context): List<GeoportalStopEntity> {
         val list = mutableListOf<GeoportalStopEntity>()
         try {
-            val jsonString = context.assets.open("emt_paradas_lineas.json").bufferedReader().use { it.readText() }
+            val jsonString = try {
+                val localFile = com.example.data.repository.emt.EmtDataSyncManager.getLocalStopsFile(context)
+                if (localFile.exists() && localFile.length() > 100) {
+                    localFile.readText(Charsets.UTF_8)
+                } else {
+                    try {
+                        context.assets.open("stops.json").bufferedReader().use { it.readText() }
+                    } catch (e: Exception) {
+                        context.assets.open("emt_paradas_lineas.json").bufferedReader().use { it.readText() }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("BusMapper", "Error reading EMT stops JSON text: ${e.message}")
+                return emptyList()
+            }
+
             val jsonArray = JSONArray(jsonString)
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
-                val idParada = obj.optString("id_parada", "").ifBlank { obj.optString("stop_id", "") }
-                val denominacion = obj.optString("denominacion", "").ifBlank { obj.optString("nombre", "") }
-                val direccion = obj.optString("direccion", "")
+                val idParada = obj.optString("id_parada", "")
+                    .ifBlank { obj.optString("stop_id", "") }
+                    .ifBlank { obj.optString("id", "") }
+                val denominacion = obj.optString("denominacion", "")
+                    .ifBlank { obj.optString("nombre", "") }
+                    .ifBlank { obj.optString("name", "") }
                 val lat = obj.optDouble("lat", 0.0)
                 val lon = obj.optDouble("lon", 0.0)
                 val suprimida = obj.optInt("suprimida", 0)
 
-                val lineas = if (obj.has("lineas")) {
-                    val l = obj.get("lineas")
+                val lineas = if (obj.has("lineas") || obj.has("lines")) {
+                    val l = if (obj.has("lineas")) obj.get("lineas") else obj.get("lines")
                     if (l is JSONArray) {
                         (0 until l.length()).joinToString(", ") { l.getString(it) }
                     } else {
@@ -52,7 +74,7 @@ object BusMapper {
                 }
             }
         } catch (e: Exception) {
-            Log.e("BusMapper", "Error loading stops from assets: ${e.message}", e)
+            Log.e("BusMapper", "Error loading stops from JSON: ${e.message}", e)
         }
         return list
     }
@@ -72,24 +94,34 @@ object BusMapper {
         return emptyList()
     }
 
-    fun getCoordinatesForStation(context: Context, stationId: Int): Pair<Double, Double> {
+    fun getCoordinatesForStation(context: Context, stationId: String): Pair<Double, Double> {
+        val mainStation = com.example.data.model.ValenciaMetroData.mainMetroStations.find { it.id == stationId }
+        if (mainStation != null) {
+            return Pair(mainStation.latitude, mainStation.longitude)
+        }
         return try {
-            val jsonString = context.assets.open("metro_stations.json").bufferedReader().use { it.readText() }
+            val jsonString = context.assets.open("stations_coords.json").bufferedReader().use { it.readText() }
             val array = JSONArray(jsonString)
-            var foundLat = 39.4699
-            var foundLon = -0.3763
+            var foundLat = 39.4697
+            var foundLon = -0.3734
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
-                if (obj.optInt("id") == stationId) {
+                val idStr = obj.optString("id", "")
+                val idInt = obj.optInt("id", -1)
+                if (idStr == stationId || (idInt != -1 && idInt.toString() == stationId)) {
                     foundLat = obj.optDouble("latitude", foundLat)
                     foundLon = obj.optDouble("longitude", foundLon)
-                    break
+                    return Pair(foundLat, foundLon)
                 }
             }
             Pair(foundLat, foundLon)
         } catch (e: Exception) {
-            Pair(39.4699, -0.3763)
+            Pair(39.4697, -0.3734)
         }
+    }
+
+    fun getCoordinatesForStation(context: Context, stationId: Int): Pair<Double, Double> {
+        return getCoordinatesForStation(context, stationId.toString())
     }
 
     fun parseEmtXml(xmlString: String): List<EmtBusTime> {
@@ -124,10 +156,28 @@ object BusMapper {
                     val horaLlegadaRaw = getFirstElementValue(element, "horaLlegada", "horallegada", "hora", "arrival") ?: ""
                     val error = getFirstElementValue(element, "error") ?: ""
 
-                    if (error.isEmpty() && linea.isNotEmpty()) {
-                        val parsed = buildEmtBusTime(linea, destino, minutosRaw, horaLlegadaRaw)
-                        if (parsed != null) {
-                            list.add(parsed)
+                    if (linea.isNotEmpty()) {
+                        val isDiverted = error.contains("desvia", ignoreCase = true) ||
+                                error.contains("desvío", ignoreCase = true) ||
+                                error.contains("desvio", ignoreCase = true)
+                        if (isDiverted) {
+                            list.add(
+                                EmtBusTime(
+                                    linea = linea,
+                                    destino = destino,
+                                    minutos = "",
+                                    horaLlegada = "",
+                                    secondsRemaining = -1,
+                                    isRealTime = true,
+                                    isDiverted = true,
+                                    divertedMessage = error.ifBlank { "LÍNIA DESVIADA" }
+                                )
+                            )
+                        } else if (error.isEmpty()) {
+                            val parsed = buildEmtBusTime(linea, destino, minutosRaw, horaLlegadaRaw)
+                            if (parsed != null) {
+                                list.add(parsed)
+                            }
                         }
                     }
                 }
@@ -144,14 +194,34 @@ object BusMapper {
                 for (match in matches) {
                     val block = match.groupValues[1]
                     val linea = Regex("""<linea>([\s\S]*?)</linea>""", RegexOption.IGNORE_CASE).find(block)?.groupValues?.get(1)?.trim() ?: ""
-                    val destino = Regex("""<destino>([\s\S]*?)</destino>""", RegexOption.IGNORE_CASE).find(block)?.groupValues?.get(1)?.trim() ?: ""
+                    val rawDest = Regex("""<destino>([\s\S]*?)</destino>""", RegexOption.IGNORE_CASE).find(block)?.groupValues?.get(1)?.trim() ?: ""
+                    val destino = rawDest.replace("<![CDATA[", "").replace("]]>", "").trim()
                     val minutos = Regex("""<minutos>([\s\S]*?)</minutos>""", RegexOption.IGNORE_CASE).find(block)?.groupValues?.get(1)?.trim() ?: ""
                     val hora = Regex("""<horaLlegada>([\s\S]*?)</horaLlegada>""", RegexOption.IGNORE_CASE).find(block)?.groupValues?.get(1)?.trim() ?: ""
+                    val error = Regex("""<error>([\s\S]*?)</error>""", RegexOption.IGNORE_CASE).find(block)?.groupValues?.get(1)?.trim() ?: ""
 
                     if (linea.isNotEmpty()) {
-                        val parsed = buildEmtBusTime(linea, destino, minutos, hora)
-                        if (parsed != null) {
-                            list.add(parsed)
+                        val isDiverted = error.contains("desvia", ignoreCase = true) ||
+                                error.contains("desvío", ignoreCase = true) ||
+                                error.contains("desvio", ignoreCase = true)
+                        if (isDiverted) {
+                            list.add(
+                                EmtBusTime(
+                                    linea = linea,
+                                    destino = destino,
+                                    minutos = "",
+                                    horaLlegada = "",
+                                    secondsRemaining = -1,
+                                    isRealTime = true,
+                                    isDiverted = true,
+                                    divertedMessage = error.ifBlank { "LÍNIA DESVIADA" }
+                                )
+                            )
+                        } else if (error.isEmpty()) {
+                            val parsed = buildEmtBusTime(linea, destino, minutos, hora)
+                            if (parsed != null) {
+                                list.add(parsed)
+                            }
                         }
                     }
                 }
@@ -239,9 +309,9 @@ object BusMapper {
             val nodeList = element.getElementsByTagName(tag)
             if (nodeList.length > 0) {
                 val node = nodeList.item(0)
-                if (node != null && node.hasChildNodes()) {
-                    val value = node.firstChild?.nodeValue
-                    if (!value.isNullOrBlank()) return value.trim()
+                if (node != null) {
+                    val text = node.textContent
+                    if (!text.isNullOrBlank()) return text.trim()
                 }
             }
         }

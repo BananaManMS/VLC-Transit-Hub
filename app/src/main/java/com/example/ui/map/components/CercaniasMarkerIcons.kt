@@ -5,33 +5,76 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.util.LruCache
 import androidx.core.content.res.ResourcesCompat
+import com.example.util.LineColorResolver
 
 private val cercaniasStationIconCache = LruCache<String, MarkerIconResult>(64)
 
-internal fun getCercaniasMarkerIcon(context: Context, stationName: String, isDarkMode: Boolean, showPill: Boolean): MarkerIconResult {
-    val key = "CERCANIAS_${stationName}_${isDarkMode}_${showPill}"
+internal fun getCercaniasMarkerIcon(
+    context: Context,
+    stationName: String,
+    lines: List<String> = emptyList(),
+    isDarkMode: Boolean,
+    showPill: Boolean
+): MarkerIconResult {
+    val cleanLinesKey = lines.joinToString(",")
+    val key = "CERCANIAS_${stationName}_${cleanLinesKey}_${isDarkMode}_${showPill}"
     var cached = cercaniasStationIconCache.get(key)
     if (cached == null) {
-        cached = createCercaniasMarkerIcon(context, stationName, isDarkMode, showPill)
+        cached = createCercaniasMarkerIcon(context, stationName, lines, isDarkMode, showPill)
         cercaniasStationIconCache.put(key, cached)
     }
     return cached
 }
 
-internal fun createCercaniasMarkerIcon(context: Context, stationName: String, isDarkMode: Boolean, showPill: Boolean): MarkerIconResult {
-    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = if (isDarkMode) Color.WHITE else Color.parseColor("#0F172A")
-        textSize = 26f
+internal fun createCercaniasMarkerIcon(
+    context: Context,
+    stationName: String,
+    lines: List<String> = emptyList(),
+    isDarkMode: Boolean,
+    showPill: Boolean
+): MarkerIconResult {
+    val hasLines = showPill && lines.isNotEmpty()
+    val stationTextSize = if (hasLines) 40f else 34f
+    val stationStrokeWidth = if (hasLines) 7f else 6f
+
+    val textFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = if (isDarkMode) Color.parseColor("#F8FAFC") else Color.parseColor("#0F172A")
+        textSize = stationTextSize
         typeface = Typeface.DEFAULT_BOLD
-        textAlign = Paint.Align.CENTER
+        textAlign = Paint.Align.LEFT
+        style = Paint.Style.FILL
+    }
+
+    val textStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = if (isDarkMode) Color.parseColor("#090D16") else Color.WHITE
+        textSize = stationTextSize
+        typeface = Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.LEFT
+        style = Paint.Style.STROKE
+        strokeWidth = stationStrokeWidth
+        strokeJoin = Paint.Join.ROUND
+        strokeCap = Paint.Cap.ROUND
     }
 
     val logoRadius = 32f
-    val spacing = 8f
+    val spacing = 12f
+
+    val parsedLines = if (hasLines) {
+        lines.flatMap { raw ->
+            raw.split(",", "/", ";", " ").map { it.trim().uppercase() }
+        }.filter { it.isNotBlank() }.distinct().sortedWith { a, b ->
+            val numA = a.filter { it.isDigit() }.toIntOrNull() ?: 999
+            val numB = b.filter { it.isDigit() }.toIntOrNull() ?: 999
+            numA.compareTo(numB)
+        }
+    } else {
+        emptyList()
+    }
 
     val totalWidth: Int
     val totalHeight: Int
@@ -40,23 +83,67 @@ internal fun createCercaniasMarkerIcon(context: Context, stationName: String, is
     val anchorU: Float
     val anchorV: Float
 
-    if (showPill) {
-        val textWidth = textPaint.measureText(stationName)
-        val fontMetrics = textPaint.fontMetrics
-        val textHeight = fontMetrics.descent - fontMetrics.ascent
+    val badgeH = 26f
+    val cornerRad = 6f
+    val badgeSpacingX = 6f
+    val badgeSpacingY = 6f
 
-        val pillPaddingH = 16f
-        val pillPaddingV = 8f
-        val pillWidth = textWidth + (pillPaddingH * 2f)
-        val pillHeight = textHeight + (pillPaddingV * 2f)
+    val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 16f
+        typeface = Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.CENTER
+    }
+
+    fun getBadgeWidth(lineId: String): Float {
+        val clean = lineId.replace("C-", "C").replace(" ", "")
+        val label = if (clean.startsWith("C") || clean.startsWith("ER")) clean else "C$clean"
+        return maxOf(38f, badgeTextPaint.measureText(label) + 14f)
+    }
+
+    if (showPill) {
+        val textWidth = textFillPaint.measureText(stationName)
 
         logoCenterX = logoRadius + 10f
         logoCenterY = logoRadius + 10f
 
-        val pillLeft = logoCenterX + logoRadius + spacing
+        val textLeft = logoCenterX + logoRadius + spacing
 
-        totalWidth = (pillLeft + pillWidth + 10f).toInt()
-        totalHeight = (logoCenterY + logoRadius + 10f).toInt()
+        val totalWidthSingleRow = if (parsedLines.isNotEmpty()) {
+            parsedLines.sumOf { getBadgeWidth(it).toDouble() }.toFloat() + (parsedLines.size - 1) * badgeSpacingX
+        } else 0f
+
+        val lineChunks: List<List<String>> = when {
+            parsedLines.isEmpty() -> emptyList()
+            parsedLines.size <= 3 || totalWidthSingleRow <= textWidth + 8f -> listOf(parsedLines)
+            parsedLines.size == 4 -> listOf(parsedLines.take(2), parsedLines.drop(2))
+            parsedLines.size == 5 -> listOf(parsedLines.take(3), parsedLines.drop(3))
+            parsedLines.size == 6 -> listOf(parsedLines.take(3), parsedLines.drop(3))
+            else -> {
+                val numRows = (parsedLines.size + 2) / 3
+                val perRow = (parsedLines.size + numRows - 1) / numRows
+                parsedLines.chunked(perRow)
+            }
+        }
+
+        val maxRowWidth = lineChunks.maxOfOrNull { row ->
+            row.sumOf { getBadgeWidth(it).toDouble() }.toFloat() + ((row.size - 1) * badgeSpacingX)
+        } ?: 0f
+
+        val numRows = lineChunks.size
+        val badgesHeight = if (numRows > 0) {
+            (numRows * badgeH) + ((numRows - 1) * badgeSpacingY)
+        } else 0f
+
+        val contentWidth = maxOf(textWidth, maxRowWidth)
+        totalWidth = (textLeft + contentWidth + 18f).toInt()
+
+        val badgesStartY = 54f
+        val calculatedHeight = if (numRows > 0) {
+            badgesStartY + badgesHeight + 12f
+        } else {
+            logoCenterY + logoRadius + 10f
+        }
+        totalHeight = maxOf((logoCenterY + logoRadius + 10f), calculatedHeight).toInt()
 
         anchorU = logoCenterX / totalWidth
         anchorV = logoCenterY / totalHeight
@@ -77,45 +164,79 @@ internal fun createCercaniasMarkerIcon(context: Context, stationName: String, is
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     if (showPill) {
-        val textWidth = textPaint.measureText(stationName)
-        val fontMetrics = textPaint.fontMetrics
+        val fontMetrics = textFillPaint.fontMetrics
+        val textLeft = logoCenterX + logoRadius + spacing
+        
+        val nameCenterY = if (parsedLines.isNotEmpty()) {
+            26f
+        } else {
+            logoCenterY
+        }
+        val textY = nameCenterY - (fontMetrics.ascent + fontMetrics.descent) / 2f
 
-        val pillPaddingH = 16f
-        val pillPaddingV = 8f
-        val pillWidth = textWidth + (pillPaddingH * 2f)
-        val pillHeight = (fontMetrics.descent - fontMetrics.ascent) + (pillPaddingV * 2f)
+        // Draw light/dark stroke outline (borde protector)
+        canvas.drawText(stationName, textLeft, textY, textStrokePaint)
+        // Draw bold fill text
+        canvas.drawText(stationName, textLeft, textY, textFillPaint)
 
-        val pillLeft = logoCenterX + logoRadius + spacing
-        val pillTop = logoCenterY - pillHeight / 2f
-        val pillRight = pillLeft + pillWidth
-        val pillBottom = pillTop + pillHeight
+        // Draw line badges if present
+        if (parsedLines.isNotEmpty()) {
+            val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val badgeFontMetrics = badgeTextPaint.fontMetrics
+            val badgesStartY = 54f
 
-        // 1. Draw station name pill shadow
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(30, 0, 0, 0)
-        val shadowRect = android.graphics.RectF(
-            pillLeft + 1f,
-            pillTop + 2f,
-            pillRight + 1f,
-            pillBottom + 3f
-        )
-        canvas.drawRoundRect(shadowRect, pillHeight / 2f, pillHeight / 2f, paint)
+            val totalWidthSingleRow = parsedLines.sumOf { getBadgeWidth(it).toDouble() }.toFloat() + (parsedLines.size - 1) * badgeSpacingX
+            val lineChunks: List<List<String>> = when {
+                parsedLines.size <= 3 || totalWidthSingleRow <= textFillPaint.measureText(stationName) + 8f -> listOf(parsedLines)
+                parsedLines.size == 4 -> listOf(parsedLines.take(2), parsedLines.drop(2))
+                parsedLines.size == 5 -> listOf(parsedLines.take(3), parsedLines.drop(3))
+                parsedLines.size == 6 -> listOf(parsedLines.take(3), parsedLines.drop(3))
+                else -> {
+                    val numRows = (parsedLines.size + 2) / 3
+                    val perRow = (parsedLines.size + numRows - 1) / numRows
+                    parsedLines.chunked(perRow)
+                }
+            }
 
-        // 2. Draw station name pill background
-        paint.color = if (isDarkMode) Color.parseColor("#1E293B") else Color.WHITE
-        val pillRect = android.graphics.RectF(pillLeft, pillTop, pillRight, pillBottom)
-        canvas.drawRoundRect(pillRect, pillHeight / 2f, pillHeight / 2f, paint)
+            lineChunks.forEachIndexed { rowIndex, rowLines ->
+                var currentX = textLeft
+                val rowY = badgesStartY + (rowIndex * (badgeH + badgeSpacingY))
 
-        // 3. Stroke border (Red/Orange for Cercanias)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2.5f
-        paint.color = Color.parseColor("#E2001A")
-        canvas.drawRoundRect(pillRect, pillHeight / 2f, pillHeight / 2f, paint)
+                rowLines.forEach { lineId ->
+                    val clean = lineId.replace("C-", "C").replace(" ", "")
+                    val label = if (clean.startsWith("C") || clean.startsWith("ER")) clean else "C$clean"
+                    val bW = maxOf(38f, badgeTextPaint.measureText(label) + 14f)
 
-        // 4. Text inside pill
-        paint.style = Paint.Style.FILL
-        val textY = pillTop + pillPaddingV - fontMetrics.ascent
-        canvas.drawText(stationName, pillLeft + pillWidth / 2f, textY, textPaint)
+                    val hexColor = LineColorResolver.getCercaniasLineColorHex(lineId)
+                    val colorInt = Color.parseColor(hexColor)
+                    val isYellowLine = lineId.contains("C2", ignoreCase = true) || hexColor.equals("#FAB700", ignoreCase = true)
+
+                    val rect = RectF(currentX, rowY, currentX + bW, rowY + badgeH)
+
+                    // Outer subtle dark halo / shadow
+                    badgePaint.style = Paint.Style.FILL
+                    badgePaint.color = if (isDarkMode) Color.argb(160, 0, 0, 0) else Color.argb(80, 0, 0, 0)
+                    canvas.drawRoundRect(RectF(rect.left - 1f, rect.top, rect.right + 1f, rect.bottom + 2f), cornerRad + 1f, cornerRad + 1f, badgePaint)
+
+                    // Fill color
+                    badgePaint.color = colorInt
+                    canvas.drawRoundRect(rect, cornerRad, cornerRad, badgePaint)
+
+                    // Subtle white/dark ring border
+                    badgePaint.style = Paint.Style.STROKE
+                    badgePaint.strokeWidth = 1.2f
+                    badgePaint.color = if (isYellowLine) Color.argb(140, 0, 0, 0) else Color.WHITE
+                    canvas.drawRoundRect(rect, cornerRad, cornerRad, badgePaint)
+
+                    // Text
+                    badgeTextPaint.color = if (isYellowLine) Color.parseColor("#0F172A") else Color.WHITE
+                    val bTextY = rect.centerY() - (badgeFontMetrics.ascent + badgeFontMetrics.descent) / 2f
+                    canvas.drawText(label, rect.centerX(), bTextY, badgeTextPaint)
+
+                    currentX += bW + badgeSpacingX
+                }
+            }
+        }
     }
 
     // 2. Draw Cercanias Logo Image or Fallback Circle
@@ -207,45 +328,6 @@ internal fun createCercaniasMarkerIcon(context: Context, stationName: String, is
     }
 
     return MarkerIconResult(BitmapDrawable(context.resources, bitmap), anchorU, anchorV)
-}
-
-internal fun getCercaniasCompactDotIcon(context: Context, isDarkMode: Boolean): MarkerIconResult {
-    val key = "CERCANIAS_COMPACT_DOT_${isDarkMode}"
-    var cached = cercaniasStationIconCache.get(key)
-    if (cached == null) {
-        val size = 64
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-        // 1. Soft drop shadow
-        paint.color = Color.argb(45, 0, 0, 0)
-        canvas.drawCircle(size / 2f, size / 2f + 2f, size / 2f - 4f, paint)
-
-        // 2. Outer white border
-        paint.color = Color.WHITE
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 4f, paint)
-
-        // 3. Inner filled Cercanías Purple circle
-        paint.color = Color.parseColor("#702B7B")
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 8.5f, paint)
-
-        // 4. Elegant white "c" in the center representing Cercanías
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 28f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-        val fontMetrics = textPaint.fontMetrics
-        val y = (size / 2f) - (fontMetrics.ascent + fontMetrics.descent) / 2f
-        canvas.drawText("c", size / 2f, y - 2.5f, textPaint)
-
-        val drawable = BitmapDrawable(context.resources, bitmap)
-        cached = MarkerIconResult(drawable, 0.5f, 0.5f)
-        cercaniasStationIconCache.put(key, cached)
-    }
-    return cached
 }
 
 internal fun getCercaniasTinyDotIcon(context: Context, isDarkMode: Boolean): MarkerIconResult {

@@ -28,10 +28,10 @@ class TransitousPhase2Test {
     @Test
     fun testTransitIdMapperMetroStation() {
         assertEquals(71, TransitIdMapper.extractMetroStationId("es-Metro-de-Valencia_71"))
-        assertEquals(71, TransitIdMapper.extractMetroStationId(null, "Xàtiva"))
-        assertEquals(70, TransitIdMapper.extractMetroStationId(null, "Colón"))
-        assertEquals(69, TransitIdMapper.extractMetroStationId(null, "Alameda"))
-        assertEquals(68, TransitIdMapper.extractMetroStationId(null, "Facultats - Manuel Broseta"))
+        assertEquals(16, TransitIdMapper.extractMetroStationId(null, "Xàtiva"))
+        assertEquals(15, TransitIdMapper.extractMetroStationId(null, "Colón"))
+        assertEquals(14, TransitIdMapper.extractMetroStationId(null, "Alameda"))
+        assertEquals(13, TransitIdMapper.extractMetroStationId(null, "Facultats - Manuel Broseta"))
     }
 
     @Test

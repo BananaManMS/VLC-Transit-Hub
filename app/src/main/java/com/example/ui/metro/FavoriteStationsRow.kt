@@ -12,10 +12,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.NotAccessible
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.example.data.model.ValenciaMetroData
@@ -29,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.dashboard.AppTexts
 import com.example.ui.dashboard.Translation
 import com.example.ui.theme.appCardBorder
+import com.example.util.StationAccessibilityHelper
 
 @Composable
 fun FavoriteStationsRow(
@@ -41,7 +45,9 @@ fun FavoriteStationsRow(
     texts: Translation,
     onSearchClick: () -> Unit
 ) {
-    val displayStations = androidx.compose.runtime.remember(favoriteStations, selectedStationId) {
+    val textColor = if (isDarkMode) Color.White else MaterialTheme.colorScheme.onSurface
+    val accessibilityIncidents by metroViewModel.accessibilityIncidents.collectAsState()
+    val displayStations = remember(favoriteStations, selectedStationId) {
         if (selectedStationId.isNotEmpty() && !favoriteStations.contains(selectedStationId)) {
             listOf(selectedStationId) + favoriteStations
         } else {
@@ -59,15 +65,15 @@ fun FavoriteStationsRow(
     ) {
         // 1. Botón cuadrado de búsqueda rápida / selector de estación
         item {
-            val cardBgColor = if (isDarkMode) Color(0xFF171D2C) else MaterialTheme.colorScheme.surface
+            val cardBgColor = if (isDarkMode) Color(0xFF222222) else MaterialTheme.colorScheme.surface
             val expressiveShape = RoundedCornerShape(12.dp)
             Card(
                 modifier = Modifier
-                    .size(width = 48.dp, height = 52.dp)
+                    .width(48.dp)
+                    .height(56.dp)
                     .clickable { onSearchClick() }
                     .testTag("square_station_picker_button"),
                 colors = CardDefaults.cardColors(containerColor = cardBgColor),
-                border = appCardBorder(),
                 shape = expressiveShape
             ) {
                 Box(
@@ -89,6 +95,8 @@ fun FavoriteStationsRow(
             item {
                 Card(
                     modifier = Modifier
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable { onSearchClick() }
                         .testTag("empty_favorite_stations_chip"),
                     colors = CardDefaults.cardColors(
@@ -98,7 +106,9 @@ fun FavoriteStationsRow(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -120,7 +130,7 @@ fun FavoriteStationsRow(
                     val borderStroke = if (isSelected) {
                         BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
                     } else {
-                        appCardBorder()
+                        null
                     }
                     val animatedCornerRadius by animateDpAsState(
                         targetValue = if (isSelected) 8.dp else 18.dp,
@@ -129,9 +139,17 @@ fun FavoriteStationsRow(
                     )
                     val expressiveShape = RoundedCornerShape(animatedCornerRadius)
 
+                    val hasAccessibilityIssue = remember(station.id, station.name, accessibilityIncidents) {
+                        accessibilityIncidents.any { incident ->
+                            StationAccessibilityHelper.isMetroStationAffected(station.id, station.name, incident)
+                        }
+                    }
+
                     Card(
                         modifier = Modifier
                             .widthIn(min = 120.dp, max = 160.dp)
+                            .height(56.dp)
+                            .clip(expressiveShape)
                             .clickable { metroViewModel.selectRealTimeStation(stationId) }
                             .testTag("favorite_station_chip_$stationId"),
                         colors = CardDefaults.cardColors(containerColor = cardBgColor),
@@ -139,55 +157,78 @@ fun FavoriteStationsRow(
                         shape = expressiveShape
                     ) {
                         Column(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = station.name,
-                                    fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = if (isSelected) {
-                                        if (isDarkMode) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurface
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = station.name,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else textColor,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (hasAccessibilityIssue) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.NotAccessible,
+                                            contentDescription = "No accesible",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
                                 val distanceText = metroViewModel.getStationDistanceText(station)
                                 if (distanceText != null) {
                                     Text(
                                         text = distanceText,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) {
-                                            if (isDarkMode) Color(0xFF93C5FD) else MaterialTheme.colorScheme.primary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        },
+                                        color = if (isSelected) (if (isDarkMode) Color(0xFF93C5FD) else MaterialTheme.colorScheme.primary) else subtextColor,
                                         modifier = Modifier.padding(start = 4.dp)
                                     )
                                 }
                             }
                             
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 station.lines.forEach { lineId ->
                                     val lineObj = ValenciaMetroData.lines.find { it.id == lineId }
                                     val colorHex = lineObj?.colorHex ?: "#7F8C8D"
                                     Box(
                                         modifier = Modifier
-                                            .size(width = 24.dp, height = 6.dp)
-                                            .clip(CircleShape)
+                                            .height(14.dp)
+                                            .widthIn(min = 16.dp)
+                                            .clip(RoundedCornerShape(7.dp))
                                             .background(Color(android.graphics.Color.parseColor(colorHex)))
-                                    )
+                                            .padding(horizontal = 4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = lineId,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 9.sp,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            style = androidx.compose.ui.text.TextStyle(
+                                                platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         }

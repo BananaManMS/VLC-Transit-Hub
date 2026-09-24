@@ -147,6 +147,34 @@ object TransitIdMapper {
     }
 
     /**
+     * Corrects GTFS misclassifications for Metrovalencia lines.
+     * Metro lines (L1, L2, L3, L5, L7, L9) should always be SUBWAY.
+     * Tram lines (L4, L6, L8, L10) should always be TRAM.
+     */
+    fun sanitizeSubwayOrTramMode(currentMode: com.example.data.model.routing.TransitMode, routeShortName: String?): com.example.data.model.routing.TransitMode {
+        if (currentMode == com.example.data.model.routing.TransitMode.SUBWAY || currentMode == com.example.data.model.routing.TransitMode.TRAM) {
+            if (routeShortName.isNullOrBlank()) return currentMode
+            val clean = routeShortName.uppercase(Locale.ROOT).trim()
+                .replace(Regex("""^(METRO|LÍNEA|LINEA|TRAM|METROVALENCIA)\s*"""), "")
+                .replace("L-", "L")
+                .replace("L ", "L")
+                .trim()
+            val digits = clean.filter { it.isDigit() }
+            val lineKey = when {
+                clean.startsWith("L") -> clean
+                digits.isNotEmpty() -> "L$digits"
+                else -> clean
+            }
+            return when (lineKey) {
+                "L1", "L2", "L3", "L5", "L7", "L9" -> com.example.data.model.routing.TransitMode.SUBWAY
+                "L4", "L6", "L8", "L10" -> com.example.data.model.routing.TransitMode.TRAM
+                else -> currentMode
+            }
+        }
+        return currentMode
+    }
+
+    /**
      * Extracts EMT Stop number (e.g. "es-EMT-Valencia_1234" -> "1234", "1234", "Plaça (1234)").
      */
     fun extractEmtStopNumber(stopId: String?, name: String? = null): String? {
@@ -490,6 +518,116 @@ object TransitIdMapper {
         "tossal del rei" to 132
     )
 
+    private val RAIL_SUBWAY_LINE_STATIONS: Map<String, List<String>> = mapOf(
+        "L1" to listOf("betera", "horta vella", "masies", "seminari-ceu", "moncada-alfara", "massarrojos", "rocafort", "godella", "burjassot-godella", "burjassot", "empalme", "beniferri", "campanar", "turia", "angel guimera", "pl. espanya", "plaza espana", "jesus", "patraix", "safranar", "sant isidre", "valencia sud", "paiporta", "picanya", "torrent", "colegi el vedat", "realon", "sant ramon", "picassent", "omet", "espioca", "font almaguer", "alginet", "ausias march", "carlet", "benimodo", "l'alcudia", "lalcudia", "montortal", "massalaves", "alberic", "castello"),
+        "L2" to listOf("lliria", "fondo de benaguasil", "benaguasil", "la pobla de vallbona", "gallipont - torre del virrei", "l'eliana", "leliana", "montesol", "entrepins", "la vallesa", "la canyada", "fuente del jarro", "paterna", "campament", "les carolines - fira", "les carolines fira", "benimamet", "cantereria", "empalme", "beniferri", "campanar", "turia", "angel guimera", "pl. espanya", "plaza espana", "jesus", "patraix", "safranar", "sant isidre", "valencia sud", "paiporta", "picanya", "torrent", "torrent avinguda"),
+        "L3" to listOf("rafelbunyol", "la pobla de farnals", "massamagrell", "museros", "albalat dels sorells", "foios", "meliana", "almassera", "alboraia peris arago", "alboraia palmaret", "machado", "benimaclet", "facultats", "alameda", "colon", "xativa", "angel guimera", "av. del cid", "avenida del cid", "nou d'octubre", "nou doctubre", "mislata", "mislata almassil", "faitanar", "quart de poblet", "salt de l'aigua", "salt de laigua", "manises", "roses", "rosas", "aeroport", "aeropuerto"),
+        "L4" to listOf("mas del rosari", "la coma", "tomas y valiente", "parc cientific", "ll. llarga - terramelar", "terramelar", "vicent andres estelles", "campus", "sant joan", "la granja", "palau de congressos", "florista", "garbi", "benicalap", "transits", "reus", "sagunt", "pont de fusta", "trinitat", "benimaclet", "vicente zaragoza", "vicent zaragoza", "universitat politecnica", "la carrasca", "tarongers - ernest lluch", "tarongers ernest lluch", "betero", "la cadena", "platja malva-rosa", "platja malvarrosa", "platja les arenes", "dr. lluch", "doctor lluch"),
+        "L5" to listOf("maritim", "maritim - serreria", "maritim serreria", "ayora", "amistat", "amistat - conservatori", "arago", "aragon", "alameda", "facultats", "benimaclet", "machado", "colon", "xativa", "angel guimera", "av. del cid", "avenida del cid", "nou d'octubre", "nou doctubre", "mislata", "mislata almassil", "faitanar", "quart de poblet", "salt de l'aigua", "salt de laigua", "manises", "roses", "rosas", "aeroport", "aeropuerto"),
+        "L6" to listOf("tossal del rei", "sant miquel dels reis", "estadi ciutat de valencia", "orriols", "alfauir", "benimaclet", "vicente zaragoza", "vicent zaragoza", "universitat politecnica", "la carrasca", "tarongers - ernest lluch", "tarongers ernest lluch", "betero", "la cadena", "cabanyal", "francesc cubells", "grau - la marina", "grau la marina", "maritim", "maritim - serreria", "maritim serreria"),
+        "L7" to listOf("maritim", "maritim - serreria", "maritim serreria", "ayora", "amistat", "amistat - conservatori", "arago", "aragon", "alameda", "facultats", "benimaclet", "machado", "colon", "bailen", "jesus", "patraix", "safranar", "sant isidre", "valencia sud", "paiporta", "picanya", "torrent", "torrent avinguda"),
+        "L8" to listOf("maritim", "maritim - serreria", "maritim serreria", "grau - la marina", "grau la marina", "neptu"),
+        "L9" to listOf("alboraia peris arago", "alboraia palmaret", "machado", "benimaclet", "facultats", "alameda", "colon", "xativa", "angel guimera", "av. del cid", "avenida del cid", "nou d'octubre", "nou doctubre", "mislata", "mislata almassil", "faitanar", "quart de poblet", "salt de l'aigua", "salt de laigua", "manises", "roses", "rosas", "la cova", "la presa", "valencia la vella", "riba-roja de turia", "riba roja de turia"),
+        "L10" to listOf("alacant", "alicante", "russafa", "ruzafa", "amado granell - montolivet", "amado granell montolivet", "quatre carreres", "ciutat arts i ciencies - justicia", "ciutat arts i ciencies justicia", "ciutat arts i ciencies", "oceanografic", "moreres", "natzaret"),
+        "C1" to listOf("valencia nord", "estacio del nord", "estacio de franca", "alfafar - benetusser", "alfafar benetusser", "massanassa", "catarroja", "silla", "el romani", "sollana", "sueca", "cullera", "tavernes de la valldigna", "xeraco", "gandia", "platja de gandia"),
+        "C2" to listOf("valencia nord", "estacio del nord", "estacio de franca", "alfafar - benetusser", "alfafar benetusser", "massanassa", "catarroja", "silla", "benifaio - almussafes", "benifaio almussafes", "algemesi", "alzira", "carcaixent", "la pobla llarga", "manuel - l'enova", "manuel lenova", "xativa", "l'alcudia de crespins", "lalcudia de crespins", "montesa", "vallada", "moixent"),
+        "C3" to listOf("valencia nord", "estacio del nord", "valencia - font de sant lluis", "valencia font de sant lluis", "valencia - sant isidre", "valencia sant isidre", "sant isidre", "xirivella - alqueries", "xirivella alqueries", "aldaia", "loriguilla - reva", "loriguilla reva", "circuit gp", "cheste", "chiva", "bunol", "bunyol", "venta mina", "siete aguas", "requena", "san antonio de requena", "utiel"),
+        "C5" to listOf("valencia nord", "estacio del nord", "valencia - cabanyal", "valencia cabanyal", "cabanyal", "pucol", "sagunt", "sagunto", "gilet", "estivella - beselga", "estivella beselga", "algimia d'alfara", "algimia dalfara", "soneja", "segorbe - ciutat", "segorbe ciutat", "segorbe - san antonio", "segorbe san antonio", "navajas", "jerica - viver", "jerica viver", "caudiel"),
+        "C6" to listOf("valencia nord", "estacio del nord", "valencia - cabanyal", "valencia cabanyal", "cabanyal", "roca - cuper", "roca cuper", "albuixech", "massalfassar", "el puig", "pucol", "sagunt", "sagunto", "les valls", "xilxes", "la llosa", "almenara", "moncofa", "nules - villavieja", "nules villavieja", "borriana - alqueries de nino perdido", "borriana alqueries de nino perdido", "vila-real", "vila real", "almassora", "castello de la plana", "vinaros")
+    )
+
+    /**
+     * Finds alternative train or metro lines that serve both fromName and toName.
+     * Excludes bus lines as bus routing is handled separately.
+     */
+    fun getAlternativeTransitLines(
+        mode: com.example.data.model.routing.TransitMode,
+        originalLine: String?,
+        fromName: String,
+        toName: String
+    ): Set<String> {
+        val result = mutableSetOf<String>()
+        val normOrig = originalLine?.trim()?.uppercase() ?: ""
+        if (normOrig.isNotBlank()) {
+            result.add(normOrig)
+            val digitsOnly = normOrig.filter { it.isDigit() }
+            if (digitsOnly.isNotBlank()) {
+                if (mode == com.example.data.model.routing.TransitMode.SUBWAY || mode == com.example.data.model.routing.TransitMode.TRAM) {
+                    result.add("L$digitsOnly")
+                    result.add(digitsOnly)
+                } else if (mode == com.example.data.model.routing.TransitMode.RAIL) {
+                    result.add("C$digitsOnly")
+                    result.add(digitsOnly)
+                }
+            }
+        }
+
+        // Only apply alternative multi-line matching to Trains and Metros/Trams!
+        if (mode != com.example.data.model.routing.TransitMode.SUBWAY &&
+            mode != com.example.data.model.routing.TransitMode.TRAM &&
+            mode != com.example.data.model.routing.TransitMode.RAIL) {
+            return result
+        }
+
+        val fromNorm = normalizeStationName(fromName)
+        val toNorm = normalizeStationName(toName)
+        if (fromNorm.isBlank() || toNorm.isBlank() || fromNorm == toNorm) return result
+
+        for ((lineKey, stationList) in RAIL_SUBWAY_LINE_STATIONS) {
+            val fromIndex = stationList.indexOfFirst { it == fromNorm || it.contains(fromNorm) || fromNorm.contains(it) }
+            val toIndex = stationList.indexOfFirst { it == toNorm || it.contains(toNorm) || toNorm.contains(it) }
+
+            if (fromIndex != -1 && toIndex != -1 && fromIndex != toIndex) {
+                val lineDigits = lineKey.filter { it.isDigit() }
+                if (mode == com.example.data.model.routing.TransitMode.RAIL) {
+                    if (lineKey.startsWith("C")) {
+                        result.add(lineKey)
+                        result.add(lineDigits)
+                    }
+                } else {
+                    if (lineKey.startsWith("L")) {
+                        result.add(lineKey)
+                        result.add(lineDigits)
+                    }
+                }
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * Checks if a destination is a valid downstream terminal/station for train/metro on any serving line.
+     */
+    fun isRailOrSubwayDownstreamDestination(
+        depDestination: String,
+        fromName: String,
+        toName: String
+    ): Boolean {
+        if (depDestination.isBlank()) return true
+        val destNorm = normalizeStationName(depDestination)
+        val fromNorm = normalizeStationName(fromName)
+        val toNorm = normalizeStationName(toName)
+
+        if (fromNorm.isBlank() || toNorm.isBlank()) return false
+
+        for ((_, stationList) in RAIL_SUBWAY_LINE_STATIONS) {
+            val fromIdx = stationList.indexOfFirst { it == fromNorm || it.contains(fromNorm) || fromNorm.contains(it) }
+            val toIdx = stationList.indexOfFirst { it == toNorm || it.contains(toNorm) || toNorm.contains(it) }
+            val destIdx = stationList.indexOfFirst { it == destNorm || it.contains(destNorm) || destNorm.contains(it) }
+
+            if (fromIdx != -1 && toIdx != -1 && destIdx != -1) {
+                if (fromIdx < toIdx && toIdx <= destIdx) {
+                    return true // Forward travel along increasing index
+                }
+                if (fromIdx > toIdx && toIdx >= destIdx) {
+                    return true // Forward travel along decreasing index
+                }
+            }
+        }
+        return false
+    }
+
     /**
      * Centralized matching function to determine if a real-time candidate destination
      * corresponds to the planned leg direction.
@@ -536,7 +674,16 @@ object TransitIdMapper {
             return true
         }
 
-        // 5. If departure matches origin stop name (heading backwards towards start), explicitly reject
+        // 5. Downstream sequence check for trains and metros
+        if (leg.mode == com.example.data.model.routing.TransitMode.SUBWAY ||
+            leg.mode == com.example.data.model.routing.TransitMode.TRAM ||
+            leg.mode == com.example.data.model.routing.TransitMode.RAIL) {
+            if (isRailOrSubwayDownstreamDestination(depDestination, leg.fromName, leg.toName)) {
+                return true
+            }
+        }
+
+        // 6. If departure matches origin stop name (heading backwards towards start), explicitly reject
         if (fromNameNorm.isNotBlank() && (depNorm == fromNameNorm || depNorm.contains(fromNameNorm))) {
             return false
         }

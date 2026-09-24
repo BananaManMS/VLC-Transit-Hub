@@ -64,7 +64,8 @@ fun AjustesScreen(
     cercaniasViewModel: CercaniasViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     metroViewModel: MetroViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     onBackClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val context = LocalContext.current
     val appLanguage by viewModel.appLanguage.collectAsState()
@@ -74,13 +75,14 @@ fun AjustesScreen(
     val favoriteStations by metroViewModel.favoriteStations.collectAsState()
     val allNetworkStations by metroViewModel.allNetworkStations.collectAsState()
     val cercaniasFavoriteStations by cercaniasViewModel.cercaniasFavoriteStations.collectAsState()
+    val preferredTransitModes by viewModel.favoriteTransitModes.collectAsState()
 
     var showStationSelectionPage by remember { mutableStateOf(false) }
     var showCercaniasStationSelectionPage by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var isCalendarConnected by remember { mutableStateOf(false) }
 
-    val cardBg = if (isDarkMode) Color(0xFF171D2C) else Color.White
+    val cardBg = if (isDarkMode) Color(0xFF222222) else Color.White
     val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
     val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
     val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
@@ -152,7 +154,7 @@ fun AjustesScreen(
 
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 0.dp),
+                contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 16.dp + activeTripBottomPadding),
                 modifier = Modifier.weight(1f)
             ) {
                 // 0. Language Setting Card
@@ -344,6 +346,16 @@ fun AjustesScreen(
                     )
                 }
 
+                // 2.5 Preferred Transit Modes
+                item {
+                    PreferredTransitModesCard(
+                        preferredModes = preferredTransitModes,
+                        onToggleMode = { viewModel.togglePreferredTransitMode(it) },
+                        appLanguage = appLanguage,
+                        isDarkMode = isDarkMode
+                    )
+                }
+
                 // 3. Select Metrovalencia Stations Card
                 item {
                     UnifiedAppCard(
@@ -441,7 +453,6 @@ fun AjustesScreen(
                 // 4. Google Calendar Connection Card
                 item {
                     Card(
-                        border = appCardBorder(),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = cardBg)
@@ -525,6 +536,56 @@ fun AjustesScreen(
                             }
                         }
                     }
+                }
+
+                // 4.5. Onboarding / Guía de bienvenida
+                item {
+                    UnifiedAppCard(
+                        modifier = Modifier.testTag("setting_onboarding_card"),
+                        onClick = { viewModel.restartOnboarding() },
+                        startContent = {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isDarkMode) Color(0xFF1E3A2F) else Color(0xFFE8F5E9)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = if (isDarkMode) Color(0xFF4ADE80) else Color(0xFF16A34A),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        },
+                        centerContent = {
+                            Column {
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Guia de Benvinguda" else "Guía de Bienvenida",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = textColor
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA)
+                                        "Torna a veure el tutorial, parades favorites i novetats"
+                                    else
+                                        "Vuelve a ver el tutorial, paradas favoritas y novedades",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = subtextColor
+                                )
+                            }
+                        },
+                        endContent = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = if (appLanguage == AppLanguage.ES) "Ver guía" else "Veure guia",
+                                tint = subtextColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    )
                 }
 
                 // 5. About the App Card

@@ -20,7 +20,8 @@ class MapFavoritesHandler(
     private val favoriteMetrobusStops: MutableStateFlow<Set<String>>,
     private val favoriteValenbisi: MutableStateFlow<Set<String>>,
     private val valenbisiAliases: MutableStateFlow<Map<String, String>>,
-    private val busStopAliases: MutableStateFlow<Map<String, String>>
+    private val busStopAliases: MutableStateFlow<Map<String, String>>,
+    private val metrobusStopAliases: MutableStateFlow<Map<String, String>>
 ) {
 
     fun reloadFavorites() {
@@ -30,30 +31,33 @@ class MapFavoritesHandler(
                 try {
                     val jsonObj = JSONObject(savedFilterJson)
                     val loadedFilter = MapFilter(
-                        isFavorites = jsonObj.optBoolean("isFavorites", true),
-                        showBus = jsonObj.optBoolean("showBus", false),
-                        showMetro = jsonObj.optBoolean("showMetro", false),
-                        showCercanias = jsonObj.optBoolean("showCercanias", false),
+                        isFavorites = jsonObj.optBoolean("isFavorites", false),
+                        showBus = jsonObj.optBoolean("showBus", true),
+                        showMetrobus = jsonObj.optBoolean("showMetrobus", false),
+                        showMetro = jsonObj.optBoolean("showMetro", true),
+                        showCercanias = jsonObj.optBoolean("showCercanias", true),
                         showValenbisi = jsonObj.optBoolean("showValenbisi", false)
                     )
                     mapFilter.value = loadedFilter
                 } catch (e: Exception) {
                     Log.e("MapFavoritesHandler", "Error parsing saved map filter preference", e)
                 }
+            } else {
+                mapFilter.value = MapFilter.DEFAULT
             }
 
             val savedBusFavs = dashboardRepository.getPreference("favorite_bus_stops", "")
             if (savedBusFavs.isNotEmpty()) {
                 favoriteBusStops.value = savedBusFavs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             } else {
-                favoriteBusStops.value = setOf("1001", "1002", "1500", "2000", "70", "80")
+                favoriteBusStops.value = emptySet()
             }
 
-            val savedMetroFavs = dashboardRepository.getPreference("favorite_stations", "16,15,14")
+            val savedMetroFavs = dashboardRepository.getPreference("favorite_stations", "")
             if (savedMetroFavs.isNotEmpty()) {
                 favoriteMetroStations.value = savedMetroFavs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             } else {
-                favoriteMetroStations.value = setOf("15", "16", "14", "1", "2")
+                favoriteMetroStations.value = emptySet()
             }
 
             val savedCercaniasFavs = dashboardRepository.getPreference("favorite_cercanias_stations", "")
@@ -97,6 +101,18 @@ class MapFavoritesHandler(
                 busStopAliases.value = map
             } catch (e: Exception) {
                 Log.e("MapFavoritesHandler", "Error loading saved bus stop aliases", e)
+            }
+
+            val savedMetrobusAliasesJson = dashboardRepository.getPreference("metrobus_stop_aliases", "{}")
+            try {
+                val jsonObj = JSONObject(savedMetrobusAliasesJson)
+                val map = mutableMapOf<String, String>()
+                jsonObj.keys().forEach { key ->
+                    map[key] = jsonObj.getString(key)
+                }
+                metrobusStopAliases.value = map
+            } catch (e: Exception) {
+                Log.e("MapFavoritesHandler", "Error loading saved metrobus stop aliases", e)
             }
         }
     }
@@ -202,6 +218,27 @@ class MapFavoritesHandler(
                 dashboardRepository.savePreference("bus_stop_aliases", jsonObj.toString())
             } catch (e: Exception) {
                 Log.e("MapFavoritesHandler", "Error saving bus stop alias", e)
+            }
+        }
+    }
+
+    fun setMetrobusStopAlias(stopId: String, alias: String) {
+        val trimmed = alias.trim().take(32)
+        val currentMap = metrobusStopAliases.value.toMutableMap()
+        if (trimmed.isEmpty()) {
+            currentMap.remove(stopId)
+        } else {
+            currentMap[stopId] = trimmed
+        }
+        metrobusStopAliases.value = currentMap
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                val jsonObj = JSONObject()
+                currentMap.forEach { (k, v) -> jsonObj.put(k, v) }
+                dashboardRepository.savePreference("metrobus_stop_aliases", jsonObj.toString())
+            } catch (e: Exception) {
+                Log.e("MapFavoritesHandler", "Error saving metrobus stop alias", e)
             }
         }
     }

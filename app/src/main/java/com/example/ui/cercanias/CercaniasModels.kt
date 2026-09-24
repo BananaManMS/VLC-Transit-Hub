@@ -27,11 +27,12 @@ data class CercaniasAlert(
     val id: String,
     val headerEs: String,
     val descriptionEs: String,
-    val routeIds: List<String>,
-    val tripIds: List<String>,
-    val stopIds: List<String>,
-    val isAccessibility: Boolean,
-    val timestamp: Long
+    val routeIds: List<String> = emptyList(),
+    val tripIds: List<String> = emptyList(),
+    val stopIds: List<String> = emptyList(),
+    val isAccessibility: Boolean = false,
+    val isCirculationIncident: Boolean = true,
+    val timestamp: Long = 0L
 )
 
 data class LiveVehicleInfo(

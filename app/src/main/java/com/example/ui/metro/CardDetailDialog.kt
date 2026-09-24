@@ -21,7 +21,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.platform.LocalContext
+import com.example.ui.metro.cards.CardDisplayFormat
+import com.example.ui.metro.cards.TransitCardAlertManager
+import com.example.ui.metro.cards.UnifiedTransitCardView
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -41,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -126,73 +136,13 @@ fun CardDetailDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                val category = CardCategory.valueOf(card.category)
-                val isFaded = card.isFaded
-                val (bgColor, contentColor, badgeBgColor) = getCardColors(category = category, isFaded = isFaded, isDarkMode = isDarkMode)
-
-                Card(
-                    border = appCardBorder(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(110.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = bgColor)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (isEditingName) editedName else card.assignedName,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = contentColor,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (isFaded) {
-                                        if (appLanguage == AppLanguage.CA) "${category.label} (Inactiva)" else "${category.label} (Inactiva)"
-                                    } else category.label,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = contentColor.copy(alpha = 0.85f),
-                                    modifier = Modifier
-                                        .background(badgeBgColor, RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-
-                            Column {
-                                Text(
-                                    text = card.remainingValue,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = contentColor
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = formatCardNumber(card.cardNumber),
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = contentColor.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    }
-                }
+                val cardToDisplay = if (isEditingName) card.copy(assignedName = editedName) else card
+                UnifiedTransitCardView(
+                    card = cardToDisplay,
+                    appLanguage = appLanguage,
+                    format = CardDisplayFormat.HERO,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 if (isEditingName) {
                     OutlinedTextField(
@@ -208,6 +158,7 @@ fun CardDetailDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
                             .clickable { isManuallyInactive = !isManuallyInactive }
                             .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -244,6 +195,110 @@ fun CardDetailDialog(
                             modifier = Modifier.testTag("inactive_switch")
                         )
                     }
+                    val context = LocalContext.current
+                    var isAlertMuted by remember(card) {
+                        mutableStateOf(TransitCardAlertManager.isCardMuted(context, card.cardNumber))
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                val newMuted = !isAlertMuted
+                                isAlertMuted = newMuted
+                                TransitCardAlertManager.setCardMuted(context, card.cardNumber, newMuted)
+                            }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Avisos de saldo / caducitat" else "Avisos de saldo / caducidad",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Avisar quan queden pocs viatges o saldo" else "Avisar cuando queden pocos viajes o saldo",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = !isAlertMuted,
+                            onCheckedChange = { isChecked ->
+                                isAlertMuted = !isChecked
+                                TransitCardAlertManager.setCardMuted(context, card.cardNumber, !isChecked)
+                            },
+                            modifier = Modifier.testTag("alerts_switch")
+                        )
+                    }
+
+                    var showOnHomeState by remember(card) {
+                        mutableStateOf(card.showOnHome)
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                val newValue = !showOnHomeState
+                                showOnHomeState = newValue
+                                metroViewModel.updateCardHomeVisibility(card.cardNumber, newValue)
+                            }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Home,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Mostrar a l'inici" else "Mostrar en inicio",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Mostrar aquesta targeta a la pantalla principal" else "Mostrar esta tarjeta en la pantalla de inicio",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = showOnHomeState,
+                            onCheckedChange = { isChecked ->
+                                showOnHomeState = isChecked
+                                metroViewModel.updateCardHomeVisibility(card.cardNumber, isChecked)
+                            },
+                            modifier = Modifier.testTag("home_visibility_switch")
+                        )
+                    }
                 }
 
                 Text(
@@ -257,6 +312,7 @@ fun CardDetailDialog(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    val category = try { CardCategory.valueOf(card.category) } catch (_: Exception) { CardCategory.OTHER }
                     val isMonthly = category == CardCategory.SUMA_MENSUAL
                     val isTuiN = category == CardCategory.TUIN
 
@@ -280,130 +336,16 @@ fun CardDetailDialog(
                         DetailRow(label = texts.remainingTripsLabel, value = card.remainingValue)
                     }
 
-                    DetailRow(label = texts.operatorLabel, value = card.operador)
                     DetailRow(label = texts.validityZonesLabel, value = card.zonas)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = texts.historyLabel,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
 
-                if (card.viajesList.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = texts.historyNotAvailableDesc,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        for (viaje in card.viajesList) {
-                            Card(
-                                border = appCardBorder(),
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = viaje.estacion,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                            if (viaje.zona.isNotEmpty()) {
-                                                Text(
-                                                    text = viaje.zona,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.White,
-                                                    modifier = Modifier
-                                                        .background(
-                                                            color = when (viaje.zona.uppercase()) {
-                                                                "A" -> Color(0xFF1976D2)
-                                                                "B" -> Color(0xFF388E3C)
-                                                                "C" -> Color(0xFFF57C00)
-                                                                "D" -> Color(0xFFD32F2F)
-                                                                else -> MaterialTheme.colorScheme.secondary
-                                                            },
-                                                            shape = RoundedCornerShape(4.dp)
-                                                        )
-                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = viaje.fecha,
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        if (viaje.tipoValidacion.isNotEmpty()) {
-                                            val tipoLower = viaje.tipoValidacion.lowercase()
-                                            val badgeBg = when {
-                                                tipoLower.contains("entrada") -> Color(0xFFE8F5E9)
-                                                tipoLower.contains("salida") -> Color(0xFFEEEEEE)
-                                                tipoLower.contains("transbordo") -> Color(0xFFE3F2FD)
-                                                else -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-                                            }
-                                            val badgeText = when {
-                                                tipoLower.contains("entrada") -> Color(0xFF2E7D32)
-                                                tipoLower.contains("salida") -> Color(0xFF616161)
-                                                tipoLower.contains("transbordo") -> Color(0xFF1565C0)
-                                                else -> MaterialTheme.colorScheme.onSecondaryContainer
-                                            }
-                                            val badgeLabel = when {
-                                                tipoLower.contains("entrada") -> if (appLanguage == AppLanguage.CA) "Entrada" else "Entrada"
-                                                tipoLower.contains("salida") -> if (appLanguage == AppLanguage.CA) "Eixida" else "Salida"
-                                                tipoLower.contains("transbordo") -> if (appLanguage == AppLanguage.CA) "Transbord" else "Transbordo"
-                                                else -> viaje.tipoValidacion
-                                            }
-                                            Text(
-                                                text = badgeLabel,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = badgeText,
-                                                modifier = Modifier
-                                                    .background(badgeBg, RoundedCornerShape(4.dp))
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                CardDetailTripHistory(
+                    viajesList = card.viajesList,
+                    appLanguage = appLanguage,
+                    texts = texts
+                )
             }
         },
         confirmButton = {

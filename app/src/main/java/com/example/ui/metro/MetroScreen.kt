@@ -37,7 +37,8 @@ fun MetroScreen(
     isDarkMode: Boolean,
     initialPage: Int = 0,
     onBackClick: (() -> Unit)? = null,
-    onBackGesture: (() -> Unit)? = null
+    onBackGesture: (() -> Unit)? = null,
+    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val backHandlerAction = onBackClick ?: onBackGesture
     if (backHandlerAction != null) {
@@ -81,12 +82,6 @@ fun MetroScreen(
             .fillMaxSize()
             .testTag("metro_screen_container")
     ) {
-        ScreenHeader(
-            title = texts.headerMetroTitle,
-            subtitle = texts.headerMetroSubtitle,
-            onBackClick = onBackClick
-        )
-
         UnifiedTabRow(
             selectedTabIndex = pagerState.currentPage,
             tabs = if (appLanguage == AppLanguage.CA) listOf("Eixides", "Avisos", "Targetes") else listOf("Salidas", "Avisos", "Tarjetas"),
@@ -114,7 +109,8 @@ fun MetroScreen(
                         departures = departures,
                         isLoading = isLoading,
                         error = error,
-                        isDarkMode = isDarkMode
+                        isDarkMode = isDarkMode,
+                        activeTripBottomPadding = activeTripBottomPadding
                     )
                 }
                 1 -> {
@@ -127,14 +123,16 @@ fun MetroScreen(
                             scope.launch {
                                 pagerState.animateScrollToPage(0)
                             }
-                        }
+                        },
+                        activeTripBottomPadding = activeTripBottomPadding
                     )
                 }
                 2 -> {
                     TarjetasTab(
                         appLanguage = appLanguage,
                         metroViewModel = metroViewModel,
-                        isDarkMode = isDarkMode
+                        isDarkMode = isDarkMode,
+                        activeTripBottomPadding = activeTripBottomPadding
                     )
                 }
             }

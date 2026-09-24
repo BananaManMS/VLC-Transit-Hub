@@ -21,13 +21,16 @@ import com.example.data.model.routing.TransitMode
  */
 object NotificationProgressBitmapGenerator {
 
+    private val modeIconCache = java.util.concurrent.ConcurrentHashMap<String, Bitmap>()
+
     fun generateProgressBarBitmap(
         context: Context,
         legs: List<PlannedLeg>,
         currentLegIndex: Int,
         progressFractionInLeg: Float = 0.5f,
         width: Int = 1000,
-        height: Int = 70
+        height: Int = 70,
+        isSystemDark: Boolean = true
     ): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -68,8 +71,8 @@ object NotificationProgressBitmapGenerator {
         val barTop = centerY - barHeight / 2f
         val barBottom = centerY + barHeight / 2f
 
-        val completedMutedColor = Color.parseColor("#475569") // Muted slate gray for completed legs
-        val upcomingInactiveColor = Color.parseColor("#334155") // Dark slate gray for future inactive legs
+        val completedMutedColor = if (isSystemDark) Color.parseColor("#475569") else Color.parseColor("#94A3B8")
+        val upcomingInactiveColor = if (isSystemDark) Color.parseColor("#334155") else Color.parseColor("#CBD5E1")
 
         val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -166,40 +169,65 @@ object NotificationProgressBitmapGenerator {
                 cleanName == "10" || cleanName == "L10" -> Color.parseColor("#00838F") // L10 Teal
                 else -> Color.parseColor("#D32F2F")
             }
-            TransitMode.BUS -> Color.parseColor("#0D47A1") // EMT Blue
-            TransitMode.RAIL -> Color.parseColor("#C2185B") // Cercanías Red
+            TransitMode.BUS, TransitMode.METROBUS -> Color.parseColor("#0D47A1") // EMT Blue
+            TransitMode.RAIL, TransitMode.CERCANIAS -> Color.parseColor("#C2185B") // Cercanías Red
             TransitMode.WALK -> Color.parseColor("#00A86B") // Walk Green
-            TransitMode.BICYCLE -> Color.parseColor("#00897B")
+            TransitMode.BICYCLE, TransitMode.VALENBISI -> Color.parseColor("#00897B")
+            else -> Color.parseColor("#D32F2F")
         }
     }
 
     private fun fallbackColorForMode(mode: TransitMode): Int = when (mode) {
-        TransitMode.BUS -> Color.parseColor("#0D47A1")
+        TransitMode.BUS, TransitMode.METROBUS -> Color.parseColor("#0D47A1")
         TransitMode.SUBWAY, TransitMode.TRAM -> Color.parseColor("#D32F2F")
-        TransitMode.RAIL -> Color.parseColor("#C2185B")
+        TransitMode.RAIL, TransitMode.CERCANIAS -> Color.parseColor("#C2185B")
         TransitMode.WALK -> Color.parseColor("#00A86B")
-        TransitMode.BICYCLE -> Color.parseColor("#00897B")
+        TransitMode.BICYCLE, TransitMode.VALENBISI -> Color.parseColor("#00897B")
+        else -> Color.parseColor("#0D47A1")
     }
 
-    fun generateModeIconBitmap(context: Context, mode: TransitMode, isSalYa: Boolean = false): Bitmap {
+    fun generateModeIconBitmap(
+        context: Context,
+        mode: TransitMode,
+        isSalYa: Boolean = false,
+        isSystemDark: Boolean = true
+    ): Bitmap {
+        val cacheKey = "${mode.name}_${isSalYa}_${isSystemDark}"
+        modeIconCache[cacheKey]?.let { cached ->
+            if (!cached.isRecycled) return cached
+        }
+
         val size = 80
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
         val iconRes = when (mode) {
-            TransitMode.BUS -> R.drawable.ic_notif_bus
+            TransitMode.BUS, TransitMode.METROBUS -> R.drawable.ic_notif_bus
             TransitMode.SUBWAY, TransitMode.TRAM -> R.drawable.ic_notif_subway
-            TransitMode.RAIL -> R.drawable.ic_notif_train
+            TransitMode.RAIL, TransitMode.CERCANIAS -> R.drawable.ic_notif_train
             TransitMode.WALK -> R.drawable.ic_notif_walk
-            TransitMode.BICYCLE -> R.drawable.ic_bike
+            TransitMode.BICYCLE, TransitMode.VALENBISI -> R.drawable.ic_bike
+            else -> R.drawable.ic_notif_bus
         }
 
-        val iconColor = if (isSalYa) Color.parseColor("#FF9800") else when (mode) {
-            TransitMode.BUS -> Color.parseColor("#38BDF8")
-            TransitMode.SUBWAY, TransitMode.TRAM -> Color.parseColor("#F87171")
-            TransitMode.RAIL -> Color.parseColor("#F472B6")
-            TransitMode.WALK -> Color.parseColor("#4ADE80")
-            TransitMode.BICYCLE -> Color.parseColor("#2DD4BF")
+        val iconColor = if (isSalYa) Color.parseColor("#FF9800") else if (isSystemDark) {
+            when (mode) {
+                TransitMode.BUS, TransitMode.METROBUS -> Color.parseColor("#38BDF8")
+                TransitMode.SUBWAY, TransitMode.TRAM -> Color.parseColor("#F87171")
+                TransitMode.RAIL, TransitMode.CERCANIAS -> Color.parseColor("#F472B6")
+                TransitMode.WALK -> Color.parseColor("#4ADE80")
+                TransitMode.BICYCLE, TransitMode.VALENBISI -> Color.parseColor("#2DD4BF")
+                else -> Color.parseColor("#38BDF8")
+            }
+        } else {
+            when (mode) {
+                TransitMode.BUS, TransitMode.METROBUS -> Color.parseColor("#0284C7")
+                TransitMode.SUBWAY, TransitMode.TRAM -> Color.parseColor("#DC2626")
+                TransitMode.RAIL, TransitMode.CERCANIAS -> Color.parseColor("#C2185B")
+                TransitMode.WALK -> Color.parseColor("#16A34A")
+                TransitMode.BICYCLE, TransitMode.VALENBISI -> Color.parseColor("#0D9488")
+                else -> Color.parseColor("#0284C7")
+            }
         }
 
         drawVectorDrawable(
@@ -213,6 +241,7 @@ object NotificationProgressBitmapGenerator {
             tintColor = iconColor
         )
 
+        modeIconCache[cacheKey] = bitmap
         return bitmap
     }
 

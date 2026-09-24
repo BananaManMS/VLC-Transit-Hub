@@ -19,22 +19,29 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Newspaper
 import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,37 +53,48 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import com.example.data.model.ValenciaMetroData
 import com.example.ui.components.SkeletonCardItem
-import com.example.ui.theme.appCardBorder
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.appCardBorder
+import com.example.util.AccessibilityNoticeFormatter.cleanAccessibilityNoticeText
+import com.example.util.AccessibilityNoticeFormatter.deduplicateAccessibilityIncidents
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AvisosTab(
     appLanguage: AppLanguage,
     metroViewModel: MetroViewModel,
     isDarkMode: Boolean,
-    onNavigateToMetroStation: (String) -> Unit = {}
+    onNavigateToMetroStation: (String) -> Unit = {},
+    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     LaunchedEffect(Unit) {
         metroViewModel.fetchAllAlerts()
     }
 
     val activeIncidents by metroViewModel.activeIncidents.collectAsState()
-    val isMetroAlertsLoading by metroViewModel.isMetroAlertsLoading.collectAsState()
+    val specialNotices by metroViewModel.specialNotices.collectAsState()
     val accessibilityIncidents by metroViewModel.accessibilityIncidents.collectAsState()
-    val twitterIncidents by metroViewModel.twitterIncidents.collectAsState()
-    val twitterLoading by metroViewModel.twitterLoading.collectAsState()
+    val metroNews by metroViewModel.metroNews.collectAsState()
+    val isMetroAlertsLoading by metroViewModel.isMetroAlertsLoading.collectAsState()
+    val isNewsLoading by metroViewModel.isNewsLoading.collectAsState()
     val allNetworkStations by metroViewModel.allNetworkStations.collectAsState()
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val uriHandler = LocalUriHandler.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val isOnline by remember { com.example.util.observeNetworkConnectivity(context) }
+        .collectAsState(initial = com.example.util.isNetworkAvailable(context))
 
     var isAccessibilityExpanded by remember { mutableStateOf(false) }
+    var selectedNewsItem by remember { mutableStateOf<MetroNewsItem?>(null) }
 
     data class MergedActiveIncident(
         val id: String,
@@ -86,6 +104,25 @@ fun AvisosTab(
         val lineasFgv: List<String>,
         val updatedAt: String?
     )
+
+    val sortedSpecialNotices = remember(specialNotices) {
+        specialNotices
+            .distinctBy { "${it.category}_${it.title}_${it.publicationDate}" }
+            .sortedWith(
+                compareBy<MetroNotice> { notice ->
+                    val catEnum = MetroNoticeCategory.fromRaw(notice.category)
+                    when (catEnum) {
+                        MetroNoticeCategory.OBRAS -> 0
+                        MetroNoticeCategory.SERVICIO_ESPECIAL -> 1
+                        MetroNoticeCategory.ALERTA_METEOROLOGICA -> 2
+                        MetroNoticeCategory.AVISO, MetroNoticeCategory.INCIDENCIA -> 3
+                        MetroNoticeCategory.ACCESIBILIDAD -> 4
+                        MetroNoticeCategory.PROMOCION -> 5
+                        MetroNoticeCategory.OTRO -> 6
+                    }
+                }.thenByDescending { it.publicationDate ?: "" }
+            )
+    }
 
     val groupedActiveIncidents = remember(activeIncidents) {
         data class ActiveIncidentKey(
@@ -103,7 +140,6 @@ fun AvisosTab(
             groups.getOrPut(key) { mutableListOf() }.add(incident)
         }
         groups.map { (key, list) ->
-            // Extract distinct line strings, ignore blank
             val lines = list.mapNotNull { it.lineaFgv }.filter { it.isNotBlank() }.distinct()
             val representative = list.first()
             MergedActiveIncident(
@@ -122,23 +158,33 @@ fun AvisosTab(
     val groupedIncidents = remember(accessibilityIncidents, allNetworkStations) {
         val map = mutableMapOf<GroupedStation, MutableList<AccessibilityIncident>>()
         for (incident in accessibilityIncidents) {
-            val station = allNetworkStations.find { it.id == incident.estacionId?.toString() }
-            val key = if (station != null) {
-                GroupedStation(station.name, station.id)
+            val rawName = incident.estacionNombre?.trim()
+            val key = if (!rawName.isNullOrEmpty()) {
+                val matchedStation = allNetworkStations.find { station ->
+                    station.name.equals(rawName, ignoreCase = true) ||
+                    station.name.replace(" ", "").equals(rawName.replace(" ", ""), ignoreCase = true)
+                }
+                GroupedStation(rawName, matchedStation?.id)
             } else {
                 val fallbackName = if (appLanguage == AppLanguage.CA) "Estació de Metro" else "Estación de Metro"
                 GroupedStation(fallbackName, null)
             }
             map.getOrPut(key) { mutableListOf() }.add(incident)
         }
-        map
+        map.mapValues { (station, list) ->
+            deduplicateAccessibilityIncidents(list, station.name)
+        }.filterValues { it.isNotEmpty() }
+    }
+
+    val totalUniqueAccessibilityIncidents = remember(groupedIncidents) {
+        groupedIncidents.values.sumOf { it.size }
     }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .testTag("avisos_tab_list"),
-        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp),
+        contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 12.dp, bottom = 16.dp + activeTripBottomPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // --- SECCIÓN 1: INCIDENCIAS DE LA RED ---
@@ -160,50 +206,89 @@ fun AvisosTab(
             }
         } else if (groupedActiveIncidents.isEmpty()) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDarkMode) 0.2f else 0.1f)
-                    ),
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                if (!isOnline) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = if (isDarkMode) 0.3f else 0.18f)
+                        ),
+                        shape = RoundedCornerShape(18.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "Normal",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = if (appLanguage == AppLanguage.CA) "Xarxa sense incidències" else "Red sin incidencias",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.primary
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.WifiOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
                             )
-                            Text(
-                                text = if (appLanguage == AppLanguage.CA) "Totes les línies de Metrovalencia estan operant amb normalitat." else "Todas las líneas de Metrovalencia están operando con normalidad.",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) 
+                                        "No s'han pogut sincronitzar les incidències en directe de Metrovalencia. Comprova la teua connexió."
+                                        else "No se han podido sincronizar las incidencias en directo de Metrovalencia. Comprueba tu conexión a internet.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDarkMode) 0.25f else 0.15f)
+                        ),
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Normal",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
                             )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Xarxa sense incidències" else "Red sin incidencias",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Totes les línies de Metrovalencia estan operant amb normalitat." else "Todas las líneas de Metrovalencia están operando con normalidad.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
             }
         } else {
-            items(groupedActiveIncidents) { incident ->
+            items(
+                items = groupedActiveIncidents,
+                key = { "${it.id}_${it.lineasFgv.joinToString()}" }
+            ) { incident ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = if (isDarkMode) 0.4f else 0.2f)
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = if (isDarkMode) 0.35f else 0.18f)
                     ),
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
+                    shape = RoundedCornerShape(18.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -217,56 +302,9 @@ fun AvisosTab(
                                 modifier = Modifier.size(18.dp)
                             )
                             if (incident.lineasFgv.isNotEmpty()) {
-                                incident.lineasFgv.forEach { rawLine ->
-                                    val lineId = if (rawLine.startsWith("L", ignoreCase = true)) {
-                                        rawLine
-                                    } else {
-                                        "L$rawLine"
-                                    }
-
-                                    val metroLine = remember(lineId) {
-                                        ValenciaMetroData.lines.find { it.id.equals(lineId, ignoreCase = true) }
-                                    }
-
-                                    if (metroLine != null) {
-                                        val lineBgColor = remember(metroLine.colorHex) {
-                                            try {
-                                                metroLine.colorHex.toColorInt()
-                                            } catch (e: Exception) {
-                                                0xFF64748B.toInt()
-                                            }
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .background(Color(lineBgColor), CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = metroLine.id,
-                                                fontWeight = FontWeight.Black,
-                                                fontSize = 11.sp,
-                                                color = Color.White
-                                            )
-                                        }
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .background(MaterialTheme.colorScheme.error, CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = lineId,
-                                                fontWeight = FontWeight.Black,
-                                                fontSize = 11.sp,
-                                                color = Color.White
-                                            )
-                                        }
-                                    }
-                                }
+                                MetroLineBadgesRow(lineasStr = incident.lineasFgv.joinToString(", "))
                             } else {
-                                val lineLabel = if (appLanguage == AppLanguage.CA) "Avisos actius" else "Avisos activos"
+                                val lineLabel = if (appLanguage == AppLanguage.CA) "Incidència activa" else "Incidencia activa"
                                 Text(
                                     text = lineLabel,
                                     fontWeight = FontWeight.Bold,
@@ -275,22 +313,25 @@ fun AvisosTab(
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        
                         val displayDesc = when (appLanguage) {
-                            AppLanguage.CA -> if (incident.descriptionCa.isNotBlank()) incident.descriptionCa else incident.descriptionEs
+                            AppLanguage.CA -> incident.descriptionCa.ifEmpty { incident.descriptionEs }
                             else -> incident.descriptionEs
                         }
-                        Text(
-                            text = displayDesc,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        if (!incident.updatedAt.isNullOrBlank()) {
-                            val relTime = parseTimeAgo(incident.updatedAt, appLanguage)
-                            val displayTime = if (relTime.isNotEmpty()) relTime else incident.updatedAt
+                        if (displayDesc.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = displayDesc,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        val displayTime = parseTimeAgo(incident.updatedAt, appLanguage, isUpdated = true)
+                        if (!displayTime.isNullOrBlank()) {
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Actualitzat: $displayTime" else "Actualizado: $displayTime",
+                                text = displayTime,
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -300,7 +341,129 @@ fun AvisosTab(
             }
         }
 
-        // --- SECCIÓN 2: ACCESIBILIDAD ---
+        // --- SECCIÓN 2: AVISOS ESPECIALES Y OBRAS ---
+        item {
+            Text(
+                text = if (appLanguage == AppLanguage.CA) "AVISOS ESPECIALS I OBRES" else "AVISOS ESPECIALES Y OBRAS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                color = if (isDarkMode) Color(0xFFFFA726) else Color(0xFFE65100),
+                letterSpacing = 2.sp,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+            )
+        }
+
+        if (isMetroAlertsLoading && sortedSpecialNotices.isEmpty()) {
+            item {
+                SkeletonCardItem(modifier = Modifier.fillMaxWidth())
+            }
+        } else if (sortedSpecialNotices.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF232630) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Sin avisos",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = if (appLanguage == AppLanguage.CA) "No hi ha avisos especials ni obres actives." else "No hay avisos especiales ni obras activas.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        } else {
+            items(
+                items = sortedSpecialNotices,
+                key = { "${it.category}_${it.id}_${it.title.hashCode()}_${it.publicationDate}" }
+            ) { notice ->
+                val catEnum = remember(notice.category) { MetroNoticeCategory.fromRaw(notice.category) }
+                val badgeCategoryName = catEnum.getDisplayName(appLanguage)
+                val badgeColor = catEnum.getColor(isDarkMode)
+                val badgeIcon = catEnum.icon
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF232630) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = badgeColor.copy(alpha = 0.15f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = badgeIcon,
+                                        contentDescription = null,
+                                        tint = badgeColor,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = badgeCategoryName,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = badgeColor,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                            }
+
+                            val displayTime = parseTimeAgo(notice.publicationDate, appLanguage, isUpdated = false)
+                            if (!displayTime.isNullOrBlank()) {
+                                Text(
+                                    text = displayTime,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (!notice.lineasAfectadas.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            MetroLineBadgesRow(lineasStr = notice.lineasAfectadas)
+                        }
+
+                        if (notice.title.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = notice.title,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- SECCIÓN 3: ACCESIBILIDAD Y ASCENSORES ---
         item {
             Card(
                 modifier = Modifier
@@ -308,10 +471,9 @@ fun AvisosTab(
                     .clickable { isAccessibilityExpanded = !isAccessibilityExpanded }
                     .testTag("accessibility_header_toggle"),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    containerColor = if (isDarkMode) Color(0xFF232630) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 ),
-                shape = RoundedCornerShape(18.dp),
-                border = appCardBorder()
+                shape = RoundedCornerShape(18.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -341,11 +503,11 @@ fun AvisosTab(
                         Spacer(modifier = Modifier.width(10.dp))
                         Surface(
                             shape = CircleShape,
-                            color = if (accessibilityIncidents.isNotEmpty()) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f),
-                            contentColor = if (accessibilityIncidents.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+                            color = if (totalUniqueAccessibilityIncidents > 0) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f),
+                            contentColor = if (totalUniqueAccessibilityIncidents > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
                         ) {
                             Text(
-                                text = accessibilityIncidents.size.toString(),
+                                text = totalUniqueAccessibilityIncidents.toString(),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
@@ -360,7 +522,6 @@ fun AvisosTab(
             if (groupedIncidents.isEmpty()) {
                 item {
                     Card(
-                        border = appCardBorder(),
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
                         shape = RoundedCornerShape(12.dp)
@@ -408,13 +569,11 @@ fun AvisosTab(
                                 )
                                 .testTag("accessibility_station_card_${station.name.lowercase().replace(" ", "_")}"),
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                containerColor = if (isDarkMode) Color(0xFF232630) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                             ),
-                            shape = RoundedCornerShape(18.dp),
-                            border = appCardBorder()
+                            shape = RoundedCornerShape(18.dp)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                // 1. ESTACIÓN
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -459,40 +618,30 @@ fun AvisosTab(
                                         Spacer(modifier = Modifier.height(8.dp))
                                     }
                                     
-                                    // 2. Descripción si la hay
-                                    if (incident.tituloEs.isNotBlank()) {
+                                    if (!incident.lineasAfectadas.isNullOrBlank()) {
+                                        MetroLineBadgesRow(lineasStr = incident.lineasAfectadas)
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                    }
+
+                                    val rawText = when (appLanguage) {
+                                        AppLanguage.CA -> incident.descripcionCa.ifBlank { incident.descripcionEs.ifBlank { incident.tituloCa.ifBlank { incident.tituloEs } } }
+                                        else -> incident.descripcionEs.ifBlank { incident.tituloEs }
+                                    }
+                                    val cleanText = cleanAccessibilityNoticeText(rawText, station.name)
+                                    if (cleanText.isNotBlank()) {
                                         Text(
-                                            text = incident.tituloEs,
+                                            text = cleanText,
                                             fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             modifier = Modifier.padding(bottom = 4.dp)
                                         )
                                     }
-                                    
-                                    // 3. Qué se ha estropeado
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Warning,
-                                            contentDescription = if (appLanguage == AppLanguage.CA) "Avís" else "Aviso",
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
+
+                                    val displayTime = parseTimeAgo(incident.creadoEl, appLanguage, isUpdated = false)
+                                    if (!displayTime.isNullOrBlank()) {
                                         Text(
-                                            text = incident.descripcionEs,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.error,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                    
-                                    if (incident.creadoEl.isNotBlank()) {
-                                        val relTime = parseTimeAgo(incident.creadoEl, appLanguage)
-                                        val displayTime = if (relTime.isNotEmpty()) relTime else incident.creadoEl
-                                        Text(
-                                            text = if (appLanguage == AppLanguage.CA) "Publicat: $displayTime" else "Publicado: $displayTime",
+                                            text = displayTime,
                                             fontSize = 11.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                                             modifier = Modifier.padding(top = 4.dp)
@@ -506,10 +655,10 @@ fun AvisosTab(
             }
         }
 
-        // --- SECCIÓN 3: TWEETS DE METROVALENCIA ---
+        // --- SECCIÓN 4: NOTICIAS DE METROVALENCIA ---
         item {
             Text(
-                text = "TWEETS DE METROVALENCIA",
+                text = if (appLanguage == AppLanguage.CA) "NOTÍCIES DE METROVALENCIA" else "NOTICIAS DE METROVALENCIA",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
@@ -519,47 +668,52 @@ fun AvisosTab(
             )
         }
 
-        if (twitterLoading) {
+        if (isNewsLoading && metroNews.isEmpty()) {
             item {
                 Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 }
             }
-        } else if (twitterIncidents.isEmpty()) {
+        } else if (metroNews.isEmpty()) {
             item {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "No hi ha tuits d'incidències disponibles." else "No hay tweets de incidencias disponibles.",
+                    text = if (appLanguage == AppLanguage.CA) "No hi ha notícies disponibles en aquest moment." else "No hay noticias disponibles en este momento.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 8.dp)
                 )
             }
         } else {
-            items(twitterIncidents, key = { it.id }) { tweet ->
+            items(
+                items = metroNews,
+                key = { "${it.id}_${it.title.hashCode()}_${it.publicationDate}" }
+            ) { newsItem ->
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            selectedNewsItem = newsItem
+                        },
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                        containerColor = if (isDarkMode) Color(0xFF232630) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     ),
-                    shape = RoundedCornerShape(18.dp),
-                    border = appCardBorder()
+                    shape = RoundedCornerShape(18.dp)
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.Top
                     ) {
-                        // Metrovalencia Photo Placeholder
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(42.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary),
+                                .background(MaterialTheme.colorScheme.primaryContainer),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Subway,
-                                contentDescription = "Metrovalencia",
-                                tint = MaterialTheme.colorScheme.onPrimary,
+                                imageVector = Icons.Default.Newspaper,
+                                contentDescription = "Noticias",
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -572,42 +726,83 @@ fun AvisosTab(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                ) {
                                     Text(
-                                        text = "Metrovalencia",
+                                        text = if (appLanguage == AppLanguage.CA) "NOTÍCIA" else "NOTICIA",
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "@metrovalencia",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
 
-                                val timeAgoStr = tweet.updatedAt?.let { parseTimeAgo(it, appLanguage) } ?: ""
-                                if (timeAgoStr.isNotEmpty()) {
+                                val displayTime = parseTimeAgo(newsItem.publicationDate, appLanguage, isUpdated = false)
+                                if (!displayTime.isNullOrBlank()) {
                                     Text(
-                                        text = timeAgoStr,
+                                        text = displayTime,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            if (newsItem.title.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = newsItem.title,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
 
-                            Text(
-                                text = tweet.descriptionEs,
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            if (newsItem.description.isNotBlank() && !newsItem.description.equals(newsItem.title, ignoreCase = true)) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = newsItem.description,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Llegir la notícia completa" else "Leer noticia completa",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+    MetroNewsDetailBottomSheet(
+        newsItem = selectedNewsItem,
+        appLanguage = appLanguage,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        onDismiss = { selectedNewsItem = null }
+    )
 }
+

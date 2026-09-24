@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -134,15 +135,15 @@ class RoutePlannerViewModel @JvmOverloads constructor(
 
     // Transit Favorites flow
     val favoriteBusStopsSet = dashboardRepository.getPreferenceFlow("favorite_bus_stops", "")
-        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.toSet() else setOf("1001", "1002", "1500", "2000", "70", "80") }
+        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
-    val favoriteMetroStationsSet = dashboardRepository.getPreferenceFlow("favorite_stations", "16,15,14")
-        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.toSet() else setOf("15", "16", "14", "1", "2") }
+    val favoriteMetroStationsSet = dashboardRepository.getPreferenceFlow("favorite_stations", "")
+        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     val favoriteCercaniasStationsSet = dashboardRepository.getPreferenceFlow("favorite_cercanias_stations", "")
-        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.toSet() else setOf("65000", "65300", "65100") }
+        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     val unifiedTransitFavorites: StateFlow<List<RecentSearch>> = combine(
@@ -200,7 +201,8 @@ class RoutePlannerViewModel @JvmOverloads constructor(
             // Ignore on initial load
         }
         list
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.IO)
+     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _selectedModeFilters = MutableStateFlow<Set<RouteModeFilter>>(emptySet())
     val selectedModeFilters: StateFlow<Set<RouteModeFilter>> = _selectedModeFilters.asStateFlow()
@@ -223,15 +225,37 @@ class RoutePlannerViewModel @JvmOverloads constructor(
     private val _selectedItinerary = MutableStateFlow<PlannedItinerary?>(null)
     val selectedItinerary: StateFlow<PlannedItinerary?> = _selectedItinerary.asStateFlow()
 
+    private val _isRecalculatingTransfer = MutableStateFlow(false)
+    val isRecalculatingTransfer: StateFlow<Boolean> = _isRecalculatingTransfer.asStateFlow()
+
+    private val _transferRecalculateMessage = MutableStateFlow<String?>(null)
+    val transferRecalculateMessage: StateFlow<String?> = _transferRecalculateMessage.asStateFlow()
+
+    fun clearTransferRecalculateMessage() {
+        _transferRecalculateMessage.value = null
+    }
+
     private var searchJob: Job? = null
     private var userLat: Double? = null
     private var userLon: Double? = null
+
+    fun setUserLocation(location: Location?) {
+        if (location != null) {
+            userLat = location.latitude
+            userLon = location.longitude
+            if (_origin.value?.isUserGps == true) {
+                _origin.value = _origin.value?.copy(latitude = location.latitude, longitude = location.longitude)
+            }
+        }
+    }
 
     fun setUserLocationAsOrigin(location: Location?) {
         if (location != null) {
             userLat = location.latitude
             userLon = location.longitude
             useCurrentLocationAsOrigin(location.latitude, location.longitude)
+        } else {
+            useCurrentLocationAsOrigin(userLat ?: 39.4699, userLon ?: -0.3763)
         }
     }
 
@@ -278,6 +302,21 @@ class RoutePlannerViewModel @JvmOverloads constructor(
         _destinationQuery.value = location.title.ifBlank { location.subtitle ?: "Ubicación seleccionada" }
         _activeSearchField.value = PlannerSearchField.NONE
         _searchResults.value = emptyList()
+
+        // If origin is not set, automatically default origin to Ubicación actual (GPS)
+        if (_origin.value == null || _originQuery.value.isBlank()) {
+            val lat = userLat ?: 39.4699
+            val lon = userLon ?: -0.3763
+            _origin.value = PlannerLocation(
+                title = "Ubicación actual",
+                subtitle = "GPS",
+                latitude = lat,
+                longitude = lon,
+                isUserGps = true
+            )
+            _originQuery.value = "Ubicación actual"
+        }
+
         triggerAutoSearchIfReady()
     }
 
@@ -348,6 +387,28 @@ class RoutePlannerViewModel @JvmOverloads constructor(
     }
 
     fun updateOriginQuery(query: String) {
+        val prevIsGps = _origin.value?.isUserGps == true ||
+            _originQuery.value.trim().equals("Ubicación actual", ignoreCase = true) ||
+            _originQuery.value.trim().equals("Ubicació actual", ignoreCase = true)
+
+        if (prevIsGps && query != _originQuery.value) {
+            // Any deletion or typing over "Ubicación actual" completely clears the block
+            if (query.isEmpty() || query.length < _originQuery.value.length) {
+                _origin.value = null
+                _originQuery.value = ""
+                _activeSearchField.value = PlannerSearchField.ORIGIN
+                executeSearchForQuery("")
+                return
+            } else {
+                val newChars = query.removePrefix("Ubicación actual").removePrefix("Ubicació actual").trim()
+                _origin.value = null
+                _originQuery.value = newChars
+                _activeSearchField.value = PlannerSearchField.ORIGIN
+                executeSearchForQuery(newChars)
+                return
+            }
+        }
+
         _originQuery.value = query
         if (_origin.value?.title != query) {
             _origin.value = null
@@ -357,6 +418,28 @@ class RoutePlannerViewModel @JvmOverloads constructor(
     }
 
     fun updateDestinationQuery(query: String) {
+        val prevIsGps = _destination.value?.isUserGps == true ||
+            _destinationQuery.value.trim().equals("Ubicación actual", ignoreCase = true) ||
+            _destinationQuery.value.trim().equals("Ubicació actual", ignoreCase = true)
+
+        if (prevIsGps && query != _destinationQuery.value) {
+            // Any deletion or typing over "Ubicación actual" completely clears the block
+            if (query.isEmpty() || query.length < _destinationQuery.value.length) {
+                _destination.value = null
+                _destinationQuery.value = ""
+                _activeSearchField.value = PlannerSearchField.DESTINATION
+                executeSearchForQuery("")
+                return
+            } else {
+                val newChars = query.removePrefix("Ubicación actual").removePrefix("Ubicació actual").trim()
+                _destination.value = null
+                _destinationQuery.value = newChars
+                _activeSearchField.value = PlannerSearchField.DESTINATION
+                executeSearchForQuery(newChars)
+                return
+            }
+        }
+
         _destinationQuery.value = query
         if (_destination.value?.title != query) {
             _destination.value = null
@@ -413,6 +496,18 @@ class RoutePlannerViewModel @JvmOverloads constructor(
                     extraData = result.stop.lineas
                 )
             }
+            is MapSearchResult.MetrobusStop -> {
+                val alias = result.alias
+                RecentSearch(
+                    type = "metrobus",
+                    id = result.stop.id_parada,
+                    title = alias ?: result.stop.denominacion,
+                    subtitle = if (!alias.isNullOrBlank()) "${result.stop.denominacion} • Metrobús • Parada ${result.stop.id_parada}" else "Metrobús • Parada ${result.stop.id_parada}",
+                    latitude = result.stop.lat,
+                    longitude = result.stop.lon,
+                    extraData = result.stop.lineas
+                )
+            }
             is MapSearchResult.Metro -> RecentSearch(
                 type = "metro",
                 id = result.station.id,
@@ -444,7 +539,28 @@ class RoutePlannerViewModel @JvmOverloads constructor(
                     title = mainTitle,
                     subtitle = subTitle,
                     latitude = result.result.latitude,
-                    longitude = result.result.longitude
+                    longitude = result.result.longitude,
+                    categoryName = result.result.placeCategory.name,
+                    categoryType = "${result.result.category}:${result.result.type}",
+                    placeName = result.result.placeName,
+                    road = result.result.road,
+                    houseNumber = result.result.houseNumber,
+                    suburb = result.result.suburb,
+                    city = result.result.city,
+                    postcode = result.result.postcode,
+                    openingHours = result.result.openingHours,
+                    wheelchair = result.result.wheelchair,
+                    brand = result.result.brand,
+                    operator = result.result.operator,
+                    phone = result.result.phone,
+                    email = result.result.email,
+                    website = result.result.website,
+                    wikipedia = result.result.wikipedia,
+                    wikidata = result.result.wikidata,
+                    fee = result.result.fee,
+                    charge = result.result.charge,
+                    startDate = result.result.startDate,
+                    historicType = result.result.historicType
                 )
             }
         }
@@ -474,7 +590,7 @@ class RoutePlannerViewModel @JvmOverloads constructor(
             val currentList = recentSearches.value.toMutableList()
             currentList.removeAll { it.id == search.id || (it.latitude == search.latitude && it.longitude == search.longitude) }
             currentList.add(0, search)
-            val limitedList = currentList.take(10)
+            val limitedList = currentList.take(8)
             val json = gson.toJson(limitedList)
             dashboardRepository.savePreference("recent_searches", json)
         }
@@ -559,19 +675,66 @@ class RoutePlannerViewModel @JvmOverloads constructor(
         _selectedItinerary.value = itinerary
     }
 
-    fun recalculateFromStation(stationName: String, lat: Double = 0.0, lon: Double = 0.0) {
+    fun recalculateTransfer(
+        stationName: String,
+        lat: Double = 0.0,
+        lon: Double = 0.0,
+        arrivalTime: String = "",
+        walkBufferMinutes: Int = 2,
+        isCa: Boolean = false
+    ) {
+        val currentItin = _selectedItinerary.value ?: return
+        val dest = _destination.value ?: return
+        val validLat = if (lat != 0.0) lat else (userLat ?: 39.4699)
+        val validLon = if (lon != 0.0) lon else (userLon ?: -0.3763)
+
         viewModelScope.launch {
-            val validLat = if (lat != 0.0) lat else (userLat ?: 39.4699)
-            val validLon = if (lon != 0.0) lon else (userLon ?: -0.3763)
-            val loc = PlannerLocation(
-                title = stationName,
-                subtitle = "Estación de transbordo",
-                latitude = validLat,
-                longitude = validLon
+            _isRecalculatingTransfer.value = true
+            val result = TransferRecalculator.recalculateTransferAlternative(
+                hybridRoutingRepository = hybridRoutingRepository,
+                currentItinerary = currentItin,
+                stationName = stationName,
+                transferLat = validLat,
+                transferLon = validLon,
+                arrivalTime = arrivalTime.ifBlank { currentItin.formattedDepartureTime },
+                walkBufferMinutes = walkBufferMinutes,
+                destination = dest,
+                selectedDate = _selectedDate.value,
+                selectedModes = _selectedModeFilters.value,
+                isCa = isCa
             )
-            setOrigin(loc)
-            selectItinerary(null)
+
+            result.fold(
+                onSuccess = { updatedItinerary ->
+                    _selectedItinerary.value = updatedItinerary
+                    val currentState = _uiState.value
+                    if (currentState is RoutePlannerUiState.Success) {
+                        val currentList = currentState.itineraries.toMutableList()
+                        val existingIndex = currentList.indexOfFirst { it.id == currentItin.id }
+                        if (existingIndex != -1) {
+                            currentList[existingIndex] = updatedItinerary
+                        } else {
+                            currentList.add(updatedItinerary)
+                        }
+                        val sortedList = currentList.sortedWith(
+                            compareBy<PlannedItinerary> { com.example.data.repository.routing.RoutingDataMapper.getEffectiveArrivalEpochMs(it) }
+                                .thenBy { it.totalDurationSeconds }
+                                .thenBy { com.example.data.repository.routing.RoutingDataMapper.getEffectiveDepartureEpochMs(it) }
+                        )
+                        _uiState.value = RoutePlannerUiState.Success(sortedList)
+                    }
+                    _transferRecalculateMessage.value = updatedItinerary.viabilityNotice
+                },
+                onFailure = { error ->
+                    _transferRecalculateMessage.value = error.localizedMessage
+                }
+            )
+            _isRecalculatingTransfer.value = false
         }
+    }
+
+    fun recalculateFromStation(stationName: String, lat: Double = 0.0, lon: Double = 0.0) {
+        recalculateTransfer(stationName, lat, lon)
     }
 
     private fun triggerAutoSearchIfReady() {
@@ -586,6 +749,15 @@ class RoutePlannerViewModel @JvmOverloads constructor(
         val orig = _origin.value
         val dest = _destination.value
         if (orig == null || dest == null) return
+
+        val isOnline = com.example.util.isNetworkAvailable(getApplication())
+        if (!isOnline) {
+            _uiState.value = RoutePlannerUiState.Error(
+                message = "Sin conexión a internet. Se requiere conexión para calcular y buscar rutas.",
+                isOffline = true
+            )
+            return
+        }
 
         realTimeEnrichmentJob?.cancel()
         _uiState.value = RoutePlannerUiState.Loading(PlannerLoadingStage.SCHEDULED_TRIPS)
@@ -620,7 +792,11 @@ class RoutePlannerViewModel @JvmOverloads constructor(
             result.fold(
                 onSuccess = { itineraries ->
                     if (itineraries.isEmpty()) {
-                        _uiState.value = RoutePlannerUiState.Error("No se encontraron rutas para el trayecto seleccionado.")
+                        val isNowOffline = !com.example.util.isNetworkAvailable(getApplication())
+                        _uiState.value = RoutePlannerUiState.Error(
+                            message = if (isNowOffline) "Sin conexión a internet. No se pudieron buscar rutas." else "No se encontraron rutas para el trayecto seleccionado.",
+                            isOffline = isNowOffline
+                        )
                     } else {
                         if (isDepartNow) {
                             // Advance to real-time crossing stage
@@ -645,8 +821,13 @@ class RoutePlannerViewModel @JvmOverloads constructor(
                     }
                 },
                 onFailure = { err ->
+                    val isOffline = !com.example.util.isNetworkAvailable(getApplication()) ||
+                        err is java.net.UnknownHostException ||
+                        err is java.net.ConnectException ||
+                        err is java.net.SocketTimeoutException
                     _uiState.value = RoutePlannerUiState.Error(
-                        err.localizedMessage ?: "Error de conexión al calcular la ruta. Inténtalo de nuevo."
+                        message = if (isOffline) "Sin conexión a internet. No se han podido calcular las rutas." else (err.localizedMessage ?: "Error de conexión al calcular la ruta. Inténtalo de nuevo."),
+                        isOffline = isOffline
                     )
                 }
             )

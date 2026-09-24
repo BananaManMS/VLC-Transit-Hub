@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DirectionsRailway
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Warning
@@ -47,11 +46,11 @@ fun CercaniasDepartureDetails(
 ) {
     val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
     val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
-    val cardBg = if (isDarkMode) Color(0xFF1B2234) else Color(0xFFF0F4F8)
+    val cardBg = if (isDarkMode) Color(0xFF222222) else Color(0xFFFFFFFF)
 
     val affectedAlerts = remember(alerts, departure) {
         alerts.filter { alert ->
-            if (alert.isAccessibility) return@filter false
+            if (alert.isAccessibility || !alert.isCirculationIncident) return@filter false
             val matchesRoute = alert.routeIds.any { rId ->
                 rId.equals(departure.routeId, ignoreCase = true) || 
                 rId.replace("-", "").equals(departure.routeId.replace("-", ""), ignoreCase = true)
@@ -109,20 +108,10 @@ fun CercaniasDepartureDetails(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(routeColor)
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = routeText,
-                    color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 20.sp
-                )
-            }
+            com.example.ui.metro.CercaniasLineBadge(
+                routeId = departure.routeId,
+                size = 42.dp
+            )
 
             Text(
                 text = if (appLanguage == AppLanguage.CA) "Destí: $destinationText" else "Destino: $destinationText",
@@ -296,38 +285,10 @@ fun CercaniasDepartureDetails(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        // --- THIRD CARD: INCIDENCIAS O ESTADO ---
+        // --- THIRD CARD: INCIDENCIAS (SOLO SI HAY INCIDENCIAS ACTIVAS) ---
         val hasIncidences = departure.isCanceled || departure.isSkippedAtStop || affectedAlerts.isNotEmpty()
 
-        if (!hasIncidences) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, Color(0xFF2E7D32).copy(alpha = 0.5f)),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isDarkMode) Color(0xFF132219) else Color(0xFFE8F5E9)
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = Color(0xFF2ECC71),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = if (appLanguage == AppLanguage.CA) "Funcionant amb normalitat - Línia operant sense incidències." else "Funcionando con normalidad - Línea operando sin incidencias.",
-                        color = if (isDarkMode) Color(0xFFC8E6C9) else Color(0xFF1B5E20),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        } else {
+        if (hasIncidences) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -336,7 +297,6 @@ fun CercaniasDepartureDetails(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFD32F2F).copy(alpha = 0.5f)),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isDarkMode) Color(0xFF331818) else Color(0xFFFFEBEE)
                         )
@@ -366,7 +326,6 @@ fun CercaniasDepartureDetails(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFD32F2F).copy(alpha = 0.5f)),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isDarkMode) Color(0xFF331818) else Color(0xFFFFEBEE)
                         )
@@ -405,9 +364,8 @@ fun CercaniasDepartureDetails(
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
 
         // --- FOURTH CARD: RECORRIDO Y PRÓXIMAS ESTACIONES (TIMELINE - METRO STYLE UI) ---
         Card(

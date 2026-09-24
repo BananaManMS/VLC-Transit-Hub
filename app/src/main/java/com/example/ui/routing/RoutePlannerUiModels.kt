@@ -53,5 +53,5 @@ sealed interface RoutePlannerUiState {
     object Idle : RoutePlannerUiState
     data class Loading(val stage: PlannerLoadingStage = PlannerLoadingStage.SCHEDULED_TRIPS) : RoutePlannerUiState
     data class Success(val itineraries: List<PlannedItinerary>) : RoutePlannerUiState
-    data class Error(val message: String) : RoutePlannerUiState
+    data class Error(val message: String, val isOffline: Boolean = false) : RoutePlannerUiState
 }

@@ -18,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [34])
 class GeocodingRepositoryTest {
 
     private lateinit var context: Context
@@ -178,6 +178,8 @@ class GeocodingRepositoryTest {
                 bounded: Int,
                 format: String,
                 addressDetails: Int,
+                extraTags: Int,
+                nameDetails: Int,
                 countryCodes: String,
                 limit: Int,
                 acceptLanguage: String
@@ -191,6 +193,8 @@ class GeocodingRepositoryTest {
                 lon: Double,
                 format: String,
                 addressDetails: Int,
+                extraTags: Int,
+                nameDetails: Int,
                 acceptLanguage: String
             ): com.example.data.network.NominatimResultDto {
                 return mockCloseValencia

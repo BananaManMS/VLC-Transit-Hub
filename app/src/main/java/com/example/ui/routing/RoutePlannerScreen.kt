@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.DirectionsTransit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -97,7 +98,11 @@ fun RoutePlannerScreen(
     val origin by viewModel.origin.collectAsState()
     val destination by viewModel.destination.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val originQuery by viewModel.originQuery.collectAsState()
+    val isOnline by remember { com.example.util.observeNetworkConnectivity(context) }
+        .collectAsState(initial = com.example.util.isNetworkAvailable(context))
     val destinationQuery by viewModel.destinationQuery.collectAsState()
     val activeSearchField by viewModel.activeSearchField.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
@@ -115,24 +120,40 @@ fun RoutePlannerScreen(
     val selectedTime by viewModel.selectedTime.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val selectedItinerary by viewModel.selectedItinerary.collectAsState()
+    val isRecalculatingTransfer by viewModel.isRecalculatingTransfer.collectAsState()
 
     var showScheduleDialog by remember { mutableStateOf(false) }
 
-    // Initialize user location as origin if origin is empty (ONLY ONCE)
-    var userLocationInitialized by rememberSaveable { mutableStateOf(false) }
+    // Ensure keyboard is closed and no focus is held when opening planner
+    LaunchedEffect(Unit) {
+        focusManager.clearFocus()
+        keyboardController?.hide()
+    }
+
+    // Initialize user location as origin if origin is empty
     LaunchedEffect(userLocation) {
-        if (!userLocationInitialized && origin == null && userLocation != null) {
-            userLocationInitialized = true
-            viewModel.setUserLocationAsOrigin(userLocation)
+        if (userLocation != null) {
+            viewModel.setUserLocation(userLocation)
+            if (origin == null) {
+                viewModel.setUserLocationAsOrigin(userLocation)
+            }
         }
     }
 
     // Set initial destination if passed (e.g. from Map "Cómo llegar" button)
     LaunchedEffect(initialDestination) {
         if (initialDestination != null) {
-            if (destination == null || destination?.title == initialDestination.title) {
-                viewModel.setDestination(initialDestination)
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            if (origin == null) {
+                if (userLocation != null) {
+                    viewModel.setUserLocationAsOrigin(userLocation)
+                } else {
+                    viewModel.useCurrentLocationAsOrigin(context)
+                }
             }
+            viewModel.setDestination(initialDestination)
+            viewModel.dismissSearchPanel()
             onInitialDestinationConsumed?.invoke()
         }
     }
@@ -211,8 +232,41 @@ fun RoutePlannerScreen(
                 onDestinationFocused = { viewModel.onDestinationFocused() },
                 onOriginUnfocused = { viewModel.commitCurrentSearchQueryIfFieldUnfocused(PlannerSearchField.ORIGIN) },
                 onDestinationUnfocused = { viewModel.commitCurrentSearchQueryIfFieldUnfocused(PlannerSearchField.DESTINATION) },
-                appLanguage = appLanguage
+                appLanguage = appLanguage,
+                isDarkMode = isDarkMode
             )
+
+            AnimatedVisibility(visible = !isOnline) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.WifiOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = if (appLanguage == AppLanguage.CA)
+                                "Sense connexió a internet. No es poden calcular rutes."
+                            else
+                                "Sin conexión a internet. No se pueden calcular rutas.",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
 
             // Unified Suggestions Panel or Routing Results
             if (activeSearchField != PlannerSearchField.NONE) {
@@ -281,6 +335,7 @@ fun RoutePlannerScreen(
                             )
                         }
                         is RoutePlannerUiState.Error -> {
+                            val isOfflineError = state.isOffline || !isOnline
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -292,26 +347,55 @@ fun RoutePlannerScreen(
                                     verticalArrangement = Arrangement.Center
                                 ) {
                                     Icon(
-                                        Icons.Default.ErrorOutline,
+                                        imageVector = if (isOfflineError) Icons.Default.WifiOff else Icons.Default.ErrorOutline,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(48.dp)
+                                        modifier = Modifier.size(52.dp)
                                     )
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(14.dp))
                                     Text(
-                                        text = state.message,
+                                        text = if (isOfflineError) {
+                                            if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet"
+                                        } else {
+                                            if (appLanguage == AppLanguage.CA) "No s'han trobat rutes" else "No se encontraron rutas"
+                                        },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = if (isOfflineError) {
+                                            if (appLanguage == AppLanguage.CA)
+                                                "La cerca i càlcul d'itineraris necessita connexió a internet. Comprova la teua xarxa i torna-ho a provar."
+                                            else
+                                                "La búsqueda y cálculo de itinerarios necesita conexión a internet. Comprueba tu red y vuelve a intentarlo."
+                                        } else {
+                                            state.message
+                                        },
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                     )
-                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Spacer(modifier = Modifier.height(18.dp))
                                     Button(
-                                        onClick = { viewModel.searchRoutes() },
+                                        onClick = {
+                                            if (isOnline) {
+                                                viewModel.searchRoutes()
+                                            }
+                                        },
+                                        enabled = isOnline,
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
                                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text(if (appLanguage == AppLanguage.ES) "Reintentar" else "Reintentar")
+                                        Text(
+                                            text = if (isOnline) {
+                                                if (appLanguage == AppLanguage.CA) "Tornar a provar" else "Reintentar"
+                                            } else {
+                                                if (appLanguage == AppLanguage.CA) "Sense connexió" else "Sin conexión"
+                                            }
+                                        )
                                     }
                                 }
                             }
@@ -347,7 +431,7 @@ fun RoutePlannerScreen(
                                                 )
                                             )
                                             Text(
-                                                text = if (appLanguage == AppLanguage.ES) "Salida más próxima primero" else "Eixida més pròxima primer",
+                                                text = if (appLanguage == AppLanguage.ES) "Llegada más temprana primero" else "Arribada més primerenca primer",
                                                 style = MaterialTheme.typography.labelSmall.copy(
                                                     color = MaterialTheme.colorScheme.primary,
                                                     fontWeight = FontWeight.SemiBold
@@ -364,6 +448,7 @@ fun RoutePlannerScreen(
                                         isFastest = state.itineraries.size > 1 && itinerary.totalDurationSeconds == fastestDuration,
                                         userLocation = userLocation,
                                         originLocation = origin,
+                                        isDarkMode = isDarkMode,
                                         appLanguage = appLanguage,
                                         onClick = {
                                             viewModel.selectItinerary(itinerary)
@@ -406,6 +491,7 @@ fun RoutePlannerScreen(
                 originLocation = origin,
                 onDismiss = { viewModel.selectItinerary(null) },
                 onViewOnMap = {
+                    viewModel.selectItinerary(null)
                     onSelectItineraryForMap(itinerary)
                 },
                 onStartTrip = if (onStartTrip != null) {
@@ -416,9 +502,17 @@ fun RoutePlannerScreen(
                         onStartTrip(itinerary, origName, destName)
                     }
                 } else null,
-                onRecalculateFromStation = { stationName, lat, lon ->
-                    viewModel.recalculateFromStation(stationName, lat, lon)
+                onRecalculateTransfer = { stationName, lat, lon, arrivalTime ->
+                    viewModel.recalculateTransfer(
+                        stationName = stationName,
+                        lat = lat,
+                        lon = lon,
+                        arrivalTime = arrivalTime,
+                        isCa = appLanguage == AppLanguage.CA
+                    )
                 },
+                isRecalculatingTransfer = isRecalculatingTransfer,
+                isDarkMode = isDarkMode,
                 appLanguage = appLanguage
             )
         }

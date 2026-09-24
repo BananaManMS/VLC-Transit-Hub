@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -57,6 +58,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,7 +78,6 @@ import com.example.data.model.MetroStation
 import com.example.data.model.ValenciaMetroData
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.map.components.ValenbisiStation
-import com.example.ui.map.components.ValenbisiStationBottomSheet
 import com.example.ui.theme.appCardBorder
 import com.example.util.LocationUtils
 
@@ -101,12 +102,15 @@ fun ValenbisiTab(
     onToggleFavorite: (String) -> Unit,
     onSaveAlias: (String, String) -> Unit,
     onRefresh: () -> Unit,
-    onUpdateLocation: ((Double, Double) -> Unit)? = null
+    onUpdateLocation: ((Double, Double) -> Unit)? = null,
+    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     var stationToEditAlias by remember { mutableStateOf<ValenbisiStation?>(null) }
     var selectedStationForSheet by remember { mutableStateOf<ValenbisiStation?>(null) }
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val isOnline by remember { com.example.util.observeNetworkConnectivity(context) }
+        .collectAsState(initial = com.example.util.isNetworkAvailable(context))
 
     val metroStationsList = remember(favoriteMetroStations, allMetroStations) {
         val favs = favoriteMetroStations.mapNotNull { id -> allMetroStations.find { it.id == id } }
@@ -131,7 +135,7 @@ fun ValenbisiTab(
         }
     }
 
-    LaunchedEffect(filterSource, selectedMetroStationId, searchQuery, valenbisiStations, userLocation) {
+    LaunchedEffect(filterSource, selectedMetroStationId, searchQuery) {
         listState.scrollToItem(0)
     }
 
@@ -154,7 +158,7 @@ fun ValenbisiTab(
         val isFav = favoriteValenbisi.contains(st.number.toString())
         val alias = valenbisiAliases[st.number.toString()]
 
-        ValenbisiStationBottomSheet(
+        ValenbisiModalBottomSheet(
             station = st,
             isDarkMode = isDarkMode,
             appLanguage = appLanguage,
@@ -162,7 +166,7 @@ fun ValenbisiTab(
             alias = alias,
             onToggleFavorite = { onToggleFavorite(st.number.toString()) },
             onEditAlias = { stationToEditAlias = st },
-            onDismiss = { selectedStationForSheet = null }
+            onDismissRequest = { selectedStationForSheet = null }
         )
     }
 
@@ -255,7 +259,7 @@ fun ValenbisiTab(
                 }
             }
 
-            // Search TextField matching EMT style (only visible when in FAVORITES mode or when searching)
+            // Search TextField matching EMT style (only visible in FAVORITES mode)
             if (filterSource == ValenbisiFilterSource.FAVORITES) {
                 OutlinedTextField(
                     value = searchQuery,
@@ -291,53 +295,50 @@ fun ValenbisiTab(
             }
 
             // Filtered stations list logic
-            val filteredList = remember(valenbisiStations, favoriteValenbisi, filterSource, searchQuery, selectedMetroStationId, userLocation) {
-                var list = valenbisiStations
-
-                // First apply filter source
-                when (filterSource) {
-                    ValenbisiFilterSource.FAVORITES -> {
-                        if (userLocation != null) {
-                            list = list.map { st ->
-                                val dist = LocationUtils.calculateDistanceMeters(
-                                    st.latitude, st.longitude,
-                                    userLocation.first, userLocation.second
-                                )
-                                st.copy(
-                                    distanceMeters = dist,
-                                    distanceText = LocationUtils.formatDistance(dist)
-                                )
-                            }
-                        }
-                        list = list.filter { favoriteValenbisi.contains(it.number.toString()) }
+            val filteredList = remember(valenbisiStations, favoriteValenbisi, filterSource, searchQuery, selectedMetroStationId, userLocation, valenbisiAliases) {
+                var list = if (userLocation != null) {
+                    valenbisiStations.map { st ->
+                        val dist = LocationUtils.calculateDistanceMeters(
+                            st.latitude, st.longitude,
+                            userLocation.first, userLocation.second
+                        )
+                        st.copy(
+                            distanceMeters = dist,
+                            distanceText = LocationUtils.formatDistance(dist)
+                        )
                     }
-                    ValenbisiFilterSource.NEARBY -> {
-                        if (userLocation != null) {
-                            list = list.map { st ->
-                                val dist = LocationUtils.calculateDistanceMeters(
-                                    st.latitude, st.longitude,
-                                    userLocation.first, userLocation.second
-                                )
-                                st.copy(
-                                    distanceMeters = dist,
-                                    distanceText = LocationUtils.formatDistance(dist)
-                                )
-                            }
+                } else {
+                    valenbisiStations
+                }
+
+                if (searchQuery.isNotBlank()) {
+                    list.mapNotNull { st ->
+                        val alias = valenbisiAliases[st.number.toString()]
+                        val score = computeSearchScore(st.number.toString(), "${st.name} ${st.address}", searchQuery, alias)
+                        if (score > 0.0) Pair(st, score) else null
+                    }.sortedWith(
+                        compareByDescending<Pair<ValenbisiStation, Double>> { favoriteValenbisi.contains(it.first.number.toString()) }
+                            .thenByDescending { it.second }
+                            .thenBy { it.first.distanceMeters }
+                    ).map { it.first }
+                } else {
+                    when (filterSource) {
+                        ValenbisiFilterSource.FAVORITES -> {
+                            list.filter { favoriteValenbisi.contains(it.number.toString()) }
+                                .sortedBy { it.distanceMeters }
                         }
-                        list = list
-                            .sortedWith(
+                        ValenbisiFilterSource.NEARBY -> {
+                            list.sortedWith(
                                 compareByDescending<ValenbisiStation> { favoriteValenbisi.contains(it.number.toString()) }
                                     .thenBy { it.distanceMeters }
-                            )
-                            .take(25)
-                    }
-                    ValenbisiFilterSource.METRO_STATION -> {
-                        val mStation = metroStationsList.find { it.id == selectedMetroStationId }
-                            ?: allMetroStations.find { it.id == selectedMetroStationId }
-                            ?: ValenciaMetroData.mainMetroStations.find { it.id == selectedMetroStationId }
-                        if (mStation != null) {
-                            list = list
-                                .map { st ->
+                            ).take(25)
+                        }
+                        ValenbisiFilterSource.METRO_STATION -> {
+                            val mStation = metroStationsList.find { it.id == selectedMetroStationId }
+                                ?: allMetroStations.find { it.id == selectedMetroStationId }
+                                ?: ValenciaMetroData.mainMetroStations.find { it.id == selectedMetroStationId }
+                            if (mStation != null) {
+                                list.map { st ->
                                     val dist = LocationUtils.calculateDistanceMeters(
                                         st.latitude, st.longitude,
                                         mStation.latitude, mStation.longitude
@@ -352,26 +353,12 @@ fun ValenbisiTab(
                                     compareByDescending<ValenbisiStation> { favoriteValenbisi.contains(it.number.toString()) }
                                         .thenBy { it.distanceMeters }
                                 )
+                            } else {
+                                list
+                            }
                         }
                     }
                 }
-
-                // Apply text search query if present
-                if (searchQuery.isNotBlank()) {
-                    val q = searchQuery.trim().lowercase()
-                    list = list.filter { st ->
-                        val alias = valenbisiAliases[st.number.toString()] ?: ""
-                        st.name.lowercase().contains(q) ||
-                                st.number.toString().contains(q) ||
-                                alias.lowercase().contains(q) ||
-                                st.address.lowercase().contains(q)
-                    }.sortedWith(
-                        compareByDescending<ValenbisiStation> { favoriteValenbisi.contains(it.number.toString()) }
-                            .thenBy { it.distanceMeters }
-                    )
-                }
-
-                list
             }
 
             if (isLoading && valenbisiStations.isEmpty()) {
@@ -389,28 +376,54 @@ fun ValenbisiTab(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.DirectionsBike,
-                            contentDescription = null,
-                            modifier = Modifier.size(56.dp),
-                            tint = MaterialTheme.colorScheme.outline
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = when (filterSource) {
-                                ValenbisiFilterSource.FAVORITES -> if (appLanguage == AppLanguage.CA) "No tens cap estació de Valenbisi als teus favorits" else "No tienes ninguna estación de Valenbisi en tus favoritos"
-                                else -> if (appLanguage == AppLanguage.CA) "No s'han trobat estacions" else "No se encontraron estaciones"
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
+                        if (valenbisiStations.isEmpty() && !isOnline) {
+                            Icon(
+                                imageVector = Icons.Default.WifiOff,
+                                contentDescription = null,
+                                modifier = Modifier.size(56.dp),
+                                tint = if (isDarkMode) Color(0xFFEF5350) else MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = if (appLanguage == AppLanguage.CA) 
+                                    "La informació de les estacions de Valenbisi requereix connexió a internet." 
+                                    else "La información de las estaciones de Valenbisi requiere conexión a internet.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.DirectionsBike,
+                                contentDescription = null,
+                                modifier = Modifier.size(56.dp),
+                                tint = MaterialTheme.colorScheme.outline
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = when (filterSource) {
+                                    ValenbisiFilterSource.FAVORITES -> if (appLanguage == AppLanguage.CA) "No tens cap estació de Valenbisi als teus favorits" else "No tienes ninguna estación de Valenbisi en tus favoritos"
+                                    else -> if (appLanguage == AppLanguage.CA) "No s'han trobat estacions" else "No se encontraron estaciones"
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             } else {
                 LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(vertical = 8.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp + activeTripBottomPadding),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -428,271 +441,9 @@ fun ValenbisiTab(
                             appLanguage = appLanguage,
                             isDarkMode = isDarkMode,
                             onToggleFavorite = { onToggleFavorite(station.number.toString()) },
-                            onEditAlias = { stationToEditAlias = station },
                             onCardClick = { selectedStationForSheet = station }
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ValenbisiStationCard(
-    station: ValenbisiStation,
-    alias: String?,
-    isFavorite: Boolean,
-    appLanguage: AppLanguage,
-    isDarkMode: Boolean = false,
-    onToggleFavorite: () -> Unit,
-    onEditAlias: () -> Unit,
-    onCardClick: () -> Unit
-) {
-    val cardBg = if (isFavorite) {
-        if (isDarkMode) Color(0x234F8CFF) else Color(0xFFE3F2FD)
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
-    val cardBorder = if (isFavorite) {
-        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
-    } else {
-        appCardBorder()
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCardClick() },
-        shape = RoundedCornerShape(16.dp),
-        border = cardBorder,
-        colors = CardDefaults.cardColors(
-            containerColor = cardBg
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp)
-        ) {
-            // Top Row: 2-Line Name/Alias, Circular Edit Icon, Circular Favorite Star
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Station Title and Subtitle (up to 2 lines for title)
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                    val displayName = alias.takeIf { !it.isNullOrBlank() } ?: station.name
-                    Text(
-                        text = displayName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    if (!alias.isNullOrBlank()) {
-                        Text(
-                            text = station.name,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                }
-
-                // Action Buttons Row (Edit & Favorite in circular buttons)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Edit button in a circle
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        IconButton(
-                            onClick = onEditAlias,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit name",
-                                tint = if (!alias.isNullOrBlank()) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
-                    // Favorite Star in a circle
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        IconButton(
-                            onClick = onToggleFavorite,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Icon(
-                                imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                                contentDescription = "Favorite",
-                                tint = if (isFavorite) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Middle Row: Availability indicators (Bikes available vs Free slots)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Bikes available block
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (station.available > 0) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PedalBike,
-                            contentDescription = null,
-                            tint = if (station.available > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "${station.available} / ${station.total}",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = if (appLanguage == AppLanguage.CA) "Bicicletes" else "Bicicletas",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                // Free docks block
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "${station.free} ${if (appLanguage == AppLanguage.CA) "lliures" else "libres"}",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = if (appLanguage == AppLanguage.CA) "Bornetes" else "Huecos",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Proportion bar (bikes vs empty slots)
-            val totalDocks = station.total
-            val availableBikes = station.available
-            val proportion = if (totalDocks > 0) availableBikes.toFloat() / totalDocks.toFloat() else 0f
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(if (isDarkMode) Color(0xFF2C3243) else Color(0xFFE5E7EB))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(proportion)
-                        .fillMaxHeight()
-                        .background(
-                            if (availableBikes == 0) {
-                                Color(0xFFEF4444) // Red
-                            } else if (proportion < 0.2f) {
-                                Color(0xFFF59E0B) // Amber
-                            } else {
-                                Color(0xFF10B981) // Emerald Green
-                            }
-                        )
-                )
-            }
-
-            // Bottom info (Status badge + Station Number on left, Distance on right)
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (station.open) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
-                    ) {
-                        Text(
-                            text = if (station.open)
-                                (if (appLanguage == AppLanguage.CA) "OBERTA" else "ABIERTA")
-                            else (if (appLanguage == AppLanguage.CA) "TANCADA" else "CERRADA"),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (station.open) Color(0xFF2E7D32) else Color(0xFFC62828),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-
-                    Text(
-                        text = "Nº ${station.number}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                if (station.distanceText.isNotBlank()) {
-                    Text(
-                        text = station.distanceText,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }

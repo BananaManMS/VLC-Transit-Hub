@@ -4,7 +4,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,6 +17,7 @@ import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.DirectionsRailway
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -30,35 +33,12 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.cercanias.CercaniasAlert
 import com.example.ui.components.shimmerEffect
 import com.example.ui.metro.MetroIncident
+import com.example.ui.metro.MetroNotice
 import com.example.ui.theme.appCardBorder
+import com.example.util.LineColorResolver
 
-private val METRO_LINE_COLORS = mapOf(
-    "L1" to Color(0xFFF59E0B),
-    "L2" to Color(0xFFEC4899),
-    "L3" to Color(0xFFEF4444),
-    "L4" to Color(0xFF003366),
-    "L5" to Color(0xFF10B981),
-    "L6" to Color(0xFF8B5CF6),
-    "L7" to Color(0xFFF97316),
-    "L8" to Color(0xFF14B8A6),
-    "L9" to Color(0xFF78350F),
-    "L10" to Color(0xFF84CC16)
-)
-
-private val CERCANIAS_LINE_COLORS = mapOf(
-    "C1" to Color(0xFF00A3E0),
-    "C-1" to Color(0xFF00A3E0),
-    "C2" to Color(0xFFFF6A00),
-    "C-2" to Color(0xFFFF6A00),
-    "C3" to Color(0xFF7A287B),
-    "C-3" to Color(0xFF7A287B),
-    "C4" to Color(0xFFE52321),
-    "C-4" to Color(0xFFE52321),
-    "C5" to Color(0xFF009639),
-    "C-5" to Color(0xFF009639),
-    "C6" to Color(0xFF002F6C),
-    "C-6" to Color(0xFF002F6C)
-)
+private val METRO_LINES = listOf("L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10")
+private val CERCANIAS_LINES = listOf("C1", "C2", "C3", "C4", "C5", "C6")
 
 enum class IncidentCategory {
     URGENT,
@@ -83,11 +63,68 @@ fun IncidenciasWidget(
     onOpenCercaniasAvisos: () -> Unit,
     modifier: Modifier = Modifier,
     isMetroLoading: Boolean = false,
-    isCercaniasLoading: Boolean = false
+    isCercaniasLoading: Boolean = false,
+    isOnline: Boolean = true,
+    preferredTransitModes: Set<String> = emptySet()
 ) {
     val isCa = appLanguage == AppLanguage.CA
 
-    // Analyze Metro Incidents
+    val showMetro = preferredTransitModes.isEmpty() ||
+            preferredTransitModes.contains("METRO") ||
+            (!preferredTransitModes.contains("METRO") && !preferredTransitModes.contains("CERCANIAS"))
+
+    val showCercanias = preferredTransitModes.isEmpty() ||
+            preferredTransitModes.contains("CERCANIAS") ||
+            (!preferredTransitModes.contains("METRO") && !preferredTransitModes.contains("CERCANIAS"))
+
+    // Analyze Metro Real Circulation Breakdown (Only INCIDENCIA & AVISO DE CIRCULACIÓN)
+    val categoryCounts = remember(metroIncidents) {
+        var incidencias = 0
+        var avisos = 0
+
+        for (incident in metroIncidents) {
+            val catEnum = com.example.ui.metro.MetroNoticeCategory.fromRaw(incident.category ?: "incidencia")
+            when (catEnum) {
+                com.example.ui.metro.MetroNoticeCategory.AVISO -> avisos++
+                else -> incidencias++
+            }
+        }
+
+        MetroCategoryCounts(
+            incidencias = incidencias,
+            avisos = avisos
+        )
+    }
+
+    val metroCategoryBadges = remember(categoryCounts, isCa, isDarkMode) {
+        val list = mutableListOf<CategoryCountBadge>()
+        val incColor = if (isDarkMode) Color(0xFFEF5350) else Color(0xFFC62828)
+        val avisoColor = if (isDarkMode) Color(0xFFFF7043) else Color(0xFFD84315)
+
+        if (categoryCounts.incidencias > 0) {
+            list.add(
+                CategoryCountBadge(
+                    label = if (isCa) if (categoryCounts.incidencias == 1) "INCIDÈNCIA" else "INCIDÈNCIES" else if (categoryCounts.incidencias == 1) "INCIDENCIA" else "INCIDENCIAS",
+                    count = categoryCounts.incidencias,
+                    color = incColor,
+                    icon = Icons.Default.ReportProblem
+                )
+            )
+        }
+        if (categoryCounts.avisos > 0) {
+            list.add(
+                CategoryCountBadge(
+                    label = if (isCa) if (categoryCounts.avisos == 1) "AVÍS" else "AVISOS" else if (categoryCounts.avisos == 1) "AVISO" else "AVISOS",
+                    count = categoryCounts.avisos,
+                    color = avisoColor,
+                    icon = Icons.Default.ReportProblem
+                )
+            )
+        }
+        list
+    }
+
+    // Analyze Metro Line Incidents
     val (metroAffectedLines, metroHasAll, metroIsObras) = remember(metroIncidents) {
         if (metroIncidents.isEmpty()) {
             Triple(emptyList<LineAlertStatus>(), false, false)
@@ -113,10 +150,9 @@ fun IncidenciasWidget(
                 if (lineFgv.contains("TODAS") || lineFgv.contains("TOTES")) {
                     allLines = true
                 } else {
-                    // Search for line pattern L1, L2, etc.
-                    for ((line, color) in METRO_LINE_COLORS) {
+                    for (line in METRO_LINES) {
                         if (lineFgv.contains(line)) {
-                            linesSet.add(LineAlertStatus(line, color, category = category))
+                            linesSet.add(LineAlertStatus(line, LineColorResolver.getMetroLineColor(line), category = category))
                         }
                     }
                 }
@@ -126,16 +162,20 @@ fun IncidenciasWidget(
         }
     }
 
-    // Analyze Cercanías Incidents
-    val (cercaniasAffectedLines, cercaniasHasAll, cercaniasIsObras) = remember(cercaniasAlerts) {
-        if (cercaniasAlerts.isEmpty()) {
+    // Analyze Cercanías Incidents (only strong circulation incidents)
+    val filteredCercaniasAlerts = remember(cercaniasAlerts) {
+        cercaniasAlerts.filter { it.isCirculationIncident && !it.isAccessibility }
+    }
+
+    val (cercaniasAffectedLines, cercaniasHasAll, cercaniasIsObras) = remember(filteredCercaniasAlerts) {
+        if (filteredCercaniasAlerts.isEmpty()) {
             Triple(emptyList<LineAlertStatus>(), false, false)
         } else {
             val linesSet = mutableSetOf<LineAlertStatus>()
             var allLines = false
             var obras = false
 
-            for (alert in cercaniasAlerts) {
+            for (alert in filteredCercaniasAlerts) {
                 val textLower = (alert.headerEs + " " + alert.descriptionEs).lowercase()
                 val isBus = textLower.contains("autobús") || textLower.contains("bus") || textLower.contains("autobuses")
                 val isOb = textLower.contains("obra") || textLower.contains("corte prolongado") ||
@@ -150,16 +190,15 @@ fun IncidenciasWidget(
                 }
 
                 if (alert.routeIds.isEmpty()) {
-                    // Check if description mentions all or general
-                    for ((line, color) in CERCANIAS_LINE_COLORS) {
+                    for (line in CERCANIAS_LINES) {
                         if (textLower.contains(line.lowercase())) {
-                            linesSet.add(LineAlertStatus(line, color, category = category))
+                            linesSet.add(LineAlertStatus(line, LineColorResolver.getCercaniasLineColor(line), category = category))
                         }
                     }
                 } else {
                     for (routeId in alert.routeIds) {
-                        val cleanRoute = routeId.uppercase()
-                        val color = CERCANIAS_LINE_COLORS[cleanRoute] ?: Color(0xFFD32F2F)
+                        val cleanRoute = routeId.uppercase().trim()
+                        val color = LineColorResolver.getCercaniasLineColor(cleanRoute)
                         linesSet.add(LineAlertStatus(cleanRoute, color, category = category))
                     }
                 }
@@ -169,9 +208,11 @@ fun IncidenciasWidget(
         }
     }
 
-    val totalActiveAlerts = metroIncidents.size + cercaniasAlerts.size
+    val totalMetroIncidents = if (showMetro) metroIncidents.size else 0
+    val totalCercaniasIncidents = if (showCercanias) filteredCercaniasAlerts.size else 0
+    val totalActiveAlerts = totalMetroIncidents + totalCercaniasIncidents
 
-    val isAnyLoading = isMetroLoading || isCercaniasLoading
+    val isAnyLoading = (showMetro && isMetroLoading) || (showCercanias && isCercaniasLoading)
 
     val textPrimary = MaterialTheme.colorScheme.onSurface
     val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
@@ -182,8 +223,7 @@ fun IncidenciasWidget(
             .testTag("incidencias_widget_card"),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = appCardBorder(),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkMode) 0.dp else 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -216,52 +256,74 @@ fun IncidenciasWidget(
                                     .shimmerEffect(shape = RoundedCornerShape(4.dp))
                             )
                         } else if (totalActiveAlerts == 0) {
-                            Text(
-                                text = if (isCa) "Servei habitual a les xarxes" else "Servicio habitual en las redes",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF10B981)
-                            )
+                            if (!isOnline) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.WifiOff,
+                                        contentDescription = null,
+                                        tint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = if (isCa) "Sense connexió • Incidències no disponibles" else "Sin conexión • Incidencias no disponibles",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Metro Row
-            OperatorIncidentsRow(
-                operatorName = "Metrovalencia",
-                iconVector = Icons.Default.Subway,
-                iconTint = Color(0xFF1E88E5),
-                incidentsCount = metroIncidents.size,
-                affectedLines = metroAffectedLines,
-                hasAllLines = metroHasAll,
-                isCa = isCa,
-                isLoading = isMetroLoading,
-                textPrimary = textPrimary,
-                textSecondary = textSecondary,
-                onClick = onOpenMetroAvisos
-            )
+            if (showMetro) {
+                OperatorIncidentsRow(
+                    operatorName = "Metrovalencia",
+                    iconVector = Icons.Default.Subway,
+                    iconTint = Color(0xFF1E88E5),
+                    incidentsCount = totalMetroIncidents,
+                    affectedLines = metroAffectedLines,
+                    categoryBadges = metroCategoryBadges,
+                    hasAllLines = metroHasAll,
+                    isCa = isCa,
+                    isLoading = isMetroLoading,
+                    textPrimary = textPrimary,
+                    textSecondary = textSecondary,
+                    onClick = onOpenMetroAvisos,
+                    isOnline = isOnline
+                )
+            }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 10.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-            )
+            if (showMetro && showCercanias) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+            }
 
             // Cercanías Row
-            OperatorIncidentsRow(
-                operatorName = "Cercanías València",
-                iconVector = Icons.Default.DirectionsRailway,
-                iconTint = Color(0xFFE53935),
-                incidentsCount = cercaniasAlerts.size,
-                affectedLines = cercaniasAffectedLines,
-                hasAllLines = cercaniasHasAll,
-                isCa = isCa,
-                isLoading = isCercaniasLoading,
-                textPrimary = textPrimary,
-                textSecondary = textSecondary,
-                onClick = onOpenCercaniasAvisos
-            )
+            if (showCercanias) {
+                OperatorIncidentsRow(
+                    operatorName = "Cercanías València",
+                    iconVector = Icons.Default.DirectionsRailway,
+                    iconTint = Color(0xFFE53935),
+                    incidentsCount = filteredCercaniasAlerts.size,
+                    affectedLines = cercaniasAffectedLines,
+                    hasAllLines = cercaniasHasAll,
+                    isCa = isCa,
+                    isLoading = isCercaniasLoading,
+                    textPrimary = textPrimary,
+                    textSecondary = textSecondary,
+                    onClick = onOpenCercaniasAvisos,
+                    isOnline = isOnline
+                )
+            }
         }
     }
 }
@@ -273,19 +335,21 @@ private fun OperatorIncidentsRow(
     iconTint: Color,
     incidentsCount: Int,
     affectedLines: List<LineAlertStatus>,
+    categoryBadges: List<CategoryCountBadge> = emptyList(),
     hasAllLines: Boolean,
     isCa: Boolean,
     isLoading: Boolean,
     textPrimary: Color,
     textSecondary: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    isOnline: Boolean = true
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 6.dp, horizontal = 4.dp),
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -302,7 +366,7 @@ private fun OperatorIncidentsRow(
             )
 
             Column(
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
@@ -321,41 +385,95 @@ private fun OperatorIncidentsRow(
                             .shimmerEffect(shape = RoundedCornerShape(4.dp))
                     )
                 } else if (incidentsCount == 0) {
-                    Text(
-                        text = if (isCa) "Sense incidències" else "Sin incidencias",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF10B981),
-                        fontSize = 12.sp
-                    )
-                } else if (hasAllLines) {
-                    Text(
-                        text = if (isCa) "Afecta a totes les línies" else "Afecta a todas las líneas",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFFF9800),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                } else if (affectedLines.isEmpty()) {
-                    Text(
-                        text = if (isCa) "$incidentsCount avisos actius" else "$incidentsCount avisos activos",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFFF9800),
-                        fontSize = 12.sp
-                    )
-                } else {
+                    if (!isOnline) {
+                        Text(
+                            text = if (isCa) "Sense connexió" else "Sin conexión",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textSecondary,
+                            fontSize = 12.sp
+                        )
+                    } else {
+                        Text(
+                            text = if (isCa) "Sense incidències" else "Sin incidencias",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF10B981),
+                            fontSize = 12.sp
+                        )
+                    }
+                } else if (categoryBadges.isNotEmpty()) {
                     Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        affectedLines.take(4).forEach { lineStatus ->
-                            LineBadgeChip(lineStatus = lineStatus)
+                        categoryBadges.forEach { badge ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = badge.color.copy(alpha = 0.12f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = badge.icon,
+                                        contentDescription = null,
+                                        tint = badge.color,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        text = "${badge.count} ${badge.label}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = badge.color,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
                         }
-                        if (affectedLines.size > 4) {
-                            Text(
-                                text = "+${affectedLines.size - 4}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = textSecondary
-                            )
+                    }
+                } else if (hasAllLines) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isCa) "Afecta a totes les línies" else "Afecta a todas las líneas",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFFF9800),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                } else if (affectedLines.isEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isCa) "$incidentsCount avisos actius" else "$incidentsCount avisos activos",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFFF9800),
+                            fontSize = 12.sp
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        affectedLines.forEach { lineStatus ->
+                            LineBadgeChip(lineStatus = lineStatus)
                         }
                     }
                 }
@@ -373,28 +491,24 @@ private fun OperatorIncidentsRow(
 
 @Composable
 private fun LineBadgeChip(lineStatus: LineAlertStatus) {
-    val (bgColor, textColor, border) = when (lineStatus.category) {
-        IncidentCategory.URGENT -> Triple(
+    val (bgColor, textColor) = when (lineStatus.category) {
+        IncidentCategory.URGENT -> Pair(
             lineStatus.color,
-            Color.White,
-            null
+            Color.White
         )
-        IncidentCategory.BUS -> Triple(
+        IncidentCategory.BUS -> Pair(
             lineStatus.color,
-            Color.White,
-            BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
+            Color.White
         )
-        IncidentCategory.OBRAS -> Triple(
+        IncidentCategory.OBRAS -> Pair(
             lineStatus.color.copy(alpha = 0.16f),
-            lineStatus.color,
-            BorderStroke(1.dp, lineStatus.color.copy(alpha = 0.55f))
+            lineStatus.color
         )
     }
 
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = bgColor,
-        border = border,
         modifier = Modifier.wrapContentSize()
     ) {
         Row(

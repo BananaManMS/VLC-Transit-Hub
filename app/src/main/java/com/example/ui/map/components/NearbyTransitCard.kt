@@ -3,6 +3,8 @@ package com.example.ui.map.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,11 +15,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.repository.MetrobusRepository
 import com.example.data.repository.renfe.RenfeRepository
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.components.OperatorLogo
 import com.example.ui.map.SelectedMapItem
+import com.example.util.LineColorResolver
 import com.example.util.LocationUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -31,25 +40,39 @@ private data class CacheEntry(
     val departures: List<GroupedDepartureDisplay>
 )
 
-fun getMetroLineColorHex(lineId: String): String {
-    return com.example.util.LineColorResolver.getMetroLineColorHex(lineId)
+private fun putDeparturesCache(key: String, entry: CacheEntry) {
+    if (departuresCache.size > 80) {
+        val now = System.currentTimeMillis()
+        departuresCache.entries.removeIf { now - it.value.timestamp > 300_000L }
+        if (departuresCache.size > 80) {
+            val oldest = departuresCache.entries.minByOrNull { it.value.timestamp }
+            if (oldest != null) departuresCache.remove(oldest.key)
+        }
+    }
+    departuresCache[key] = entry
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NearbyTransitCard(
     item: NearbyTransitItem,
+    isVisible: Boolean = true,
     cameraCenterLat: Double,
     cameraCenterLon: Double,
     isDarkMode: Boolean,
     appLanguage: AppLanguage,
     busStopAliases: Map<String, String>,
     renfeRepository: RenfeRepository,
+    metrobusRepository: MetrobusRepository,
     okHttpClient: OkHttpClient,
     onClick: () -> Unit
 ) {
-    val cardBg = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF8FAFC)
-    val cardBorder = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+    val favoriteBorderColor = if (isDarkMode) Color(0xFFFFD54F).copy(alpha = 0.7f) else Color(0xFFF59E0B).copy(alpha = 0.8f)
+    val cardBg = if (item.isFavorite) {
+        if (isDarkMode) Color(0xFF28251E) else Color(0xFFFFFDF5)
+    } else {
+        if (isDarkMode) Color(0xFF222222) else Color(0xFFFFFFFF)
+    }
     val titleColor = if (isDarkMode) Color.White else Color(0xFF0F172A)
     val subtextColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
 
@@ -67,8 +90,8 @@ fun NearbyTransitCard(
     Card(
         onClick = onClick,
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, cardBorder),
         colors = CardDefaults.cardColors(containerColor = cardBg),
+        border = if (item.isFavorite) BorderStroke(1.5.dp, favoriteBorderColor) else null,
         modifier = Modifier
             .fillMaxWidth()
             .testTag("nearby_card_${item.key}")
@@ -104,13 +127,27 @@ fun NearbyTransitCard(
                         else -> cleanName
                     }
 
-                    Text(
-                        text = finalTitle,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = titleColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = finalTitle,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = titleColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (item.isFavorite) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = "Favorito",
+                                tint = if (isDarkMode) Color(0xFFFFD54F) else Color(0xFFF59E0B),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(4.dp))
 
@@ -161,7 +198,7 @@ fun NearbyTransitCard(
                             }
                             is NearbyTransitItem.Metro -> {
                                 item.station.lines.forEach { lineId ->
-                                    val colorHex = getMetroLineColorHex(lineId)
+                                    val colorHex = LineColorResolver.getMetroLineColorHex(lineId)
                                     Surface(
                                         shape = RoundedCornerShape(4.dp),
                                         color = Color(android.graphics.Color.parseColor(colorHex))
@@ -179,15 +216,7 @@ fun NearbyTransitCard(
                             is NearbyTransitItem.Cercanias -> {
                                 val lines = item.station.lines.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                                 lines.forEach { lineId ->
-                                    val colorHex = when(lineId) {
-                                        "C1" -> "#00A3E0"
-                                        "C2" -> "#FF6A00"
-                                        "C3" -> "#7A287B"
-                                        "C4" -> "#E52321"
-                                        "C5" -> "#009639"
-                                        "C6" -> "#002F6C"
-                                        else -> "#702B7B"
-                                    }
+                                    val colorHex = LineColorResolver.getCercaniasLineColorHex(lineId)
                                     Surface(
                                         shape = RoundedCornerShape(4.dp),
                                         color = Color(android.graphics.Color.parseColor(colorHex))
@@ -214,14 +243,14 @@ fun NearbyTransitCard(
                                     lines.take(6).forEach { line ->
                                         Surface(
                                             shape = RoundedCornerShape(4.dp),
-                                            color = Color(0xFF0284C7),
+                                            color = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0),
                                             modifier = Modifier.padding(1.dp)
                                         ) {
                                             Text(
                                                 text = line,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color.White,
+                                                color = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF475569),
                                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                             )
                                         }
@@ -266,9 +295,11 @@ fun NearbyTransitCard(
             Spacer(modifier = Modifier.height(8.dp))
             LiveDeparturesRow(
                 item = item,
+                isVisible = isVisible,
                 isDarkMode = isDarkMode,
                 appLanguage = appLanguage,
                 renfeRepository = renfeRepository,
+                metrobusRepository = metrobusRepository,
                 okHttpClient = okHttpClient
             )
         }
@@ -278,9 +309,11 @@ fun NearbyTransitCard(
 @Composable
 fun LiveDeparturesRow(
     item: NearbyTransitItem,
+    isVisible: Boolean,
     isDarkMode: Boolean,
     appLanguage: AppLanguage,
     renfeRepository: RenfeRepository,
+    metrobusRepository: MetrobusRepository,
     okHttpClient: OkHttpClient
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -289,115 +322,176 @@ fun LiveDeparturesRow(
     // Check cache first to avoid flickering or re-fetching when scrolling or recomposing
     val now = System.currentTimeMillis()
     val cached = departuresCache[item.key]
-    val initialList = if (cached != null && (now - cached.timestamp) < 60000L) {
+    val initialList = if (cached != null && (now - cached.timestamp) < 30_000L) {
         cached.departures
     } else {
         emptyList()
     }
 
-    var loading by remember(item.key) { mutableStateOf(initialList.isEmpty()) }
+    var loading by remember(item.key) { mutableStateOf(false) }
     var arrivalsInfo by remember(item.key) { mutableStateOf(initialList) }
 
-    LaunchedEffect(item.key) {
-        val currentCached = departuresCache[item.key]
-        val currentTime = System.currentTimeMillis()
-        if (currentCached != null && (currentTime - currentCached.timestamp) < 60000L) {
-            arrivalsInfo = currentCached.departures
-            loading = false
-            return@LaunchedEffect
-        }
+    LaunchedEffect(item.key, isVisible) {
+        if (!isVisible) return@LaunchedEffect
 
-        loading = true
-        try {
-            withContext(Dispatchers.IO) {
-                var listResult = emptyList<GroupedDepartureDisplay>()
-                when (item) {
-                    is NearbyTransitItem.Bus -> {
-                        val times = com.example.data.repository.RealTimeTransitRepository.getEmtLiveArrivals(item.stop.id_parada)
-                        val rawList = times.map {
-                            val mLower = it.minutos.lowercase().trim()
-                            val mins = if (mLower == "0" || mLower == "imminent" || mLower == "inminente" || mLower == "ara" || mLower == "ahora") {
-                                0
-                            } else {
-                                mLower.filter { c -> c.isDigit() }.toIntOrNull() ?: 0
-                            }
-                            RawDeparture(
-                                lineId = it.linea.trim(),
-                                destination = it.destino.trim(),
-                                minutes = mins,
-                                colorHex = "#EF4444"
+        var isFirstRun = true
+        while (isActive) {
+            val currentCached = departuresCache[item.key]
+            val currentTime = System.currentTimeMillis()
+            val isCacheValid = currentCached != null && (currentTime - currentCached.timestamp) < 30_000L
+
+            if (isFirstRun) {
+                isFirstRun = false
+                if (isCacheValid) {
+                    arrivalsInfo = currentCached!!.departures
+                    loading = false
+                    val remainingCacheTime = 30_000L - (currentTime - currentCached.timestamp)
+                    delay(remainingCacheTime.coerceAtLeast(1000L))
+                    continue
+                }
+                // Debounce to avoid firing network requests during rapid scrolls or quick navigation
+                delay(300L)
+            }
+
+            if (!isActive) break
+
+            if (arrivalsInfo.isEmpty()) {
+                loading = true
+            }
+
+            try {
+                withContext(Dispatchers.IO) {
+                    ensureActive()
+                    var listResult = emptyList<GroupedDepartureDisplay>()
+                    when (item) {
+                        is NearbyTransitItem.Bus -> {
+                            val times = com.example.data.repository.RealTimeTransitRepository.getEmtLiveArrivals(
+                                stopNumber = item.stop.id_parada,
+                                stopName = item.stop.denominacion
                             )
-                        }
-                        listResult = groupDepartures(rawList, appLanguage)
-                    }
-                    is NearbyTransitItem.Metro -> {
-                        val numericId = item.station.id.toIntOrNull()
-                        if (numericId != null) {
-                            val arrivals = com.example.data.repository.RealTimeTransitRepository.getMetroLiveArrivals(numericId.toString())
-                            val rawList = arrivals.map { arrival ->
-                                val colorHex = getMetroLineColorHex(arrival.line)
+                            ensureActive()
+                            val rawList = times.map { bus ->
+                                val mLower = bus.minutos.lowercase().trim()
+                                val destLower = bus.destino.lowercase().trim()
+                                val lineLower = bus.linea.lowercase().trim()
+
+                                val isDiverted = mLower.contains("desvia") || 
+                                                 destLower.contains("desvia") || 
+                                                 lineLower.contains("desvia") || 
+                                                 mLower.contains("suprim") || 
+                                                 destLower.contains("suprim") ||
+                                                 mLower.contains("desv") ||
+                                                 destLower.contains("desv")
+
+                                val isAbsoluteTime = !isDiverted && (
+                                    bus.minutos.contains(":") || 
+                                    (bus.minutos.length >= 5 && bus.minutos.all { it.isDigit() || it == ':' })
+                                )
+
+                                val mins: Int
+                                val displayStr: String?
+
+                                if (isDiverted) {
+                                    mins = 999
+                                    displayStr = if (appLanguage == AppLanguage.CA) "Desviat" else "Desviado"
+                                } else if (isAbsoluteTime) {
+                                    mins = 998
+                                    displayStr = bus.minutos.trim()
+                                } else if (mLower == "0" || mLower == "imminent" || mLower == "inminente" || mLower == "ara" || mLower == "ahora" || mLower.startsWith("pr")) {
+                                    mins = 0
+                                    displayStr = if (appLanguage == AppLanguage.CA) "Ara" else "Ahora"
+                                } else {
+                                    val extracted = mLower.filter { c -> c.isDigit() }.toIntOrNull()
+                                    if (extracted != null) {
+                                        mins = extracted
+                                        displayStr = null
+                                    } else {
+                                        mins = 997
+                                        displayStr = bus.minutos.trim().ifEmpty { if (appLanguage == AppLanguage.CA) "Sense servei" else "Sin servicio" }
+                                    }
+                                }
+
+                                val cleanDest = bus.destino.trim().replace(Regex("^>+\\s*"), "")
+
                                 RawDeparture(
-                                    lineId = arrival.line,
-                                    destination = arrival.destination.trim(),
-                                    minutes = arrival.minutes,
-                                    colorHex = colorHex
+                                    lineId = bus.linea.trim(),
+                                    destination = cleanDest.ifEmpty { "EMT" },
+                                    minutes = mins,
+                                    colorHex = "#EF4444",
+                                    customDisplay = displayStr,
+                                    isDiverted = isDiverted,
+                                    isRealTime = bus.isRealTime
                                 )
                             }
                             listResult = groupDepartures(rawList, appLanguage)
                         }
-                    }
-                    is NearbyTransitItem.Cercanias -> {
-                        val rawDeps = renfeRepository.getDeparturesForStation(item.station.stop_id)
-                        val sorted = com.example.data.mapper.CercaniasDepartureMapper.sortDeparturesChronologically(rawDeps)
-                        val rawList = sorted.map {
-                            val colorHex = when(it.routeId) {
-                                "C1" -> "#00A3E0"
-                                "C2" -> "#FF6A00"
-                                "C3" -> "#7A287B"
-                                "C4" -> "#E52321"
-                                "C5" -> "#009639"
-                                "C6" -> "#002F6C"
-                                else -> "#702B7B"
+                        is NearbyTransitItem.Metro -> {
+                            val numericId = item.station.id.toIntOrNull()
+                            if (numericId != null) {
+                                val arrivals = com.example.data.repository.RealTimeTransitRepository.getMetroLiveArrivals(numericId.toString())
+                                ensureActive()
+                                val rawList = arrivals.map { arrival ->
+                                    val colorHex = LineColorResolver.getMetroLineColorHex(arrival.line)
+                                    RawDeparture(
+                                        lineId = arrival.line,
+                                        destination = arrival.destination.trim(),
+                                        minutes = arrival.minutes,
+                                        colorHex = colorHex,
+                                        isRealTime = arrival.isRealTime
+                                    )
+                                }
+                                listResult = groupDepartures(rawList, appLanguage)
                             }
-                            val mins = maxOf(0, it.minutesRemaining)
-                            RawDeparture(
-                                lineId = it.routeId.trim(),
-                                destination = it.destination.trim(),
-                                minutes = mins,
-                                colorHex = colorHex
-                            )
                         }
-                        listResult = groupDepartures(rawList, appLanguage)
-                    }
-                    is NearbyTransitItem.Metrobus -> {
-                        val db = com.example.data.database.AppDatabase.getDatabase(context)
-                        val repo = com.example.data.repository.MetrobusRepository(db, okHttpClient)
-                        val linesMap = repo.getLinesMap()
-                        val detail = repo.fetchStopDetail(item.stop.id_parada)
-                        if (detail != null) {
-                            val departures = com.example.ui.bus.MetrobusTimeCalculator.getActiveDeparturesForToday(detail, linesMap)
+                        is NearbyTransitItem.Cercanias -> {
+                            val rawDeps = renfeRepository.getDeparturesForStation(item.station.stop_id)
+                            ensureActive()
+                            val sorted = com.example.data.mapper.CercaniasDepartureMapper.sortDeparturesChronologically(rawDeps)
+                            val rawList = sorted.map {
+                                val colorHex = LineColorResolver.getCercaniasLineColorHex(it.routeId)
+                                val mins = maxOf(0, it.minutesRemaining)
+                                RawDeparture(
+                                    lineId = it.routeId.trim(),
+                                    destination = it.destination.trim(),
+                                    minutes = mins,
+                                    colorHex = colorHex,
+                                    isRealTime = it.isLive && !it.isCanceled
+                                )
+                            }
+                            listResult = groupDepartures(rawList, appLanguage)
+                        }
+                        is NearbyTransitItem.Metrobus -> {
+                            val departures = metrobusRepository.fetchRealTimeEstimations(item.stop.id_parada)
+                            ensureActive()
                             val rawList = departures.map { dep ->
                                 val mins = maxOf(0, dep.minutesRemaining)
                                 RawDeparture(
                                     lineId = dep.lineCode,
                                     destination = dep.destination,
                                     minutes = mins,
-                                    colorHex = "#0284C7"
+                                    colorHex = dep.routeColor ?: "#D97706",
+                                    isRealTime = dep.isRealTime
                                 )
                             }
                             listResult = groupDepartures(rawList, appLanguage)
                         }
                     }
+                    ensureActive()
+                    putDeparturesCache(item.key, CacheEntry(System.currentTimeMillis(), listResult))
+                    arrivalsInfo = listResult
                 }
-                departuresCache[item.key] = CacheEntry(System.currentTimeMillis(), listResult)
-                arrivalsInfo = listResult
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                e.printStackTrace()
+            } finally {
+                if (isActive) {
+                    loading = false
+                }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } finally {
-            loading = false
-        }
+
+        delay(30_000L)
     }
+}
 
     if (loading) {
         Row(
@@ -467,8 +561,13 @@ fun LiveDeparturesRow(
                                     )
                                 }
                                 val isNow = timeStr == "Ara" || timeStr == "Ahora"
+                                val isDivertedText = timeStr.equals("Desviado", ignoreCase = true) || 
+                                                     timeStr.equals("Desviat", ignoreCase = true) || 
+                                                     timeStr.contains("desvia", ignoreCase = true) ||
+                                                     timeStr.contains("desv", ignoreCase = true)
                                 val isFirst = index == 0
                                 val textColor = when {
+                                    isDivertedText || dep.isDiverted -> Color(0xFFE53935)
                                     isNow -> Color(0xFF10B981)
                                     isFirst -> if (isDarkMode) Color.White else Color(0xFF0F172A)
                                     else -> subtextColor
@@ -476,8 +575,16 @@ fun LiveDeparturesRow(
                                 Text(
                                     text = timeStr,
                                     fontSize = 13.sp,
-                                    fontWeight = if (isFirst) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = if (isFirst || isDivertedText || dep.isDiverted) FontWeight.Bold else FontWeight.Normal,
                                     color = textColor
+                                )
+                            }
+                            if (dep.isRealTime) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                com.example.ui.components.LiveRssFeedIcon(
+                                    contentDescription = "En Vivo",
+                                    tint = Color(0xFF2ECC71),
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         }
@@ -492,14 +599,19 @@ data class RawDeparture(
     val lineId: String,
     val destination: String,
     val minutes: Int,
-    val colorHex: String
+    val colorHex: String,
+    val customDisplay: String? = null,
+    val isDiverted: Boolean = false,
+    val isRealTime: Boolean = true
 )
 
 data class GroupedDepartureDisplay(
     val lineId: String,
     val destination: String,
     val times: List<String>,
-    val colorHex: String
+    val colorHex: String,
+    val isDiverted: Boolean = false,
+    val isRealTime: Boolean = true
 )
 
 fun groupDepartures(
@@ -519,16 +631,21 @@ fun groupDepartures(
         val (lineId, destination) = key
         val sortedDeps = deps.sortedBy { it.minutes }
         val topTwo = sortedDeps.take(2)
+        val hasDiverted = topTwo.any { it.isDiverted }
+        val isRealTime = topTwo.any { it.isRealTime }
+
         val timesFormatted = topTwo.mapIndexed { index, dep ->
             val isLast = index == topTwo.lastIndex
-            if (dep.minutes <= 0) {
+            if (dep.customDisplay != null) {
+                dep.customDisplay
+            } else if (dep.minutes <= 0) {
                 if (appLanguage == AppLanguage.CA) "Ara" else "Ahora"
             } else {
                 if (isLast) {
                     "${dep.minutes} min"
                 } else {
                     val nextDep = topTwo.getOrNull(index + 1)
-                    if (nextDep != null && nextDep.minutes > 0) {
+                    if (nextDep != null && nextDep.customDisplay == null && nextDep.minutes > 0) {
                         "${dep.minutes}"
                     } else {
                         "${dep.minutes} min"
@@ -541,7 +658,9 @@ fun groupDepartures(
                 lineId = lineId,
                 destination = destination,
                 times = timesFormatted,
-                colorHex = deps.first().colorHex
+                colorHex = deps.first().colorHex,
+                isDiverted = hasDiverted,
+                isRealTime = isRealTime
             )
         )
     }

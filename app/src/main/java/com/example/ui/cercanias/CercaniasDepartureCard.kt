@@ -52,7 +52,7 @@ fun CercaniasDepartureCard(
 
     val affectedAlerts = remember(alerts, departure) {
         alerts.filter { alert ->
-            if (alert.isAccessibility) return@filter false
+            if (alert.isAccessibility || !alert.isCirculationIncident) return@filter false
             val matchesRoute = alert.routeIds.any { rId ->
                 rId.equals(departure.routeId, ignoreCase = true) || 
                 rId.replace("-", "").equals(departure.routeId.replace("-", ""), ignoreCase = true)
@@ -81,22 +81,10 @@ fun CercaniasDepartureCard(
     UnifiedAppCard(
         onClick = onClick,
         startContent = {
-            val routeText = if (departure.routeId.matches(Regex("C\\d"))) "C-${departure.routeId.substring(1)}" else departure.routeId
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(routeColor),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = routeText,
-                    color = Color.White,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 11.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
+            com.example.ui.metro.CercaniasLineBadge(
+                routeId = departure.routeId,
+                modifier = Modifier.fillMaxSize()
+            )
         },
         centerContent = {
             Column {
@@ -161,26 +149,12 @@ fun CercaniasDepartureCard(
             val exceeds60 = departure.minutesRemaining > 60
 
             val isStopped = departure.isStoppedAt
-            val infiniteTransition = rememberInfiniteTransition(label = "stopped_pulse")
-
-            val textSwitchPhase by infiniteTransition.animateFloat(
-                initialValue = 0f,
-                targetValue = 2f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(durationMillis = 3000, easing = LinearEasing),
-                    repeatMode = RepeatMode.Restart
-                ),
-                label = "text_switch"
-            )
+            val stoppedAlternatingText = if (isStopped) StoppedTrainAlternatingText(appLanguage) else ""
 
             val bigTextStr = if (departure.isCanceled) {
                 if (appLanguage == AppLanguage.CA) "CANCEL·LAT" else "CANCELADO"
             } else if (isStopped) {
-                if (textSwitchPhase < 1.0f) {
-                    if (appLanguage == AppLanguage.CA) "Aturat" else "Parado"
-                } else {
-                    if (appLanguage == AppLanguage.CA) "Immediat" else "Inmediato"
-                }
+                stoppedAlternatingText
             } else if (departure.isRecoveredStopped) {
                 if (appLanguage == AppLanguage.CA) "Aturat" else "Detenido"
             } else if (exceeds60) {
@@ -219,8 +193,7 @@ fun CercaniasDepartureCard(
                         fontWeight = FontWeight.ExtraBold
                     )
                     if (departure.isLive && !departure.isCanceled) {
-                        Icon(
-                            imageVector = Icons.Default.RssFeed,
+                        com.example.ui.components.LiveRssFeedIcon(
                             contentDescription = if (appLanguage == AppLanguage.CA) "En Directe" else "En Vivo",
                             tint = bigTextColor,
                             modifier = Modifier.size(16.dp)
@@ -240,4 +213,23 @@ fun CercaniasDepartureCard(
             }
         }
     )
+}
+
+@Composable
+private fun StoppedTrainAlternatingText(appLanguage: AppLanguage): String {
+    val infiniteTransition = rememberInfiniteTransition(label = "stopped_pulse")
+    val textSwitchPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "text_switch"
+    )
+    return if (textSwitchPhase < 1.0f) {
+        if (appLanguage == AppLanguage.CA) "Aturat" else "Parado"
+    } else {
+        if (appLanguage == AppLanguage.CA) "Immediat" else "Inmediato"
+    }
 }

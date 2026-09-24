@@ -1,280 +1,473 @@
 package com.example.ui.map.components
 
-import android.content.Intent
-import android.net.Uri
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Directions
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.data.model.NominatimResult
+import com.example.data.model.PlaceCategory
 import com.example.ui.dashboard.AppLanguage
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddressDestinationBottomSheet(
     address: NominatimResult,
     isDarkMode: Boolean,
     appLanguage: AppLanguage,
     isFavorite: Boolean = false,
+    favoriteColorHex: String? = null,
     onSaveFavorite: (() -> Unit)? = null,
     onNavigate: ((lat: Double, lon: Double, name: String) -> Unit)? = null,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    maxExpandedHeight: Dp = 560.dp,
+    sheetState: DetailSheetState = DetailSheetState.HALF_EXPANDED,
+    onSheetStateChanged: (DetailSheetState) -> Unit = {},
+    onHeightPxChanged: ((Float) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    activeTripBottomPadding: Dp = 0.dp
 ) {
     val context = LocalContext.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    val parts = remember(address.displayName) {
-        address.displayName.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-    }
-    val title = parts.firstOrNull() ?: address.displayName
-    val subtitle = if (parts.size > 1) parts.drop(1).joinToString(", ") else ""
+    val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
 
     val isValencian = appLanguage == AppLanguage.CA
 
-    val sheetBgColor = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFFFFFFF)
+    val rawDisplayName = remember(address.displayName) {
+        address.displayName.replace(Regex("\\s*\\([0-9.,\\-\\s]+\\)"), "").trim()
+    }
+
+    val parts = remember(rawDisplayName) {
+        rawDisplayName.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    val title = remember(address, isValencian, rawDisplayName) {
+        if (!address.placeName.isNullOrBlank()) {
+            address.placeName.replace(Regex("\\s*\\([0-9.,\\-\\s]+\\)"), "").trim()
+        } else if (rawDisplayName.startsWith("Ubicación seleccionada", ignoreCase = true) ||
+            rawDisplayName.startsWith("Ubicació seleccionada", ignoreCase = true) ||
+            rawDisplayName.startsWith("Ubicación en el mapa", ignoreCase = true) ||
+            rawDisplayName.startsWith("Punt al mapa", ignoreCase = true) ||
+            rawDisplayName.startsWith("Punt seleccionat", ignoreCase = true)
+        ) {
+            if (isValencian) "Punt seleccionat" else "Ubicación seleccionada"
+        } else {
+            parts.firstOrNull() ?: if (isValencian) "Punt seleccionat" else "Ubicación seleccionada"
+        }
+    }
+
+    val subtitle = remember(address, isValencian, parts, title) {
+        val road = address.road
+        val hn = if (!address.houseNumber.isNullOrBlank()) " ${address.houseNumber}" else ""
+        val area = address.suburb ?: address.city
+        val pc = if (!address.postcode.isNullOrBlank()) " (${address.postcode})" else ""
+
+        if (!road.isNullOrBlank()) {
+            if (!area.isNullOrBlank() && !area.equals(road, ignoreCase = true)) {
+                "$road$hn • $area$pc"
+            } else {
+                "$road$hn$pc"
+            }
+        } else if (parts.size > 1) {
+            parts.drop(1).joinToString(", ")
+        } else if (title == "Ubicación seleccionada" || title == "Punt seleccionat") {
+            if (isValencian) "Punt al mapa" else "Punto en el mapa"
+        } else {
+            ""
+        }
+    }
+
+    val isFavItem = isFavorite || address.category == "favorite" || address.type == "favorite" || address.placeCategory == PlaceCategory.FAVORITE
+    val category = if (isFavItem) PlaceCategory.FAVORITE else address.placeCategory
+
+    val sheetBgColor = if (isDarkMode) Color(0xFF171717) else Color(0xFFFAFAFA)
     val textPrimaryColor = if (isDarkMode) Color(0xFFF1F5F9) else Color(0xFF0F172A)
     val textSecondaryColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = sheetBgColor,
-        tonalElevation = 6.dp,
-        modifier = Modifier.testTag("address_destination_bottom_sheet")
+    // Subcategory display resolution
+    val subcategoryLabel = remember(address) {
+        val ignoredSubtypes = setOf(
+            "yes", "no", "unclassified", "point", "ticket", "ticket_validator", "road", "street", "footway",
+            "pedestrian", "path", "living_street", "residential", "service", "house", "building", "address",
+            "node", "way", "relation", "city_gate", "monument", "castle", "ruins", "memorial",
+            "archaeological_site", "tower", "citywalls"
+        )
+        val rawType = address.type.lowercase().trim()
+        if (rawType.isNotBlank() && !ignoredSubtypes.contains(rawType)) {
+            address.type.replace('_', ' ').replaceFirstChar { it.uppercase() }
+        } else null
+    }
+
+    val hasRichDetails = remember(address) {
+        !address.wikipedia.isNullOrBlank() ||
+        !address.wikidata.isNullOrBlank() ||
+        !address.openingHours.isNullOrBlank() ||
+        !address.phone.isNullOrBlank() ||
+        !address.email.isNullOrBlank() ||
+        !address.website.isNullOrBlank() ||
+        !address.startDate.isNullOrBlank() ||
+        !address.historicType.isNullOrBlank() ||
+        !address.fee.isNullOrBlank() ||
+        !address.charge.isNullOrBlank()
+    }
+
+    var measuredContentHeightPx by remember { mutableFloatStateOf(0f) }
+
+    val minCollapsedDp = 145.dp + activeTripBottomPadding
+    val defaultHalfExpandedDp = 340.dp + activeTripBottomPadding
+    val maxExpandedDp = (maxExpandedHeight + activeTripBottomPadding).coerceAtLeast(defaultHalfExpandedDp)
+
+    val collapsedPx = with(density) { minCollapsedDp.toPx() }
+    val maxExpandedPx = with(density) { maxExpandedDp.toPx() }
+
+    // If measured content fits in less than 340dp (or has no extra rich details), fit snugly to content!
+    val effectiveTargetHeightPx = remember(measuredContentHeightPx, hasRichDetails, maxExpandedPx, collapsedPx, activeTripBottomPadding) {
+        if (measuredContentHeightPx > 0f) {
+            // Add a small safety padding (4dp) plus activeTripBottomPadding
+            val paddedContent = measuredContentHeightPx + with(density) { (4.dp + activeTripBottomPadding).toPx() }
+            if (hasRichDetails) {
+                // If there are rich details (Wikipedia, opening hours, contacts), allow expanding up to maxExpandedPx
+                paddedContent.coerceIn(collapsedPx, maxExpandedPx)
+            } else {
+                // For a simple map point, snug fit directly to the measured content (no empty void!)
+                paddedContent.coerceIn(collapsedPx, maxExpandedPx)
+            }
+        } else {
+            // Initial fallback while measure hasn't completed yet: use a compact 210dp instead of huge 340dp
+            with(density) { (210.dp + activeTripBottomPadding).toPx() }
+        }
+    }
+
+    val halfExpandedPx = remember(effectiveTargetHeightPx, hasRichDetails, density) {
+        if (!hasRichDetails) {
+            effectiveTargetHeightPx
+        } else {
+            val defaultHalfPx = with(density) { defaultHalfExpandedDp.toPx() }
+            effectiveTargetHeightPx.coerceAtMost(defaultHalfPx)
+        }
+    }
+
+    val fullyExpandedPx = remember(effectiveTargetHeightPx, maxExpandedPx, hasRichDetails) {
+        if (!hasRichDetails) {
+            effectiveTargetHeightPx
+        } else {
+            effectiveTargetHeightPx.coerceIn(halfExpandedPx, maxExpandedPx)
+        }
+    }
+
+    val heightAnimatable = remember {
+        Animatable(
+            when (sheetState) {
+                DetailSheetState.COLLAPSED -> collapsedPx
+                DetailSheetState.HALF_EXPANDED -> halfExpandedPx
+                DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
+            }
+        )
+    }
+
+    LaunchedEffect(sheetState, collapsedPx, halfExpandedPx, fullyExpandedPx) {
+        val target = when (sheetState) {
+            DetailSheetState.COLLAPSED -> collapsedPx
+            DetailSheetState.HALF_EXPANDED -> halfExpandedPx
+            DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
+        }
+        if (kotlin.math.abs(heightAnimatable.value - target) > 1f && heightAnimatable.targetValue != target) {
+            heightAnimatable.animateTo(
+                targetValue = target,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            )
+        }
+    }
+
+    val currentHeightPx = heightAnimatable.value
+    val panelHeight = with(density) { currentHeightPx.toDp() }
+
+    SideEffect {
+        onHeightPxChanged?.invoke(currentHeightPx)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            onHeightPxChanged?.invoke(0f)
+        }
+    }
+
+    val dismissSheet: () -> Unit = {
+        onDismiss()
+    }
+
+    val scrollState = rememberScrollState()
+
+    val settleSheetState = remember(collapsedPx, halfExpandedPx, fullyExpandedPx) {
+        { velocity: Float ->
+            val currentHeight = heightAnimatable.value
+            val targetState = if (kotlin.math.abs(velocity) > 300f) {
+                if (velocity < 0f) {
+                    if (currentHeight < halfExpandedPx) DetailSheetState.HALF_EXPANDED else DetailSheetState.FULLY_EXPANDED
+                } else {
+                    if (currentHeight > halfExpandedPx) DetailSheetState.HALF_EXPANDED else DetailSheetState.COLLAPSED
+                }
+            } else {
+                val upperMid = (halfExpandedPx + fullyExpandedPx) * 0.5f
+                val lowerMid = (collapsedPx + halfExpandedPx) * 0.5f
+                when {
+                    currentHeight >= upperMid -> DetailSheetState.FULLY_EXPANDED
+                    currentHeight >= lowerMid -> DetailSheetState.HALF_EXPANDED
+                    else -> DetailSheetState.COLLAPSED
+                }
+            }
+
+            onSheetStateChanged(targetState)
+            coroutineScope.launch {
+                val targetPx = when (targetState) {
+                    DetailSheetState.COLLAPSED -> collapsedPx
+                    DetailSheetState.HALF_EXPANDED -> halfExpandedPx
+                    DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
+                }
+                heightAnimatable.animateTo(
+                    targetValue = targetPx,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(scrollState.isScrollInProgress) {
+        if (!scrollState.isScrollInProgress && !heightAnimatable.isRunning) {
+            val currentHeight = heightAnimatable.value
+            val isStable = kotlin.math.abs(currentHeight - collapsedPx) < 2f ||
+                           kotlin.math.abs(currentHeight - halfExpandedPx) < 2f ||
+                           kotlin.math.abs(currentHeight - fullyExpandedPx) < 2f
+            if (!isStable && currentHeight > 0f && scrollState.value == 0) {
+                settleSheetState(0f)
+            }
+        }
+    }
+
+    var totalDragAmount by remember { mutableFloatStateOf(0f) }
+
+    val headerDragModifier = Modifier.pointerInput(collapsedPx, halfExpandedPx, fullyExpandedPx) {
+        detectVerticalDragGestures(
+            onDragStart = { totalDragAmount = 0f },
+            onDragEnd = {
+                val dragDistance = totalDragAmount
+                val currentH = heightAnimatable.value
+                val isUp = dragDistance < -15f
+                val isDown = dragDistance > 15f
+
+                val targetState = when {
+                    isUp -> {
+                        if (currentH < halfExpandedPx) DetailSheetState.HALF_EXPANDED else DetailSheetState.FULLY_EXPANDED
+                    }
+                    isDown -> {
+                        if (currentH > halfExpandedPx) DetailSheetState.HALF_EXPANDED else DetailSheetState.COLLAPSED
+                    }
+                    else -> {
+                        val upperMid = (halfExpandedPx + fullyExpandedPx) * 0.5f
+                        val lowerMid = (collapsedPx + halfExpandedPx) * 0.5f
+                        when {
+                            currentH >= upperMid -> DetailSheetState.FULLY_EXPANDED
+                            currentH >= lowerMid -> DetailSheetState.HALF_EXPANDED
+                            else -> DetailSheetState.COLLAPSED
+                        }
+                    }
+                }
+                onSheetStateChanged(targetState)
+                coroutineScope.launch {
+                    val targetPx = when (targetState) {
+                        DetailSheetState.COLLAPSED -> collapsedPx
+                        DetailSheetState.HALF_EXPANDED -> halfExpandedPx
+                        DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
+                    }
+                    heightAnimatable.animateTo(
+                        targetValue = targetPx,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        )
+                    )
+                }
+            },
+            onVerticalDrag = { change, dragAmount ->
+                change.consume()
+                totalDragAmount += dragAmount
+                coroutineScope.launch {
+                    val newTarget = (heightAnimatable.value - dragAmount).coerceIn(collapsedPx, fullyExpandedPx)
+                    heightAnimatable.snapTo(newTarget)
+                }
+            }
+        )
+    }
+
+    val nestedScrollConnection = remember(collapsedPx, halfExpandedPx, fullyExpandedPx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+
+                // Si movemos el dedo hacia arriba (delta < 0), expandimos el panel primero
+                if (delta < 0f && heightAnimatable.value < fullyExpandedPx - 0.5f) {
+                    val newHeightToSet = (heightAnimatable.value - delta).coerceIn(collapsedPx, fullyExpandedPx)
+                    val consumed = heightAnimatable.value - newHeightToSet
+                    coroutineScope.launch {
+                        heightAnimatable.snapTo(newHeightToSet)
+                    }
+                    return Offset(0f, consumed)
+                }
+
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                // Do not shrink the sheet from inner list scroll; collapsing is only via intentional drag on handle/header
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                val velocityY = available.y
+                val currentHeight = heightAnimatable.value
+
+                if (velocityY < 0f && currentHeight < fullyExpandedPx - 1f) {
+                    settleSheetState(velocityY)
+                    return available
+                }
+
+                return Velocity.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                // Never collapse or settle down from internal list fling inertia
+                return Velocity.Zero
+            }
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(panelHeight)
+            .testTag("address_destination_bottom_sheet"),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        color = sheetBgColor,
+        shadowElevation = 8.dp
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp)
-                .navigationBarsPadding()
+                .fillMaxSize()
+                .nestedScroll(nestedScrollConnection)
+                .verticalScroll(scrollState)
         ) {
-            // Header Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    val isFavItem = isFavorite || address.category == "favorite" || address.type == "favorite"
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isFavItem) Color(0xFFF59E0B).copy(alpha = 0.15f)
-                                else Color(0xFFE53935).copy(alpha = 0.15f)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (isFavItem) Icons.Default.Star else Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = if (isFavItem) Color(0xFFF59E0B) else Color(0xFFE53935),
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(14.dp))
-
-                    Column {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp
-                            ),
-                            color = textPrimaryColor,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (subtitle.isNotEmpty()) {
-                            Text(
-                                text = subtitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = textSecondaryColor,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { size ->
+                        if (size.height > 0) {
+                            measuredContentHeightPx = size.height.toFloat()
                         }
                     }
-                }
-
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.testTag("address_close_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Tancar",
-                        tint = textSecondaryColor
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Coordinates info chip
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = if (isDarkMode) Color(0xFF334155) else Color(0xFFF1F5F9),
-                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (isValencian) "Destí marcat al mapa" else "Destino marcado en el mapa",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = if (isDarkMode) Color(0xFF38BDF8) else Color(0xFF0284C7)
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = "%.4f, %.4f".format(address.latitude, address.longitude),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = textSecondaryColor
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Action Buttons Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (onSaveFavorite != null) {
-                    FilledTonalButton(
-                        onClick = onSaveFavorite,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("address_save_favorite_button"),
-                        shape = RoundedCornerShape(14.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 8.dp),
-                        colors = if (isFavorite) {
-                            ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        } else {
-                            ButtonDefaults.filledTonalButtonColors()
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = if (isFavorite) Color(0xFFEAB308) else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (isFavorite) {
-                                if (isValencian) "Desat" else "Guardado"
-                            } else {
-                                if (isValencian) "Desar" else "Guardar"
-                            },
-                            maxLines = 1,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                Button(
-                    onClick = {
-                        if (onNavigate != null) {
-                            onNavigate(address.latitude, address.longitude, title)
-                        } else {
-                            val gmmIntentUri = Uri.parse("google.navigation:q=${address.latitude},${address.longitude}")
-                            val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri).apply {
-                                setPackage("com.google.android.apps.maps")
-                            }
-                            try {
-                                context.startActivity(mapIntent)
-                            } catch (e: Exception) {
-                                val fallbackUri = Uri.parse("geo:0,0?q=${address.latitude},${address.longitude}(${Uri.encode(title)})")
-                                val fallbackIntent = Intent(Intent.ACTION_VIEW, fallbackUri)
-                                try {
-                                    context.startActivity(fallbackIntent)
-                                } catch (e2: Exception) {
-                                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${address.latitude},${address.longitude}"))
-                                    context.startActivity(webIntent)
-                                }
-                            }
-                        }
-                    },
+                // Drag Handle Bar
+                Box(
                     modifier = Modifier
-                        .weight(1.3f)
-                        .testTag("address_navigate_button"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF0284C7)
-                    ),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                        .fillMaxWidth()
+                        .then(headerDragModifier)
+                        .padding(top = 4.dp, bottom = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Directions,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (isValencian) "Arribar" else "Llegar",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        fontSize = 12.sp
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(2.dp),
+                        color = if (isDarkMode) Color(0xFF475569) else Color(0xFFCBD5E1),
+                        modifier = Modifier
+                            .size(width = 36.dp, height = 4.dp)
+                    ) {}
                 }
-            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                // Header Row
+                AddressDestinationHeader(
+                    address = address,
+                    title = title,
+                    subtitle = subtitle,
+                    category = category,
+                    subcategoryLabel = subcategoryLabel,
+                    isDarkMode = isDarkMode,
+                    appLanguage = appLanguage,
+                    onDismiss = dismissSheet,
+                    modifier = headerDragModifier
+                )
+
+                // Detail sections (Wikipedia, Opening Hours, Fee, History, Contacts, Coordinates)
+                AddressDestinationDetailSections(
+                    address = address,
+                    title = title,
+                    category = category,
+                    subcategoryLabel = subcategoryLabel,
+                    appLanguage = appLanguage,
+                    isDarkMode = isDarkMode,
+                    context = context,
+                    textSecondaryColor = textSecondaryColor
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Action Buttons Row (Save Favorite, Navigate)
+                AddressDestinationActions(
+                    address = address,
+                    title = title,
+                    isFavorite = isFavorite,
+                    favoriteColorHex = favoriteColorHex,
+                    isValencian = isValencian,
+                    onSaveFavorite = onSaveFavorite,
+                    onNavigate = onNavigate
+                )
+
+                Spacer(modifier = Modifier.height(16.dp + activeTripBottomPadding))
+            }
         }
     }
 }

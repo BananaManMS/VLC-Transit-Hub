@@ -6,6 +6,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -64,7 +67,10 @@ fun NearbyStopsBottomSheet(
     sheetState: SheetState = SheetState.COLLAPSED,
     onSheetStateChanged: (SheetState) -> Unit = {},
     onHeightChanged: (Dp) -> Unit = {},
-    maxExpandedHeight: Dp = 560.dp
+    onHeightPxChanged: ((Float) -> Unit)? = null,
+    maxExpandedHeight: Dp = 560.dp,
+    activeTripBottomPadding: Dp = 0.dp,
+    valenbisiEnabled: Boolean = false
 ) {
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -74,12 +80,12 @@ fun NearbyStopsBottomSheet(
     val expandedHeightDp = maxExpandedHeight
 
     val minimizedHeightPx = with(density) { minimizedHeightDp.toPx() }
-    val collapsedHeightPx = with(density) { collapsedHeightDp.toPx() }
-    val expandedHeightPx = with(density) { expandedHeightDp.toPx() }
+    val collapsedHeightPx = with(density) { (collapsedHeightDp + activeTripBottomPadding).toPx() }
+    val expandedHeightPx = with(density) { (expandedHeightDp + activeTripBottomPadding).toPx() }
 
     val heightAnimatable = remember { Animatable(collapsedHeightPx) }
 
-    LaunchedEffect(sheetState, expandedHeightPx) {
+    LaunchedEffect(sheetState, expandedHeightPx, collapsedHeightPx) {
         val target = when (sheetState) {
             SheetState.MINIMIZED -> minimizedHeightPx
             SheetState.COLLAPSED -> collapsedHeightPx
@@ -89,21 +95,26 @@ fun NearbyStopsBottomSheet(
             heightAnimatable.animateTo(
                 targetValue = target,
                 animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioLowBouncy,
-                    stiffness = Spring.StiffnessMedium
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
                 )
             )
         }
     }
 
-    val panelHeight = with(density) { heightAnimatable.value.toDp() }
+    val currentHeightPx = heightAnimatable.value
+    val panelHeight = with(density) { currentHeightPx.toDp() }
+
+    SideEffect {
+        onHeightPxChanged?.invoke(currentHeightPx)
+    }
 
     LaunchedEffect(panelHeight) {
         onHeightChanged(panelHeight)
     }
 
-    val backgroundColor = if (isDarkMode) Color(0xFF0F172A) else Color.White
-    val borderColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+    val backgroundColor = if (isDarkMode) Color(0xFF171717) else Color(0xFFFAFAFA)
+    val borderColor = if (isDarkMode) Color(0xFF2C2C2C) else Color(0xFFE2E8F0)
     val textColor = if (isDarkMode) Color.White else Color(0xFF0F172A)
     val subtextColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
 
@@ -111,8 +122,52 @@ fun NearbyStopsBottomSheet(
     val db = remember { AppDatabase.getDatabase(context) }
     val renfeRepository = remember { RenfeRepository(context, db) }
     val okHttpClient = remember { com.example.data.network.NetworkModule.okHttpClient }
+    val metrobusRepository = remember { com.example.data.repository.MetrobusRepository(db, okHttpClient) }
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val valenbisiListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    val pageCount = if (valenbisiEnabled) 2 else 1
+    val pagerState = rememberPagerState(initialPage = if (valenbisiEnabled) (selectedTab.coerceIn(0, pageCount - 1)) else 0) { pageCount }
+
+    LaunchedEffect(selectedTab, valenbisiEnabled) {
+        val targetPage = if (valenbisiEnabled) (selectedTab.coerceIn(0, pageCount - 1)) else 0
+        if (pagerState.currentPage != targetPage) {
+            pagerState.scrollToPage(targetPage)
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage) {
+        if (valenbisiEnabled && pagerState.currentPage != selectedTab) {
+            onTabSelected(pagerState.currentPage)
+        }
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var isAppResumed by remember {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            isAppResumed = event == androidx.lifecycle.Lifecycle.Event.ON_RESUME ||
+                    lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val visibleTransitKeys by remember(sheetState, valenbisiEnabled, panelHeight, isAppResumed) {
+        derivedStateOf {
+            val isTransitPage = !valenbisiEnabled || pagerState.currentPage == 0
+            if (!isAppResumed || sheetState == SheetState.MINIMIZED || panelHeight < 120.dp || !isTransitPage) {
+                emptySet()
+            } else {
+                listState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? String }.toSet()
+            }
+        }
+    }
 
     LaunchedEffect(cameraCenterLat, cameraCenterLon, nearbyItems) {
         if (nearbyItems.isNotEmpty()) {
@@ -155,10 +210,24 @@ fun NearbyStopsBottomSheet(
                 heightAnimatable.animateTo(
                     targetValue = targetPx,
                     animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioLowBouncy,
-                        stiffness = Spring.StiffnessMedium
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
                     )
                 )
+            }
+        }
+    }
+
+    // Auto-settle sheet state when user finishes dragging/scrolling the lists
+    val isAnyScrollInProgress = listState.isScrollInProgress || valenbisiListState.isScrollInProgress
+    LaunchedEffect(isAnyScrollInProgress) {
+        if (!isAnyScrollInProgress) {
+            val currentHeight = heightAnimatable.value
+            val isStable = kotlin.math.abs(currentHeight - minimizedHeightPx) < 1f ||
+                           kotlin.math.abs(currentHeight - collapsedHeightPx) < 1f ||
+                           kotlin.math.abs(currentHeight - expandedHeightPx) < 1f
+            if (!isStable) {
+                settleSheetState(0f)
             }
         }
     }
@@ -192,13 +261,16 @@ fun NearbyStopsBottomSheet(
                 // Solo reaccionamos a los gestos del usuario (UserInput/Drag), no a los flings residuales (SideEffect/Fling)
                 val isUserInput = source == NestedScrollSource.UserInput || source == NestedScrollSource.Drag
                 
-                if (isUserInput && delta > 0f && heightAnimatable.value > minimizedHeightPx) {
-                    val newHeightToSet = (heightAnimatable.value - delta).coerceIn(minimizedHeightPx, expandedHeightPx)
-                    val consumedHeight = heightAnimatable.value - newHeightToSet
-                    coroutineScope.launch {
-                        heightAnimatable.snapTo(newHeightToSet)
+                if (isUserInput && delta > 0f) {
+                    val minHeight = if (sheetState == SheetState.EXPANDED) collapsedHeightPx else minimizedHeightPx
+                    if (heightAnimatable.value > minHeight) {
+                        val newHeightToSet = (heightAnimatable.value - delta).coerceIn(minHeight, expandedHeightPx)
+                        val consumedHeight = heightAnimatable.value - newHeightToSet
+                        coroutineScope.launch {
+                            heightAnimatable.snapTo(newHeightToSet)
+                        }
+                        return Offset(0f, consumedHeight)
                     }
-                    return Offset(0f, consumedHeight)
                 }
 
                 return Offset.Zero
@@ -257,18 +329,17 @@ fun NearbyStopsBottomSheet(
                     heightAnimatable.animateTo(
                         targetValue = collapsedHeightPx,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
-                            stiffness = Spring.StiffnessMedium
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
                         )
                     )
                 }
             },
             shape = RoundedCornerShape(20.dp),
             color = backgroundColor,
-            border = BorderStroke(1.dp, borderColor),
-            shadowElevation = 8.dp,
+            shadowElevation = 4.dp,
             modifier = modifier
-                .padding(bottom = 12.dp)
+                .padding(bottom = 16.dp + activeTripBottomPadding)
                 .testTag("nearby_stops_reopen_pill")
         ) {
             Row(
@@ -300,8 +371,7 @@ fun NearbyStopsBottomSheet(
         Surface(
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             color = backgroundColor,
-            border = BorderStroke(1.dp, borderColor),
-            shadowElevation = 16.dp,
+            shadowElevation = 8.dp,
             modifier = modifier
                 .fillMaxWidth()
                 .height(panelHeight)
@@ -353,8 +423,8 @@ fun NearbyStopsBottomSheet(
                                         heightAnimatable.animateTo(
                                             targetValue = target,
                                             animationSpec = spring(
-                                                dampingRatio = Spring.DampingRatioLowBouncy,
-                                                stiffness = Spring.StiffnessMedium
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
                                             )
                                         )
                                     }
@@ -369,8 +439,8 @@ fun NearbyStopsBottomSheet(
                                         heightAnimatable.animateTo(
                                             targetValue = target,
                                             animationSpec = spring(
-                                                dampingRatio = Spring.DampingRatioLowBouncy,
-                                                stiffness = Spring.StiffnessMedium
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
                                             )
                                         )
                                     }
@@ -386,6 +456,7 @@ fun NearbyStopsBottomSheet(
                                 }
                             )
                         }
+                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                         .clickable {
                             onSheetStateChanged(
                                 when (sheetState) {
@@ -395,7 +466,7 @@ fun NearbyStopsBottomSheet(
                                 }
                             )
                         }
-                        .padding(top = 10.dp, bottom = 8.dp, start = 20.dp, end = 20.dp)
+                        .padding(top = 10.dp, bottom = 4.dp, start = 20.dp, end = 20.dp)
                 ) {
                     // Drag handle pill
                     Box(
@@ -406,80 +477,23 @@ fun NearbyStopsBottomSheet(
                                 shape = CircleShape
                             )
                     )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = if (appLanguage == AppLanguage.CA) "Transport proper" else "Transporte cercano",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = textColor
-                            )
-                            if (panelHeight >= 120.dp) {
-                                Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Salides en temps real i direcció" else "Salidas en tiempo real y dirección",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = subtextColor
-                                )
-                            }
-                        }
-
-                        if (panelHeight >= 120.dp) {
-                            IconButton(
-                                onClick = {
-                                    onSheetStateChanged(
-                                        when (sheetState) {
-                                            SheetState.MINIMIZED -> SheetState.COLLAPSED
-                                            SheetState.COLLAPSED -> SheetState.EXPANDED
-                                            SheetState.EXPANDED -> SheetState.COLLAPSED
-                                        }
-                                    )
-                                },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (sheetState == SheetState.EXPANDED) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
-                                    contentDescription = if (sheetState == SheetState.EXPANDED) "Colapsar" else "Expandir",
-                                    tint = textColor
-                                )
-                            }
-                        }
-                    }
                 }
 
                 if (panelHeight >= 120.dp) {
-                    val pagerState = rememberPagerState(initialPage = selectedTab) { 2 }
+                    if (valenbisiEnabled) {
+                        TabRow(
+                            selectedPageIndex = pagerState.currentPage,
+                            onTabSelected = { page ->
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(page)
+                                }
+                            },
+                            isDarkMode = isDarkMode,
+                            appLanguage = appLanguage
+                        )
 
-                    LaunchedEffect(selectedTab) {
-                        if (pagerState.currentPage != selectedTab) {
-                            pagerState.scrollToPage(selectedTab)
-                        }
+                        Spacer(modifier = Modifier.height(10.dp))
                     }
-
-                    LaunchedEffect(pagerState.currentPage) {
-                        if (pagerState.currentPage != selectedTab) {
-                            onTabSelected(pagerState.currentPage)
-                        }
-                    }
-
-                    TabRow(
-                        selectedPageIndex = pagerState.currentPage,
-                        onTabSelected = { page ->
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(page)
-                            }
-                        },
-                        isDarkMode = isDarkMode,
-                        appLanguage = appLanguage
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
 
                     HorizontalPager(
                         state = pagerState,
@@ -493,7 +507,7 @@ fun NearbyStopsBottomSheet(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .padding(bottom = 24.dp),
+                                        .padding(bottom = 24.dp + activeTripBottomPadding),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -508,19 +522,21 @@ fun NearbyStopsBottomSheet(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .nestedScroll(nestedScrollConnection)
-                                        .padding(horizontal = 16.dp)
-                                        .padding(bottom = 8.dp),
+                                        .padding(horizontal = 16.dp),
+                                    contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp + activeTripBottomPadding),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     items(nearbyItems, key = { it.key }) { item ->
                                         NearbyTransitCard(
                                             item = item,
+                                            isVisible = item.key in visibleTransitKeys,
                                             cameraCenterLat = cameraCenterLat,
                                             cameraCenterLon = cameraCenterLon,
                                             isDarkMode = isDarkMode,
                                             appLanguage = appLanguage,
                                             busStopAliases = busStopAliases,
                                             renfeRepository = renfeRepository,
+                                            metrobusRepository = metrobusRepository,
                                             okHttpClient = okHttpClient,
                                             onClick = {
                                                 when (item) {
@@ -551,7 +567,7 @@ fun NearbyStopsBottomSheet(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .padding(bottom = 24.dp),
+                                        .padding(bottom = 24.dp + activeTripBottomPadding),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -561,7 +577,6 @@ fun NearbyStopsBottomSheet(
                                     )
                                 }
                             } else {
-                                val valenbisiListState = androidx.compose.foundation.lazy.rememberLazyListState()
                                 LaunchedEffect(limitedStations) {
                                     if (limitedStations.isNotEmpty()) {
                                         valenbisiListState.scrollToItem(0)
@@ -572,8 +587,8 @@ fun NearbyStopsBottomSheet(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .nestedScroll(nestedScrollConnection)
-                                        .padding(horizontal = 16.dp)
-                                        .padding(bottom = 8.dp),
+                                        .padding(horizontal = 16.dp),
+                                    contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp + activeTripBottomPadding),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     items(limitedStations, key = { "VALENBISI_${it.gid}" }) { station ->
@@ -602,8 +617,8 @@ private fun TabRow(
     isDarkMode: Boolean,
     appLanguage: AppLanguage
 ) {
-    val containerBg = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)
-    val activeBg = if (isDarkMode) Color(0xFF334155) else Color.White
+    val containerBg = if (isDarkMode) Color(0xFF222222) else Color(0xFFE5E7EB)
+    val activeBg = if (isDarkMode) Color(0xFF333333) else Color.White
     val textColor = if (isDarkMode) Color.White else Color(0xFF0F172A)
     val unselectedColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
 
@@ -622,11 +637,12 @@ private fun TabRow(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
+                .clip(RoundedCornerShape(20.dp))
                 .background(
-                    color = if (selectedPageIndex == 0) activeBg else Color.Transparent,
-                    shape = RoundedCornerShape(20.dp)
+                    color = if (selectedPageIndex == 0) activeBg else Color.Transparent
                 )
                 .clickable { onTabSelected(0) }
+                .padding(horizontal = 12.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -653,11 +669,12 @@ private fun TabRow(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
+                .clip(RoundedCornerShape(20.dp))
                 .background(
-                    color = if (selectedPageIndex == 1) activeBg else Color.Transparent,
-                    shape = RoundedCornerShape(20.dp)
+                    color = if (selectedPageIndex == 1) activeBg else Color.Transparent
                 )
                 .clickable { onTabSelected(1) }
+                .padding(horizontal = 12.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

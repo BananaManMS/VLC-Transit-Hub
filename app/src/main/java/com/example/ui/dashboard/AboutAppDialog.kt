@@ -193,12 +193,11 @@ fun AboutAppDialog(
                                 "EMT València / Ajuntament de València" to "Datos de red, líneas, paradas y estimaciones en tiempo real de la plataforma municipal de datos abiertos (https://opendata.vlci.valencia.es/es/dataset/emt).",
                                 "Geoportal Ajuntament de València (Valenbisi)" to "Disponibilidad en tiempo real de estaciones y anclajes de bicicletas públicas Valenbisi (https://geoportal.valencia.es/).",
                                 "Ferrocarrils de la Generalitat Valenciana (FGV)" to "Trazado cartográfico, accesos y geometría de estaciones de Metrovalencia derivados de datos públicos del operador.",
+                                "Servidores y fuentes propias del desarrollador" to "Servicios e infraestructura privada para la optimización de datos estáticos GTFS, trazados de líneas e intermediación segura de estimaciones en tiempo real.",
                                 "Open-Meteo" to "Previsión meteorológica y datos de clima bajo licencia Creative Commons BY 4.0 (https://open-meteo.com/).",
                                 "Transitous & MOTIS" to "Motor de enrutamiento multimodal proporcionado por la red comunitaria Transitous y MOTIS (https://transitous.org/ - https://motis-project.de/).",
                                 "OpenStreetMap & Nominatim" to "Búsqueda de destinos y geocodificación © Colaboradores de OpenStreetMap, bajo licencia ODbL (https://www.openstreetmap.org/copyright).",
-                                "Cartografía CARTO" to "Teselas de mapas base CartoDB Voyager y Dark Matter facilitadas por CARTO (https://carto.com/basemaps/).",
-                                "MetroAPI (Metrovalencia)" to "API comunitaria para estimaciones en tiempo real, incidencias y tarjetas desarrollada por Alex Badi (https://docs.metroapi.alexbadi.es/).",
-                                "EMTValencia-API" to "Wrapper y API comunitaria de apoyo para datos de EMT desarrollado por ElEd0 (https://github.com/ElEd0/EMTValencia-API)."
+                                "Cartografía CARTO" to "Teselas de mapas base CartoDB Voyager y Dark Matter facilitadas por CARTO (https://carto.com/basemaps/)."
                             )
                         } else {
                             listOf(
@@ -207,12 +206,11 @@ fun AboutAppDialog(
                                 "EMT València / Ajuntament de València" to "Dades de xarxa, línies, parades i estimacions en temps real de la plataforma municipal de dades obertes (https://opendata.vlci.valencia.es/es/dataset/emt).",
                                 "Geoportal Ajuntament de València (Valenbisi)" to "Disponibilitat en temps real d'estacions i ancoratges de bicicletes públiques Valenbisi (https://geoportal.valencia.es/).",
                                 "Ferrocarrils de la Generalitat Valenciana (FGV)" to "Tratçat cartogràfic, accessos i geometria d'estacions de Metrovalencia derivats de dades públiques de l'operador.",
+                                "Servidors i fonts pròpies del desenvolupador" to "Serveis i infraestructura privada per a l'optimització de dades estàtiques GTFS, traçats de línies i intermediació segura de previsions en temps real.",
                                 "Open-Meteo" to "Previsió meteorològica i dades de clima sota llicència Creative Commons BY 4.0 (https://open-meteo.com/).",
                                 "Transitous & MOTIS" to "Motor d'enrutament multimodal proporcionat per la xarxa comunitària Transitous i MOTIS (https://transitous.org/ - https://motis-project.de/).",
                                 "OpenStreetMap & Nominatim" to "Cercador de destinacions i geocodificació © Col·laboradors d'OpenStreetMap, sota llicència ODbL (https://www.openstreetmap.org/copyright).",
-                                "Cartografia CARTO" to "Tessel·les de mapes base CartoDB Voyager i Dark Matter facilitades per CARTO (https://carto.com/basemaps/).",
-                                "MetroAPI (Metrovalencia)" to "API comunitària per a previsions en temps real, incidències i targetes desenvolupada per Alex Badi (https://docs.metroapi.alexbadi.es/).",
-                                "EMTValencia-API" to "Wrapper i API comunitària de suport per a dades d'EMT desenvolupat per ElEd0 (https://github.com/ElEd0/EMTValencia-API)."
+                                "Cartografia CARTO" to "Tessel·les de mapes base CartoDB Voyager i Dark Matter facilitades per CARTO (https://carto.com/basemaps/)."
                             )
                         }
 

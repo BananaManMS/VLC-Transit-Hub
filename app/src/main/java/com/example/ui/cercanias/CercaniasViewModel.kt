@@ -67,7 +67,8 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var cercaniasJob: Job? = null
     
-    private var hasAutoSelectedClosestCercaniasOnLaunch = false
+    var hasUserManuallySelectedStation = false
+        private set
     private val _selectedCercaniasDeparture = MutableStateFlow<CercaniasDeparture?>(null)
     val selectedCercaniasDeparture = _selectedCercaniasDeparture.asStateFlow()
     
@@ -84,15 +85,15 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     val allCercaniasStations: StateFlow<List<CercaniasStationEntity>> = _allCercaniasStations.asStateFlow()
 
     val activeCercaniasAlerts: StateFlow<List<CercaniasAlert>> = _cercaniasAlerts
-        .map { alerts -> alerts.filter { !it.isAccessibility } }
+        .map { alerts -> alerts.filter { !it.isAccessibility && it.isCirculationIncident } }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
 
-    val accessibilityCercaniasAlerts: StateFlow<List<CercaniasAlert>> = _cercaniasAlerts
-        .map { alerts -> alerts.filter { it.isAccessibility } }
+    val generalCercaniasNotices: StateFlow<List<CercaniasAlert>> = _cercaniasAlerts
+        .map { alerts -> alerts.filter { !it.isAccessibility && !it.isCirculationIncident } }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -127,7 +128,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
             }
             
             if (stationName == null) {
-                val textToSearchLower = (alert.headerEs + " " + alert.descriptionEs).lowercase(java.util.Locale.ROOT)
+                val textToSearchLower = alert.headerEs.lowercase(java.util.Locale.ROOT)
                 var sanitizedText = textToSearchLower
                 for (phrase in excludedPhrases) {
                     sanitizedText = sanitizedText.replace(phrase, " ")
@@ -135,8 +136,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                 val matched = stations.sortedByDescending { it.nombre.length }.find { station ->
                     val nameLower = station.nombre.lowercase(java.util.Locale.ROOT).trim()
                     if (nameLower.length > 3) {
-                        val pattern = Regex("""(?U)\b${Regex.escape(nameLower)}\b""", setOf(RegexOption.IGNORE_CASE))
-                        pattern.containsMatchIn(sanitizedText)
+                        containsWordBoundaryMatch(sanitizedText, nameLower)
                     } else {
                         false
                     }
@@ -146,17 +146,27 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
             
-            val key = stationName ?: "Otras estaciones"
-            groups.getOrPut(key) { mutableListOf() }.add(alert)
+            val key = stationName ?: if (alert.routeIds.any { VALENCIA_VALID_LINES.contains(it) }) "Red de València" else null
+            if (key != null) {
+                groups.getOrPut(key) { mutableListOf() }.add(alert)
+            }
         }
         groups.toList().sortedWith(compareBy { (key, _) ->
-            if (key == "Otras estaciones") "zzz" else key
+            if (key == "Red de València") "zzz" else key
         }).toMap()
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyMap()
     )
+
+    val accessibilityCercaniasAlerts: StateFlow<List<CercaniasAlert>> = groupedAccessibilityAlerts
+        .map { it.values.flatten() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     private val _cercaniasFavoriteStations = MutableStateFlow<List<CercaniasStationEntity>>(emptyList())
     val cercaniasFavoriteStations: StateFlow<List<CercaniasStationEntity>> = combine(
@@ -200,12 +210,20 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
 
             renfeRepository.getFavoriteStationsFlow().collect { favs ->
                 _cercaniasFavoriteStations.value = favs
-                
-                val currentSelected = _cercaniasSelectedStationId.value
-                val isCurrentSelectedAFav = favs.any { it.stop_id == currentSelected }
-                if (currentSelected.isBlank() || (favs.isNotEmpty() && !isCurrentSelectedAFav)) {
-                    hasAutoSelectedClosestCercaniasOnLaunch = false
+                if (!hasUserManuallySelectedStation) {
                     autoSelectNearestCercaniasStationIfNeeded()
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            cercaniasFavoriteStations.collect { sortedFavs ->
+                if (!hasUserManuallySelectedStation && sortedFavs.isNotEmpty()) {
+                    val topFav = sortedFavs.first()
+                    val targetId = topFav.stop_id.ifBlank { topFav.id }
+                    if (_cercaniasSelectedStationId.value != targetId) {
+                        selectCercaniasStation(targetId, isUserAction = false)
+                    }
                 }
             }
         }
@@ -213,8 +231,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun updateLocation(lat: Double, lon: Double) {
         _lastLocation.value = Pair(lat, lon)
-        if (_cercaniasSelectedStationId.value.isBlank()) {
-            hasAutoSelectedClosestCercaniasOnLaunch = false
+        if (!hasUserManuallySelectedStation) {
             autoSelectNearestCercaniasStationIfNeeded()
         }
     }
@@ -225,7 +242,9 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         _cercaniasError.value = null
 
         cercaniasJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            var isFirstLoop = true
             while (isActive) {
+                val startTime = System.currentTimeMillis()
                 try {
                     val stationId = _cercaniasSelectedStationId.value
                     if (stationId.isNotBlank()) {
@@ -248,7 +267,14 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                         _cercaniasError.value = "Error conectando con Renfe"
                     }
                 } finally {
-                    _cercaniasLoading.value = false
+                    if (isFirstLoop) {
+                        val elapsed = System.currentTimeMillis() - startTime
+                        if (elapsed < 400L) {
+                            delay(400L - elapsed)
+                        }
+                        _cercaniasLoading.value = false
+                        isFirstLoop = false
+                    }
                 }
                 
                 // Adaptive polling delay based on closest departure
@@ -280,7 +306,6 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                 _allCercaniasStations.value = updatedStations
 
                 if (_cercaniasSelectedStationId.value.isBlank() && updatedStations.isNotEmpty()) {
-                    hasAutoSelectedClosestCercaniasOnLaunch = false
                     autoSelectNearestCercaniasStationIfNeeded()
                 }
             } catch (e: Exception) {
@@ -291,9 +316,15 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun selectCercaniasStation(stationId: String) {
+    fun selectCercaniasStation(stationId: String, isUserAction: Boolean = true) {
+        if (isUserAction) {
+            hasUserManuallySelectedStation = true
+        }
         if (_cercaniasSelectedStationId.value == stationId) return
         _cercaniasSelectedStationId.value = stationId
+        _cercaniasDepartures.value = emptyList()
+        _cercaniasLoading.value = true
+        _cercaniasError.value = null
         fetchCercaniasDepartures()
     }
 
@@ -317,34 +348,33 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         return LocationUtils.formatDistance(distance)
     }
 
-    fun autoSelectNearestCercaniasStationIfNeeded() {
-        if (hasAutoSelectedClosestCercaniasOnLaunch) return
+    fun autoSelectNearestCercaniasStationIfNeeded(force: Boolean = false) {
+        if (hasUserManuallySelectedStation && !force) return
         
         val favs = cercaniasFavoriteStations.value.ifEmpty { _cercaniasFavoriteStations.value }
         val all = _allCercaniasStations.value
         val loc = _lastLocation.value
 
         if (favs.isNotEmpty()) {
-            hasAutoSelectedClosestCercaniasOnLaunch = true
-            if (loc != null) {
-                val closestFav = favs.minByOrNull { station ->
+            val closestFav = if (loc != null) {
+                favs.minByOrNull { station ->
                     LocationUtils.calculateDistanceMeters(loc.first, loc.second, station.latitud, station.longitud)
-                }
-                selectCercaniasStation(closestFav?.stop_id ?: favs.first().stop_id)
+                } ?: favs.first()
             } else {
-                selectCercaniasStation(favs.first().stop_id)
+                favs.first()
             }
+            val targetId = closestFav.stop_id.ifBlank { closestFav.id }
+            selectCercaniasStation(targetId, isUserAction = false)
         } else if (all.isNotEmpty()) {
-            hasAutoSelectedClosestCercaniasOnLaunch = true
-            if (loc != null) {
-                val closestStation = all.minByOrNull { station ->
+            val closestStation = if (loc != null) {
+                all.minByOrNull { station ->
                     LocationUtils.calculateDistanceMeters(loc.first, loc.second, station.latitud, station.longitud)
                 }
-                selectCercaniasStation(closestStation?.stop_id ?: all.first().stop_id)
             } else {
-                val valenciaNord = all.find { it.stop_id == "65000" || it.nombre.contains("Nord", ignoreCase = true) }
-                selectCercaniasStation(valenciaNord?.stop_id ?: all.first().stop_id)
+                all.find { it.stop_id == "65000" || it.nombre.contains("Nord", ignoreCase = true) }
             }
+            val targetId = (closestStation ?: all.first()).let { it.stop_id.ifBlank { it.id } }
+            selectCercaniasStation(targetId, isUserAction = false)
         }
     }
 
@@ -480,32 +510,22 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                             
                             val cleanAlertStopIds = stopIds.map { sId -> sId.substringBefore('_').substringBefore('-').trim() }
                             
-                            val hasValenciaRoutePrefix = routeIds.isNotEmpty() && routeIds.any { it.startsWith("40") }
-                            val hasValenciaStopPrefix = cleanAlertStopIds.isNotEmpty() && cleanAlertStopIds.any { it.startsWith("6") || valenciaStopIds.contains(it) }
+                            val hasValenciaRoute = routeIds.isNotEmpty() && routeIds.any { it.startsWith("40") }
+                            val hasValenciaStop = cleanAlertStopIds.isNotEmpty() && cleanAlertStopIds.any { valenciaStopIds.contains(it) }
                             
-                            val hasOtherHubRoute = routeIds.isNotEmpty() && routeIds.any { 
-                                (it.startsWith("10") || it.startsWith("20") || it.startsWith("30") || 
-                                 it.startsWith("50") || it.startsWith("60") || it.startsWith("70") || 
-                                 it.startsWith("80") || it.startsWith("90") || it.startsWith("100") || 
-                                 it.startsWith("110") || it.startsWith("120")) && !it.startsWith("40")
-                            }
-                            val hasOtherHubStop = cleanAlertStopIds.isNotEmpty() && cleanAlertStopIds.any { 
-                                !it.startsWith("6") && !valenciaStopIds.contains(it) && 
-                                (it.startsWith("1") || it.startsWith("2") || it.startsWith("3") || 
-                                 it.startsWith("5") || it.startsWith("7") || it.startsWith("8") || 
-                                 it.startsWith("9"))
-                            }
+                            val hasOtherHubRoute = routeIds.isNotEmpty() && routeIds.any { !it.startsWith("40") }
+                            val hasOtherHubStop = cleanAlertStopIds.isNotEmpty() && cleanAlertStopIds.any { !valenciaStopIds.contains(it) }
 
                             val textToSearch = "$headerEs $descEs".lowercase(java.util.Locale.ROOT)
                             val textToSearchNoAccents = removeAccents(textToSearch)
                             
                             var isValencia = false
-                            if ((hasValenciaRoutePrefix || hasValenciaStopPrefix) && !hasOtherHubRoute && !hasOtherHubStop) {
-                                isValencia = true
+                            if (hasValenciaRoute || hasValenciaStop) {
+                                isValencia = !hasOtherHubRoute && !hasOtherHubStop
                             } else if (!hasOtherHubRoute && !hasOtherHubStop) {
-                                // Fallback to searching text if there are no route/stop IDs of other hubs
+                                // Fallback to searching text only if there are no entity routes/stops of other hubs
                                 val mentionsValenciaOrCastellon = textToSearchNoAccents.contains("valencia") || 
-                                                                   textToSearchNoAccents.contains("valencia") || 
+                                                                   textToSearchNoAccents.contains("valència") || 
                                                                    textToSearchNoAccents.contains("castello") || 
                                                                    textToSearchNoAccents.contains("castellon") || 
                                                                    textToSearchNoAccents.contains("gandia")
@@ -514,9 +534,9 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                                 if (!mentionsValenciaOrCastellon) {
                                     hasValenciaStation = valenciaStationNamesNoAccents.any { stationName ->
                                         if (stationName.isBlank()) return@any false
-                                        val cleanName = stationName.replace(Regex("[()\\-]"), " ").trim()
-                                        if (cleanName.length > 2) {
-                                            textToSearchNoAccents.contains(Regex("\\b${Regex.escape(cleanName)}\\b"))
+                                        val cleanName = stationName.replace("(", " ").replace(")", " ").replace("-", " ").trim()
+                                        if (cleanName.length > 3) {
+                                            containsWordBoundaryMatch(textToSearchNoAccents, cleanName)
                                         } else {
                                             false
                                         }
@@ -536,7 +556,14 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                                                        textToSearchNoAccents.contains("asturias") || 
                                                        textToSearchNoAccents.contains("cantabria") || 
                                                        textToSearchNoAccents.contains("zaragoza") || 
-                                                       textToSearchNoAccents.contains("cadiz")
+                                                       textToSearchNoAccents.contains("cadiz") ||
+                                                       textToSearchNoAccents.contains("valdemoro") ||
+                                                       textToSearchNoAccents.contains("aranjuez") ||
+                                                       textToSearchNoAccents.contains("getafe") ||
+                                                       textToSearchNoAccents.contains("mostoles") ||
+                                                       textToSearchNoAccents.contains("alcala") ||
+                                                       textToSearchNoAccents.contains("parla") ||
+                                                       textToSearchNoAccents.contains("leganes")
                                 if (mentionsOtherHub && !textToSearchNoAccents.contains("valencia")) {
                                     isValencia = false
                                 }
@@ -547,13 +574,8 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                                 continue 
                             }
                             
-                            val isAccessibility = textToSearch.contains("ascensor") ||
-                                                  textToSearch.contains("escalera") ||
-                                                  textToSearch.contains("rampa") ||
-                                                  textToSearch.contains("accesibilidad") ||
-                                                  textToSearch.contains("pmr") ||
-                                                  textToSearch.contains("movilidad reducida") ||
-                                                  textToSearch.contains("adaptado")
+                            val isAccessibility = CercaniasAlertClassifier.isAccessibility(textToSearch)
+                            val isCirculation = !isAccessibility && CercaniasAlertClassifier.isStrongCirculationIncident(headerEs, descEs)
                             
                             val timestamp = alertObj.optLong("timestamp", System.currentTimeMillis() / 1000)
 
@@ -579,6 +601,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                                     tripIds = tripIds,
                                     stopIds = stopIds,
                                     isAccessibility = isAccessibility,
+                                    isCirculationIncident = isCirculation,
                                     timestamp = timestamp
                                 )
                             )
@@ -586,8 +609,12 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                     _cercaniasAlerts.value = list
                 }
+            } catch (e: java.net.SocketTimeoutException) {
+                android.util.Log.w("CercaniasAlerts", "Timeout fetching Cercanías alerts from Renfe GTFS-RT: ${e.message}")
+            } catch (e: java.io.IOException) {
+                android.util.Log.w("CercaniasAlerts", "Network error fetching Cercanías alerts: ${e.message}")
             } catch (e: Exception) {
-                android.util.Log.e("CercaniasAlerts", "Error fetching Cercanías alerts: " + e.message, e)
+                android.util.Log.w("CercaniasAlerts", "Unexpected error fetching Cercanías alerts: ${e.message}")
             } finally {
                 _isCercaniasAlertsLoading.value = false
             }
@@ -623,5 +650,22 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
             return firstTrans?.optString("text", "") ?: ""
         }
         return ""
+    }
+
+    private fun containsWordBoundaryMatch(text: String, keyword: String): Boolean {
+        if (keyword.isBlank() || text.isBlank()) return false
+        var startIndex = 0
+        while (startIndex < text.length) {
+            val index = text.indexOf(keyword, startIndex)
+            if (index == -1) return false
+            val beforeOk = index == 0 || !text[index - 1].isLetterOrDigit()
+            val endIndex = index + keyword.length
+            val afterOk = endIndex >= text.length || !text[endIndex].isLetterOrDigit()
+            if (beforeOk && afterOk) {
+                return true
+            }
+            startIndex = index + 1
+        }
+        return false
     }
 }

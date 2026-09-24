@@ -14,6 +14,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.NotAccessible
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.platform.testTag
@@ -47,6 +49,8 @@ fun CercaniasStationSelectionDialog(
     val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val cercaniasFavoriteStations by viewModel.cercaniasFavoriteStations.collectAsState()
+    val lastLocation by viewModel.lastLocation.collectAsState()
+    val accessibilityAlerts by viewModel.accessibilityCercaniasAlerts.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedStations by remember(cercaniasFavoriteStations) { mutableStateOf(cercaniasFavoriteStations.map { it.id }) }
@@ -61,24 +65,33 @@ fun CercaniasStationSelectionDialog(
         allCercaniasStations = viewModel.getAllCercaniasStations()
     }
 
-    val initialFavorites = remember { cercaniasFavoriteStations.map { it.id } }
-    val filteredStations = remember(searchQuery, allCercaniasStations) {
-        val baseList = if (searchQuery.isBlank()) {
-            allCercaniasStations.map { Pair(it, 0.0) }
+    val (closestStations, alphabeticalStations, searchResults) = remember(searchQuery, allCercaniasStations, lastLocation) {
+        if (searchQuery.isBlank()) {
+            if (lastLocation != null) {
+                val refLat = lastLocation!!.first
+                val refLon = lastLocation!!.second
+                val sortedByDist = allCercaniasStations.sortedBy { station ->
+                    LocationUtils.calculateDistanceMeters(refLat, refLon, station.latitud, station.longitud)
+                }
+                val top3Closest = sortedByDist.take(3)
+                val remainingAlphabetical = sortedByDist.drop(3)
+                    .sortedBy { it.nombre.normalizeForSearch() }
+                Triple(top3Closest, remainingAlphabetical, emptyList<CercaniasStationEntity>())
+            } else {
+                val sortedAlpha = allCercaniasStations.sortedBy { it.nombre.normalizeForSearch() }
+                Triple(emptyList<CercaniasStationEntity>(), sortedAlpha, emptyList<CercaniasStationEntity>())
+            }
         } else {
-            allCercaniasStations.map { station ->
+            val filtered = allCercaniasStations.map { station ->
                 Pair(station, computeCercaniasSearchScore(station, searchQuery))
             }.filter { it.second > 0.0 }
-        }
-        val (favs, nonFavs) = baseList.partition { initialFavorites.contains(it.first.id) }
-        if (searchQuery.isBlank()) {
-            favs.sortedBy { it.first.nombre.normalizeForSearch() }.map { it.first } + nonFavs.sortedBy { it.first.nombre.normalizeForSearch() }.map { it.first }
-        } else {
-            favs.sortedByDescending { it.second }.map { it.first } + nonFavs.sortedByDescending { it.second }.map { it.first }
+             .sortedByDescending { it.second }
+             .map { it.first }
+            Triple(emptyList<CercaniasStationEntity>(), emptyList<CercaniasStationEntity>(), filtered)
         }
     }
 
-    val cardBg = if (isDarkMode) Color(0xFF171D2C) else Color.White
+    val cardBg = if (isDarkMode) Color(0xFF171717) else Color.White
     val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
     val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
     val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
@@ -159,12 +172,12 @@ fun CercaniasStationSelectionDialog(
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(filteredStations) { station ->
+                    val renderCercaniasCard = @Composable { station: CercaniasStationEntity, isClosest: Boolean ->
                         val isChecked = selectedStations.contains(station.id)
                         val bgCol = if (isChecked) {
                             MaterialTheme.colorScheme.primaryContainer
                         } else {
-                            Color.Transparent
+                            cardBg
                         }
                         val bord = if (isChecked) {
                             BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
@@ -175,6 +188,7 @@ fun CercaniasStationSelectionDialog(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
                                 .clickable {
                                     if (!isChecked) {
                                         if (selectedStations.size >= 10) {
@@ -186,7 +200,8 @@ fun CercaniasStationSelectionDialog(
                                     } else {
                                         selectedStations = selectedStations - station.id
                                     }
-                                },
+                                }
+                                .testTag("cercanias_selection_card_${station.id}"),
                             colors = CardDefaults.cardColors(containerColor = bgCol),
                             shape = RoundedCornerShape(18.dp),
                             border = bord
@@ -199,12 +214,56 @@ fun CercaniasStationSelectionDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = station.displayName,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                        color = textColor
-                                    )
+                                    val hasCercaniasAccessibilityIssue = remember(station.id, station.nombre, station.displayName, accessibilityAlerts) {
+                                        accessibilityAlerts.any { alert ->
+                                            com.example.util.StationAccessibilityHelper.isCercaniasStationAffected(station.id, station.nombre, station.displayName, alert)
+                                        }
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = station.displayName,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = textColor,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        if (hasCercaniasAccessibilityIssue) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.NotAccessible,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        val distText = if (isClosest) viewModel.getCercaniasStationDistanceText(station) else null
+                                        if (distText != null) {
+                                            Surface(
+                                                color = accentColor.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier.padding(start = 6.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Place,
+                                                        contentDescription = null,
+                                                        tint = accentColor,
+                                                        modifier = Modifier.size(11.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text(
+                                                        text = distText,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = accentColor
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                     Spacer(modifier = Modifier.height(6.dp))
                                     
                                     // Cercanias Line Badges
@@ -247,9 +306,48 @@ fun CercaniasStationSelectionDialog(
                                 Checkbox(
                                     checked = isChecked,
                                     onCheckedChange = null,
-                                    colors = CheckboxDefaults.colors(checkedColor = accentColor)
+                                    colors = CheckboxDefaults.colors(checkedColor = accentColor),
+                                    modifier = Modifier.testTag("cercanias_selection_checkbox_${station.id}")
                                 )
                             }
+                        }
+                    }
+
+                    if (searchQuery.isBlank()) {
+                        if (closestStations.isNotEmpty()) {
+                            item(key = "header_closest_cercanias") {
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "ESTACIONS MÉS PRÒXIMES" else "ESTACIONES MÁS CERCANAS",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor,
+                                    letterSpacing = 0.8.sp,
+                                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, start = 2.dp)
+                                )
+                            }
+                            items(closestStations, key = { "closest_${it.id}" }) { station ->
+                                renderCercaniasCard(station, true)
+                            }
+                        }
+
+                        if (alphabeticalStations.isNotEmpty()) {
+                            item(key = "header_alphabetical_cercanias") {
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "TOTES LES ESTACIONS (A-Z)" else "TODAS LAS ESTACIONES (A-Z)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor,
+                                    letterSpacing = 0.8.sp,
+                                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp, start = 2.dp)
+                                )
+                            }
+                            items(alphabeticalStations, key = { "all_${it.id}" }) { station ->
+                                renderCercaniasCard(station, false)
+                            }
+                        }
+                    } else {
+                        items(searchResults, key = { it.id }) { station ->
+                            renderCercaniasCard(station, false)
                         }
                     }
                 }
@@ -308,6 +406,7 @@ fun CercaniasQuickStationPickerDialog(
     val cercaniasFavoriteStations by viewModel.cercaniasFavoriteStations.collectAsState()
     val selectedStationId by viewModel.cercaniasSelectedStationId.collectAsState()
     val lastLocation by viewModel.lastLocation.collectAsState()
+    val accessibilityAlerts by viewModel.accessibilityCercaniasAlerts.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var allCercaniasStations by remember { mutableStateOf<List<CercaniasStationEntity>>(emptyList()) }
@@ -347,7 +446,7 @@ fun CercaniasQuickStationPickerDialog(
         }
     }
 
-    val cardBg = if (isDarkMode) Color(0xFF171D2C) else Color.White
+    val cardBg = if (isDarkMode) Color(0xFF171717) else Color.White
     val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
     val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
     val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
@@ -468,6 +567,7 @@ fun CercaniasQuickStationPickerDialog(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
                                 .clickable {
                                     viewModel.selectCercaniasStation(station.id)
                                     val msg = if (appLanguage == AppLanguage.CA) "Mostrant eixides de ${station.displayName}" else "Mostrando salidas de ${station.displayName}"
@@ -487,6 +587,11 @@ fun CercaniasQuickStationPickerDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
+                                    val hasCercaniasAccessibilityIssue = remember(station.id, station.nombre, station.displayName, accessibilityAlerts) {
+                                        accessibilityAlerts.any { alert ->
+                                            com.example.util.StationAccessibilityHelper.isCercaniasStationAffected(station.id, station.nombre, station.displayName, alert)
+                                        }
+                                    }
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
                                             text = station.displayName,
@@ -495,6 +600,15 @@ fun CercaniasQuickStationPickerDialog(
                                             color = textColor,
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
+                                        if (hasCercaniasAccessibilityIssue) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.NotAccessible,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                         val distText = viewModel.getCercaniasStationDistanceText(station)
                                         if (distText != null) {
                                             Text(

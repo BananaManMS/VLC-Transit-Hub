@@ -3,6 +3,7 @@ package com.example.ui.metro
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,13 +36,9 @@ fun SelectedStationInfoCard(
                                             .fillMaxWidth()
                                             .testTag("station_info_expanded_card"),
                                         colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                            containerColor = if (isSystemInDarkTheme()) Color(0xFF242733) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
                                         ),
-                                        shape = RoundedCornerShape(12.dp),
-                                        border = BorderStroke(
-                                            width = 1.dp,
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                                        )
+                                        shape = RoundedCornerShape(12.dp)
                                     ) {
                                         Column(
                                             modifier = Modifier.padding(16.dp),
@@ -65,8 +62,7 @@ fun SelectedStationInfoCard(
 
                                                 Surface(
                                                     shape = RoundedCornerShape(6.dp),
-                                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                                                    color = MaterialTheme.colorScheme.primaryContainer
                                                 ) {
                                                     Text(
                                                         text = zoneText,

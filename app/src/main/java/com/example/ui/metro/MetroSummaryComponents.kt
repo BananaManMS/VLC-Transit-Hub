@@ -49,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -164,6 +165,7 @@ fun StationConfigDialog(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clip(RoundedCornerShape(animatedCornerRadius))
                                 .clickable {
                                     if (isChecked) {
                                         selectedStations = selectedStations - station.id
@@ -178,14 +180,10 @@ fun StationConfigDialog(
                             shape = RoundedCornerShape(animatedCornerRadius),
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isChecked) {
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
                                 } else {
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                                 }
-                            ),
-                            border = BorderStroke(
-                                width = if (isChecked) 1.5.dp else 1.dp,
-                                color = if (isChecked) MaterialTheme.colorScheme.primary else Color.Transparent
                             )
                         ) {
                             Row(

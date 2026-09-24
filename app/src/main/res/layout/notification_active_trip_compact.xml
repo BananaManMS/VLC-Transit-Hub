@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/notif_compact_root"
     android:layout_width="match_parent"
-    android:layout_height="64dp"
+    android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingHorizontal="12dp"
-    android:paddingVertical="8dp">
+    android:paddingStart="@dimen/notification_padding_horizontal"
+    android:paddingEnd="@dimen/notification_padding_horizontal"
+    android:paddingTop="@dimen/notification_padding_compact_vertical"
+    android:paddingBottom="@dimen/notification_padding_compact_vertical">
 
     <ImageView
         android:id="@+id/notif_compact_icon"
@@ -45,16 +48,7 @@
         android:id="@+id/notif_compact_eta"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="10dp"
         android:textSize="14sp"
         android:textStyle="bold"
         android:textColor="#00A86B" />
-
-    <ImageButton
-        android:id="@+id/notif_compact_cancel"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:src="@drawable/ic_close_notification"
-        android:contentDescription="Finalizar viaje" />
 </LinearLayout>

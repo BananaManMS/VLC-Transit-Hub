@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
@@ -42,6 +43,8 @@ import androidx.compose.ui.text.withStyle
 import com.example.ui.theme.appCardBorder
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+val EmtRed = Color(0xFFE53935)
 
 @Composable
 fun BusStopCard(
@@ -55,24 +58,25 @@ fun BusStopCard(
     onEditAliasClick: (() -> Unit)? = null
 ) {
     val cardBg = if (isFav) {
-        if (isDarkMode) Color(0x234F8CFF) else Color(0xFFE3F2FD)
+        if (isDarkMode) Color(0xFF2A1212) else Color(0xFFFFEBEE)
     } else {
         MaterialTheme.colorScheme.surface
+    }
+    val cardBorder = if (isFav) {
+        BorderStroke(1.dp, EmtRed.copy(alpha = if (isDarkMode) 0.5f else 0.35f))
+    } else {
+        BorderStroke(1.dp, if (isDarkMode) Color(0xFF2E3545) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     }
     val cardTextColor = if (isDarkMode) Color(0xFFF2F4F8) else MaterialTheme.colorScheme.onSurface
     val cardTextSecondaryColor = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
 
     Card(
+        onClick = { onCardClick() },
         modifier = modifier
             .fillMaxWidth()
-            .testTag("bus_stop_card_${stop.opId}")
-            .clickable { onCardClick() },
+            .testTag("bus_stop_card_${stop.opId}"),
         shape = RoundedCornerShape(16.dp),
-        border = if (isFav) {
-            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-        } else {
-            appCardBorder()
-        },
+        border = cardBorder,
         colors = CardDefaults.cardColors(
             containerColor = cardBg
         )
@@ -105,23 +109,11 @@ fun BusStopCard(
                         )
                     } else {
                         Text(
-                            text = buildAnnotatedString {
-                                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold, color = cardTextColor, fontSize = MaterialTheme.typography.titleMedium.fontSize)) {
-                                    val parts = stop.me.split(Regex("(?=\\()|(?<=\\))"))
-                                    for (part in parts) {
-                                        if (part.startsWith("(") && part.endsWith(")")) {
-                                            val content = part.substring(1, part.length - 1).trim()
-                                            if (content.all { it.isDigit() }) continue
-
-                                            withStyle(style = SpanStyle(fontWeight = FontWeight.Normal, color = cardTextSecondaryColor.copy(alpha = 0.8f))) {
-                                                append(part)
-                                            }
-                                        } else {
-                                            append(part)
-                                        }
-                                    }
-                                }
-                            },
+                            text = buildFormattedStopName(
+                                rawName = stop.me,
+                                primaryColor = cardTextColor,
+                                secondaryColor = cardTextSecondaryColor
+                            ),
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
@@ -135,45 +127,20 @@ fun BusStopCard(
                     )
                 }
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    shape = CircleShape,
+                    color = if (isDarkMode) Color(0xFF0F131E) else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(40.dp)
                 ) {
-                    if (isFav && onEditAliasClick != null) {
-                        Surface(
-                            shape = CircleShape,
-                            color = if (isDarkMode) Color(0xFF0F131E) else MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            IconButton(
-                                onClick = onEditAliasClick,
-                                modifier = Modifier.testTag("edit_alias_btn_${stop.opId}").fillMaxSize()
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "Editar nombre personalizado",
-                                    tint = if (!alias.isNullOrBlank()) Color(0xFF4F8CFF) else cardTextSecondaryColor,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isDarkMode) Color(0xFF0F131E) else MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.size(40.dp)
+                    IconButton(
+                        onClick = onToggleFavorite,
+                        modifier = Modifier.testTag("fav_btn_${stop.opId}").fillMaxSize()
                     ) {
-                        IconButton(
-                            onClick = onToggleFavorite,
-                            modifier = Modifier.testTag("fav_btn_${stop.opId}").fillMaxSize()
-                        ) {
-                            Icon(
-                                imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
-                                contentDescription = "Favorito",
-                                tint = if (isFav) Color(0xFFFFB300) else cardTextSecondaryColor
-                            )
-                        }
+                        Icon(
+                            imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = "Favorito",
+                            tint = if (isFav) Color(0xFFFFB300) else cardTextSecondaryColor
+                        )
                     }
                 }
             }
@@ -216,19 +183,25 @@ fun BusStopCard(
                 }
                 sortedLines.forEach { line ->
                     Surface(
-                        color = Color(0xFFC62828), // Red
+                        color = EmtRed,
                         contentColor = Color.White,
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.defaultMinSize(minWidth = 40.dp, minHeight = 26.dp)
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 48.dp, minHeight = 26.dp)
+                            .height(26.dp)
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp)
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 4.dp)
                         ) {
                             Text(
                                 text = line.id_linea,
                                 style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1
                             )
                         }
                     }

@@ -34,8 +34,8 @@ class TransitousPhase3Test {
     @Test
     fun testRouteModeFilterParams() {
         assertEquals(listOf("SUBWAY", "TRAM"), RouteModeFilter.METRO.modes)
-        assertEquals(listOf("BUS"), RouteModeFilter.BUS.modes)
-        assertEquals(listOf("RAIL"), RouteModeFilter.TRAIN.modes)
+        assertEquals(listOf("BUS", "COACH"), RouteModeFilter.BUS.modes)
+        assertEquals(listOf("REGIONAL_RAIL"), RouteModeFilter.TRAIN.modes)
     }
 
     @Test

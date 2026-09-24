@@ -11,7 +11,6 @@ import android.graphics.drawable.BitmapDrawable
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.Interpolator
 import android.view.animation.LinearInterpolator
 import com.example.data.model.routing.PlannedItinerary
@@ -103,16 +102,18 @@ object LiveTrainMarkerManager {
                         val (snappedPoint, bearing) = projectOnLegGeometry(rawPoint, railLeg)
 
                         withContext(Dispatchers.Main) {
-                            updateOrAnimateMarker(
-                                context = context,
-                                mapView = mapView,
-                                lineId = cercaniasLine,
-                                tripId = matchingVehicle.tripId,
-                                newTarget = snappedPoint,
-                                newBearing = bearing,
-                                isDarkMode = isDarkMode,
-                                status = matchingVehicle.status
-                            )
+                            if (mapView.isAttachedToWindow || mapView.parent != null) {
+                                updateOrAnimateMarker(
+                                    context = context,
+                                    mapView = mapView,
+                                    lineId = cercaniasLine,
+                                    tripId = matchingVehicle.tripId,
+                                    newTarget = snappedPoint,
+                                    newBearing = bearing,
+                                    isDarkMode = isDarkMode,
+                                    status = matchingVehicle.status
+                                )
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -242,22 +243,21 @@ object LiveTrainMarkerManager {
         isDarkMode: Boolean,
         status: String
     ) {
+        if (!mapView.isAttachedToWindow && mapView.parent == null) {
+            return
+        }
+
         lastMatchedTripId = tripId
         lastMatchedLine = lineId
 
         var marker = activeTrainMarker
         if (marker == null) {
-            marker = Marker(mapView).apply {
-                infoWindow = null
-                val trainIcon = createTrainMarkerBitmap(context, lineId, isDarkMode)
-                icon = BitmapDrawable(context.resources, trainIcon)
-                setAnchor(0.5f, 0.5f)
-                title = "Tren Cercanías $lineId"
-                snippet = if (status.isNotBlank()) "En trayecto • $status" else "En trayecto en tiempo real"
-            }
+            marker = LiveTrainMarkerRenderer.createLiveTrainMarker(context, mapView, lineId, isDarkMode, status)
             activeTrainMarker = marker
             if (!mapView.overlays.contains(marker)) {
-                mapView.overlays.add(marker)
+                try {
+                    mapView.overlays.add(marker)
+                } catch (_: Exception) {}
             }
             marker.position = newTarget
             marker.rotation = newBearing
@@ -265,13 +265,17 @@ object LiveTrainMarkerManager {
             targetPoint = newTarget
             startBearing = newBearing
             targetBearing = newBearing
-            mapView.invalidate()
+            try {
+                mapView.invalidate()
+            } catch (_: Exception) {}
             return
         }
 
         // Ensure marker is in overlays list (e.g. if overlays were cleared)
         if (!mapView.overlays.contains(marker)) {
-            mapView.overlays.add(marker)
+            try {
+                mapView.overlays.add(marker)
+            } catch (_: Exception) {}
         }
 
         // Setup smooth continuous interpolation animation
@@ -284,6 +288,11 @@ object LiveTrainMarkerManager {
 
         val runnable = object : Runnable {
             override fun run() {
+                if (!mapView.isAttachedToWindow && mapView.parent == null) {
+                    animationRunnable = null
+                    return
+                }
+
                 val elapsed = SystemClock.uptimeMillis() - animStartTime
                 val fraction = (elapsed.toFloat() / ANIMATION_DURATION_MS).coerceIn(0f, 1f)
                 val interpolatedFraction = interpolator.getInterpolation(fraction)
@@ -296,10 +305,14 @@ object LiveTrainMarkerManager {
 
                 marker.position = GeoPoint(currentLat, currentLon)
                 marker.rotation = currentRot
-                mapView.invalidate()
+                try {
+                    mapView.invalidate()
+                } catch (_: Exception) {}
 
-                if (fraction < 1.0f) {
+                if (fraction < 1.0f && (mapView.isAttachedToWindow || mapView.parent != null)) {
                     mainHandler.postDelayed(this, 30L) // ~33 FPS smooth animation
+                } else {
+                    animationRunnable = null
                 }
             }
         }
@@ -315,63 +328,6 @@ object LiveTrainMarkerManager {
     }
 
     /**
-     * Creates a high-definition, glowing animated train marker with the official Cercanías line color.
-     */
-    private fun createTrainMarkerBitmap(context: Context, lineId: String, isDarkMode: Boolean): Bitmap {
-        val density = context.resources.displayMetrics.density
-        val sizePx = (40 * density).toInt()
-        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-
-        val hexColor = LineColorResolver.getCercaniasLineColorHex(lineId)
-        val lineColorInt = try { Color.parseColor(hexColor) } catch (e: Exception) { Color.parseColor("#702B7B") }
-
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-        // 1. Soft glowing outer pulse
-        paint.color = lineColorInt
-        paint.alpha = 50
-        canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f, paint)
-
-        // 2. White/Dark Outer Ring
-        paint.alpha = 255
-        paint.color = if (isDarkMode) Color.parseColor("#0F172A") else Color.WHITE
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx * 0.40f, paint)
-
-        // 3. Line colored core
-        paint.color = lineColorInt
-        canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx * 0.33f, paint)
-
-        // 4. Clean Train Silhouette / Icon in Center
-        paint.color = Color.WHITE
-        paint.style = Paint.Style.FILL
-        val trainW = sizePx * 0.30f
-        val trainH = sizePx * 0.38f
-        val left = (sizePx - trainW) / 2f
-        val top = (sizePx - trainH) / 2f
-        val rect = RectF(left, top, left + trainW, top + trainH)
-        val r = 4f * density
-        canvas.drawRoundRect(rect, r, r, paint)
-
-        // Train front windshield
-        paint.color = lineColorInt
-        val winW = trainW * 0.70f
-        val winH = trainH * 0.30f
-        val winLeft = (sizePx - winW) / 2f
-        val winTop = top + 2.5f * density
-        canvas.drawRoundRect(RectF(winLeft, winTop, winLeft + winW, winTop + winH), 2f * density, 2f * density, paint)
-
-        // Headlights
-        paint.color = Color.parseColor("#FEF08A") // Bright yellow lights
-        val lightRadius = 1.6f * density
-        canvas.drawCircle(left + 3f * density, top + trainH - 3.5f * density, lightRadius, paint)
-        canvas.drawCircle(left + trainW - 3f * density, top + trainH - 3.5f * density, lightRadius, paint)
-
-        return bitmap
-    }
-
-    /**
      * Cleans up marker and cancels polling jobs when the route preview is closed.
      */
     fun clearLiveTrain(mapView: MapView?) {
@@ -380,7 +336,9 @@ object LiveTrainMarkerManager {
         animationRunnable?.let { mainHandler.removeCallbacks(it) }
         animationRunnable = null
         activeTrainMarker?.let { marker ->
-            mapView?.overlays?.remove(marker)
+            try {
+                mapView?.overlays?.remove(marker)
+            } catch (_: Exception) {}
         }
         activeTrainMarker = null
         lastMatchedTripId = null

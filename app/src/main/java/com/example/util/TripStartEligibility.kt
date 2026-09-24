@@ -3,10 +3,7 @@ package com.example.util
 import android.location.Location
 import com.example.data.model.routing.PlannedItinerary
 import com.example.ui.routing.PlannerLocation
-import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Locale
-import java.util.TimeZone
 
 object TripStartEligibility {
 
@@ -59,15 +56,12 @@ object TripStartEligibility {
 
         if (origLat == 0.0 || origLon == 0.0) return false
 
-        val results = FloatArray(1)
-        Location.distanceBetween(
+        val distanceMeters = TripStepProgressionEngine.calculateDistanceMeters(
             userLocation.latitude,
             userLocation.longitude,
             origLat,
-            origLon,
-            results
+            origLon
         )
-        val distanceMeters = results[0]
         return distanceMeters <= 300.0
     }
 
@@ -84,57 +78,11 @@ object TripStartEligibility {
      * Positive = future departure, Negative = past departure.
      */
     fun getMinutesUntilDeparture(itinerary: PlannedItinerary): Int? {
-        val startIso = itinerary.startTime
-        if (!startIso.isNullOrBlank()) {
-            val epochMs = parseIsoToEpochMs(startIso)
-            if (epochMs > 0) {
-                val nowMs = System.currentTimeMillis()
-                return ((epochMs - nowMs) / 60000L).toInt()
-            }
-        }
+        val departureMillis = TripTimeParser.parseTimeToMillis(itinerary.startTime)
+            ?: TripTimeParser.parseTimeToMillis(itinerary.formattedDepartureTime)
+            ?: return null
 
-        val depStr = itinerary.formattedDepartureTime
-        if (depStr.contains(":")) {
-            return try {
-                val parts = depStr.trim().split(":")
-                val depHours = parts[0].toInt()
-                val depMins = parts[1].toInt()
-                val depTotalMins = depHours * 60 + depMins
-
-                val cal = Calendar.getInstance(TimeZone.getTimeZone("Europe/Madrid"))
-                val nowHours = cal.get(Calendar.HOUR_OF_DAY)
-                val nowMins = cal.get(Calendar.MINUTE)
-                val nowTotalMins = nowHours * 60 + nowMins
-
-                var diff = depTotalMins - nowTotalMins
-                if (diff < -1200) diff += 1440
-                if (diff > 1200) diff -= 1440
-                diff
-            } catch (e: Exception) {
-                null
-            }
-        }
-        return null
-    }
-
-    private fun parseIsoToEpochMs(isoString: String?): Long {
-        if (isoString.isNullOrBlank()) return 0L
-        return try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                try {
-                    java.time.Instant.parse(isoString).toEpochMilli()
-                } catch (e: Exception) {
-                    java.time.OffsetDateTime.parse(isoString).toInstant().toEpochMilli()
-                }
-            } else {
-                val cleanIso = isoString.substringBefore("Z").substringBefore("+")
-                val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }
-                inputFormat.parse(cleanIso)?.time ?: 0L
-            }
-        } catch (e: Exception) {
-            0L
-        }
+        val nowMs = System.currentTimeMillis()
+        return ((departureMillis - nowMs) / 60000L).toInt()
     }
 }

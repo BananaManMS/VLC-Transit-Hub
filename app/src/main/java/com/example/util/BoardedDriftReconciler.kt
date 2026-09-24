@@ -93,6 +93,7 @@ class BoardedDriftReconciler(
 
     private var currentTrackedLegIndex: Int = -1
     private var lastKnownDrift: Int = 0
+    private var boardedVehicleId: String? = null
 
     companion object {
         private const val TAG = "BoardedDriftReconciler"
@@ -106,10 +107,16 @@ class BoardedDriftReconciler(
     fun onBoardingConfirmed(
         currentLeg: PlannedLeg,
         currentLegIndex: Int,
-        initialDepartureDelayMinutes: Int
+        initialDepartureDelayMinutes: Int,
+        vehicleId: String? = null
     ) {
         currentTrackedLegIndex = currentLegIndex
         lastKnownDrift = initialDepartureDelayMinutes
+        boardedVehicleId = vehicleId
+
+        if (!vehicleId.isNullOrBlank()) {
+            Log.d(TAG, "ONBOARD confirmed for Metro leg #$currentLegIndex locked to Vehicle ID: $vehicleId")
+        }
 
         // 1. Cancelación inmediata de cualquier polling anterior
         cancelActivePollingJob()
@@ -193,9 +200,8 @@ class BoardedDriftReconciler(
             val liveMinutes = fetchPenultimateStopLiveArrival(leg, penultimateStop, nowMs)
             if (liveMinutes != null && liveMinutes >= 0) {
                 // Cálculo del Drift respecto al teórico programado de la penúltima parada
-                val theoreticalRemaining = calculateTheoreticalMinutesRemaining(
-                    penultimateStop.scheduledTime ?: penultimateStop.formattedTime ?: leg.endTime,
-                    nowMs
+                val theoreticalRemaining = SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(
+                    penultimateStop.scheduledTime ?: penultimateStop.formattedTime ?: leg.endTime
                 ) ?: 0
 
                 val calculatedDrift = liveMinutes - theoreticalRemaining
@@ -323,137 +329,21 @@ class BoardedDriftReconciler(
         stop: PlannedStop,
         nowMs: Long
     ): Int? {
-        val stopId = stop.stopId ?: return null
-        val normalizedLine = TransitIdMapper.normalizeRouteShortName(leg.mode, leg.routeShortName)
-        val rawLine = leg.routeShortName ?: normalizedLine
-
-        // Expected arrival at penultimate stop based on schedule or progress
-        val theoreticalPenultRemaining = calculateTheoreticalMinutesRemaining(
-            stop.scheduledTime ?: stop.formattedTime ?: leg.endTime,
-            nowMs
-        ) ?: (leg.durationSeconds / 60).toInt().coerceAtLeast(1)
-
-        val expectedPenultMinutes = (theoreticalPenultRemaining + lastKnownDrift).coerceAtLeast(0)
-
-        return when (leg.mode) {
-            TransitMode.BUS -> {
-                val isEmt = TransitIdMapper.isEmtBus(
-                    agencyName = leg.agencyName,
-                    routeShortName = leg.routeShortName,
-                    routeLongName = leg.routeLongName,
-                    fromStopId = stopId,
-                    fromName = stop.name
-                )
-                if (!isEmt) return null
-                val emtStopNum = TransitIdMapper.extractEmtStopNumber(stopId, stop.name) ?: stopId
-                val arrivals = RealTimeTransitRepository.getEmtLiveArrivals(emtStopNum, useFastTimeout = true)
-                val lineArrivals = arrivals.filter { arr ->
-                    TransitIdMapper.isSameEmtLine(arr.linea, rawLine) ||
-                    TransitIdMapper.isSameEmtLine(arr.linea, normalizedLine)
-                }
-                val destArrivals = lineArrivals.filter { isDestinationMatch(it.destino, leg) }
-                
-                // Vehicle Correlation: Only match vehicles within +-4 min of expected arrival at this stop
-                val matching = destArrivals.mapNotNull { arr ->
-                    val mins = arr.minutos.filter { it.isDigit() }.toIntOrNull()
-                        ?: if (arr.secondsRemaining > 0) arr.secondsRemaining / 60 else null
-                    if (mins != null) Pair(arr, mins) else null
-                }.filter { (_, mins) ->
-                    kotlin.math.abs(mins - expectedPenultMinutes) <= 4
-                }.minByOrNull { (_, mins) ->
-                    kotlin.math.abs(mins - expectedPenultMinutes)
-                }
-
-                matching?.second
-            }
-            TransitMode.SUBWAY, TransitMode.TRAM -> {
-                val stationId = TransitIdMapper.extractMetroStationId(stopId, stop.name)?.toString()
-                    ?: stopId.filter { it.isDigit() }
-                if (stationId.isNotBlank()) {
-                    val arrivals = RealTimeTransitRepository.getMetroLiveArrivals(stationId)
-                    val digits = normalizedLine.filter { it.isDigit() }
-                    val lineArrivals = arrivals.filter { dep ->
-                        if (digits.isBlank()) true
-                        else dep.line.equals(normalizedLine, ignoreCase = true) || dep.line.filter { it.isDigit() } == digits
-                    }
-                    val destArrivals = lineArrivals.filter { isDestinationMatch(it.destination, leg) }
-                    
-                    // Vehicle Correlation: Only match trains within +-4 min of expected arrival at this stop
-                    val matching = destArrivals.filter { dep ->
-                        kotlin.math.abs(dep.minutes - expectedPenultMinutes) <= 4
-                    }.minByOrNull { dep ->
-                        kotlin.math.abs(dep.minutes - expectedPenultMinutes)
-                    }
-
-                    matching?.minutes
-                } else null
-            }
-            TransitMode.RAIL -> {
-                val tripUpdates = RealTimeTransitRepository.getCercaniasTripUpdates()
-                val stopDigits = stopId.filter { it.isDigit() }
-                val cercaniasLine = TransitIdMapper.extractCercaniasLine(leg.routeShortName, leg.routeLongName, leg.agencyName, leg.mode)
-                    ?: leg.routeShortName ?: ""
-                val cleanLine = cercaniasLine.replace("-", "").uppercase()
-
-                val update = tripUpdates.values.firstOrNull { u ->
-                    val lineMatches = cleanLine.isNotBlank() && u.tripId.replace("-", "").uppercase().contains(cleanLine)
-                    val stopMatches = stopDigits.isNotBlank() && (u.stopDelays.containsKey(stopDigits) || u.stopEstimatedTimes.containsKey(stopDigits))
-                    lineMatches || stopMatches
-                }
-
-                if (update != null) {
-                    val stopEpoch = if (stopDigits.isNotBlank()) update.stopEstimatedTimes[stopDigits] else null
-                    if (stopEpoch != null && stopEpoch > 0) {
-                        val remainingSec = ((stopEpoch * 1000L) - nowMs) / 1000L
-                        (remainingSec / 60L).toInt().coerceAtLeast(0)
-                    } else {
-                        val delaySec = if (stopDigits.isNotBlank()) update.stopDelays[stopDigits] ?: update.delaySeconds else update.delaySeconds
-                        val delayM = delaySec / 60
-                        (expectedPenultMinutes + delayM).coerceAtLeast(0)
-                    }
-                } else null
-            }
-            else -> null
-        }
-    }
-
-    private fun isDestinationMatch(depDestination: String, leg: PlannedLeg): Boolean {
-        return com.example.data.repository.routing.TransitIdMapper.isDestinationMatch(depDestination, leg)
+        val progressFraction = ActiveTripProgressTracker.progressState.value.progressWithinLeg
+        return PenultimateStopArrivalMatcher.fetchLiveArrivalMinutes(
+            leg = leg,
+            stop = stop,
+            nowMs = nowMs,
+            boardedVehicleId = boardedVehicleId,
+            lastKnownDrift = lastKnownDrift,
+            progressFraction = progressFraction
+        )
     }
 
     private fun resolvePenultimateStop(leg: PlannedLeg): PlannedStop? {
         return when {
             leg.intermediateStops.isNotEmpty() -> leg.intermediateStops.last()
             else -> null
-        }
-    }
-
-    private fun calculateTheoreticalMinutesRemaining(timeStr: String?, nowMs: Long): Int? {
-        if (timeStr.isNullOrBlank()) return null
-        return try {
-            if (timeStr.contains("T")) {
-                val cleanIso = timeStr.substringBefore("Z").substringBefore("+")
-                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
-                    timeZone = java.util.TimeZone.getTimeZone("UTC")
-                }
-                val parsed = sdf.parse(cleanIso)?.time
-                parsed?.let { ((it - nowMs) / 60000L).toInt() }
-            } else if (timeStr.contains(":")) {
-                val parts = timeStr.split(":")
-                val cal = Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
-                cal.set(Calendar.HOUR_OF_DAY, parts[0].trim().toInt())
-                cal.set(Calendar.MINUTE, parts[1].trim().toInt())
-                cal.set(Calendar.SECOND, 0)
-                cal.set(Calendar.MILLISECOND, 0)
-                var diff = cal.timeInMillis - nowMs
-                if (diff < -12 * 3600 * 1000L) diff += 24 * 3600 * 1000L
-                else if (diff > 12 * 3600 * 1000L) diff -= 24 * 3600 * 1000L
-                ((diff) / 60000L).toInt()
-            } else {
-                null
-            }
-        } catch (_: Exception) {
-            null
         }
     }
 
@@ -468,6 +358,7 @@ class BoardedDriftReconciler(
         _driftUpdates.value = null
         currentTrackedLegIndex = -1
         lastKnownDrift = 0
+        boardedVehicleId = null
     }
 
     fun reset() {

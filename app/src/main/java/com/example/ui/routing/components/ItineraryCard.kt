@@ -1,5 +1,6 @@
 package com.example.ui.routing.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.DirectionsRailway
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.routing.ItineraryViability
 import com.example.data.model.routing.PlannedItinerary
 import com.example.data.model.routing.PlannedLeg
+import com.example.data.model.routing.SchedulePhase
 import com.example.data.model.routing.TransitMode
 import com.example.ui.dashboard.AppLanguage
 
@@ -72,26 +75,32 @@ fun ItineraryCard(
     onStartTrip: ((PlannedItinerary) -> Unit)? = null,
     userLocation: Location? = null,
     originLocation: PlannerLocation? = null,
+    isDarkMode: Boolean = false,
     appLanguage: AppLanguage = AppLanguage.CA,
     modifier: Modifier = Modifier
 ) {
-    val cardBorder = if (isSelected) {
-        MaterialTheme.colorScheme.primary
+    val cardBg = if (isSelected) {
+        if (isDarkMode) Color(0xFF1E2D4A) else Color(0xFFEFF6FF)
     } else {
-        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        MaterialTheme.colorScheme.surface
+    }
+    val cardBorder = if (isSelected) {
+        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+    } else {
+        null
     }
 
     Card(
+        onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
             .testTag("itinerary_card_${itinerary.id}"),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = cardBg
         ),
-        border = androidx.compose.foundation.BorderStroke(if (isSelected) 2.dp else 1.dp, cardBorder),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp)
+        border = cardBorder,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -116,16 +125,16 @@ fun ItineraryCard(
                         Spacer(modifier = Modifier.width(6.dp))
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFE8F5E9),
-                            contentColor = Color(0xFF1B5E20)
+                            color = if (isDarkMode) Color(0xFF1B3822) else Color(0xFFE8F5E9),
+                            contentColor = if (isDarkMode) Color(0xFF81C784) else Color(0xFF1B5E20)
                         ) {
-                            Text(
-                                text = if (appLanguage == AppLanguage.ES) "Más rápida" else "Més ràpida",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                ),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = if (appLanguage == AppLanguage.ES) "Más rápida" else "Més ràpida",
+                                tint = if (isDarkMode) Color(0xFF81C784) else Color(0xFF1B5E20),
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    .size(16.dp)
                             )
                         }
                     }
@@ -161,7 +170,7 @@ fun ItineraryCard(
 
             // Live GPS Real-Time / Service Alert / Programado Status Badge
             Spacer(modifier = Modifier.height(10.dp))
-            ViabilityBadge(itinerary = itinerary, appLanguage = appLanguage)
+            ViabilityBadge(itinerary = itinerary, isDarkMode = isDarkMode, appLanguage = appLanguage)
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -172,7 +181,7 @@ fun ItineraryCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 itinerary.legs.forEachIndexed { index, leg ->
-                    LegBadge(leg = leg)
+                    LegBadge(leg = leg, isDarkMode = isDarkMode)
                     if (index < itinerary.legs.size - 1) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
@@ -346,6 +355,7 @@ fun ItineraryCard(
 @Composable
 fun ViabilityBadge(
     itinerary: PlannedItinerary,
+    isDarkMode: Boolean = false,
     appLanguage: AppLanguage = AppLanguage.CA
 ) {
     if (itinerary.viability == ItineraryViability.CHECKING_REAL_TIME) {
@@ -362,7 +372,8 @@ fun ViabilityBadge(
 
         Surface(
             shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = alpha * 0.25f),
+            color = if (isDarkMode) Color(0xFF1E2D4A).copy(alpha = alpha) else Color(0xFFEFF6FF).copy(alpha = alpha),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = alpha * 0.5f)),
             contentColor = MaterialTheme.colorScheme.primary,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -378,7 +389,7 @@ fun ViabilityBadge(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (appLanguage == AppLanguage.ES) "Comprobando GPS en directo..." else "Comprovant GPS en directe...",
+                    text = if (appLanguage == AppLanguage.ES) "Comprobando en vivo..." else "Comprovant en viu...",
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp,
@@ -391,21 +402,22 @@ fun ViabilityBadge(
         return
     }
 
-    val isLiveGps = itinerary.viability == ItineraryViability.VIABLE_ON_TIME || itinerary.legs.any { it.isRealTimeVerified }
+    val isLiveGps = itinerary.viability == ItineraryViability.VIABLE_ON_TIME ||
+            itinerary.legs.any { it.isRealTimeVerified && it.schedulePhase == SchedulePhase.LIVE_ACQUIRED }
     val (bgColor, textColor, icon) = when {
         itinerary.viability == ItineraryViability.SERVICE_ALERT -> Triple(
-            Color(0xFFFFEBEE),
-            Color(0xFFB71C1C),
+            if (isDarkMode) Color(0xFF3E1E1E) else Color(0xFFFFEBEE),
+            if (isDarkMode) Color(0xFFFF8A80) else Color(0xFFB71C1C),
             Icons.Default.Warning
         )
         itinerary.viability == ItineraryViability.ADJUSTED_NEXT_DEPARTURE -> Triple(
-            Color(0xFFFFF3E0),
-            Color(0xFFE65100),
+            if (isDarkMode) Color(0xFF3E2C1E) else Color(0xFFFFF3E0),
+            if (isDarkMode) Color(0xFFFFD180) else Color(0xFFE65100),
             Icons.Default.Schedule
         )
         isLiveGps -> Triple(
-            Color(0xFFE8F5E9),
-            Color(0xFF1B5E20),
+            if (isDarkMode) Color(0xFF1B3822) else Color(0xFFE8F5E9),
+            if (isDarkMode) Color(0xFF81C784) else Color(0xFF1B5E20),
             Icons.Default.RssFeed
         )
         else -> Triple(
@@ -416,10 +428,14 @@ fun ViabilityBadge(
     }
 
     val noticeText = when {
-        !itinerary.viabilityNotice.isNullOrBlank() -> itinerary.viabilityNotice?.replace("GPS en directo: ", "")?.replace("GPS en directe: ", "")
+        !itinerary.viabilityNotice.isNullOrBlank() -> itinerary.viabilityNotice
+            ?.replace("GPS en directo: ", "")
+            ?.replace("GPS en directe: ", "")
+            ?.replace("En vivo: ", "")
+            ?.replace("En viu: ", "")
         itinerary.activeAlerts.isNotEmpty() -> itinerary.activeAlerts.first()
-        isLiveGps -> if (appLanguage == AppLanguage.ES) "En directo • En hora" else "En directe • A l'hora"
-        itinerary.viability == ItineraryViability.ADJUSTED_NEXT_DEPARTURE -> if (appLanguage == AppLanguage.ES) "Salida recalculada en directo" else "Eixida recalculada en directe"
+        isLiveGps -> if (appLanguage == AppLanguage.ES) "En vivo • En hora" else "En viu • A l'hora"
+        itinerary.viability == ItineraryViability.ADJUSTED_NEXT_DEPARTURE -> if (appLanguage == AppLanguage.ES) "Salida recalculada en vivo" else "Eixida recalculada en viu"
         itinerary.viability == ItineraryViability.SERVICE_ALERT -> if (appLanguage == AppLanguage.ES) "Aviso de servicio activo" else "Avís de servei actiu"
         else -> if (appLanguage == AppLanguage.ES) "Horario programado" else "Horari programat"
     }
@@ -434,12 +450,20 @@ fun ViabilityBadge(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(15.dp),
-                tint = textColor
-            )
+            if (isLiveGps) {
+                com.example.ui.components.LiveRssFeedIcon(
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = textColor
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = textColor
+                )
+            }
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = noticeText ?: (if (appLanguage == AppLanguage.ES) "Horario programado" else "Horari programat"),
@@ -453,8 +477,13 @@ fun ViabilityBadge(
     }
 }
 
+private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
 @Composable
-fun LegBadge(leg: PlannedLeg) {
+fun LegBadge(
+    leg: PlannedLeg,
+    isDarkMode: Boolean = false
+) {
     val hexColor = com.example.util.LineColorResolver.resolveRouteColor(leg.mode, leg.routeShortName, leg.routeColorHex, leg.agencyName)
 
     val isEmtBus = leg.mode == TransitMode.BUS && (
@@ -466,20 +495,22 @@ fun LegBadge(leg: PlannedLeg) {
 
     val icon: ImageVector = when (leg.mode) {
         TransitMode.WALK -> Icons.AutoMirrored.Filled.DirectionsWalk
-        TransitMode.BUS -> Icons.Default.DirectionsBus
-        TransitMode.SUBWAY -> Icons.Default.Subway
-        TransitMode.TRAM -> Icons.Default.Subway
-        TransitMode.RAIL -> Icons.Default.DirectionsRailway
-        TransitMode.BICYCLE -> Icons.AutoMirrored.Filled.DirectionsWalk
+        TransitMode.BUS, TransitMode.METROBUS -> Icons.Default.DirectionsBus
+        TransitMode.SUBWAY, TransitMode.TRAM -> Icons.Default.Subway
+        TransitMode.RAIL, TransitMode.CERCANIAS -> Icons.Default.DirectionsRailway
+        TransitMode.BICYCLE, TransitMode.VALENBISI -> Icons.AutoMirrored.Filled.DirectionsWalk
+        else -> Icons.AutoMirrored.Filled.DirectionsWalk
     }
 
     val badgeLabel = when (leg.mode) {
         TransitMode.WALK -> "${(leg.durationSeconds / 60).coerceAtLeast(1)} min"
         TransitMode.BUS -> leg.routeShortName ?: "Bus"
+        TransitMode.METROBUS -> leg.routeShortName ?: "Metrobús"
         TransitMode.SUBWAY -> if (leg.routeShortName.isNullOrBlank()) "Metro" else if (leg.routeShortName.startsWith("L")) leg.routeShortName else "L${leg.routeShortName}"
         TransitMode.TRAM -> if (leg.routeShortName.isNullOrBlank()) "Tranvía" else if (leg.routeShortName.startsWith("L") || leg.routeShortName.startsWith("T")) leg.routeShortName else "L${leg.routeShortName}"
-        TransitMode.RAIL -> leg.routeShortName ?: "Rodalia"
-        TransitMode.BICYCLE -> "Bici"
+        TransitMode.RAIL, TransitMode.CERCANIAS -> leg.routeShortName ?: "Rodalia"
+        TransitMode.BICYCLE, TransitMode.VALENBISI -> "Bici"
+        else -> leg.routeShortName ?: ""
     }
 
     Surface(

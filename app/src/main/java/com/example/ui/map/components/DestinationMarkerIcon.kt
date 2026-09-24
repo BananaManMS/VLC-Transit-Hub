@@ -114,20 +114,22 @@ internal fun getCustomPlaceMarkerIcon(
     context: Context,
     type: CustomPlaceType = CustomPlaceType.FAVORITE,
     currentZoom: Double = 16.0,
-    isDarkMode: Boolean = false
+    isDarkMode: Boolean = false,
+    customColorHex: String? = null
 ): MarkerIconResult {
     val zoomTier = when {
         currentZoom >= 15.5 -> "PIN"
         currentZoom >= 13.0 -> "BADGE"
         else -> "DOT"
     }
-    val key = "CUSTOM_PLACE_${type.name}_${zoomTier}_${if (isDarkMode) "dark" else "light"}"
+    val colorKey = if (type == CustomPlaceType.FAVORITE && !customColorHex.isNullOrBlank()) customColorHex else "default"
+    val key = "CUSTOM_PLACE_${type.name}_${colorKey}_${zoomTier}_${if (isDarkMode) "dark" else "light"}"
     var cached = destinationIconCache.get(key)
     if (cached == null) {
         cached = when (zoomTier) {
-            "PIN" -> createCustomPlacePinDrawable(context, type)
-            "BADGE" -> createCustomPlaceBadgeDrawable(context, type)
-            else -> createCustomPlaceDotDrawable(context, type)
+            "PIN" -> createCustomPlacePinDrawable(context, type, customColorHex)
+            "BADGE" -> createCustomPlaceBadgeDrawable(context, type, customColorHex)
+            else -> createCustomPlaceDotDrawable(context, type, customColorHex)
         }
         destinationIconCache.put(key, cached)
     }
@@ -147,19 +149,21 @@ internal fun getCustomPlaceMarkerIcon(
     }
 }
 
-// Backward compatibility helper
-internal fun getFavoritePlaceMarkerIcon(context: Context, currentZoom: Double = 16.0): MarkerIconResult {
-    return getCustomPlaceMarkerIcon(context, CustomPlaceType.FAVORITE, currentZoom, false)
-}
-
-private fun createCustomPlacePinDrawable(context: Context, type: CustomPlaceType): Drawable {
+private fun createCustomPlacePinDrawable(context: Context, type: CustomPlaceType, customColorHex: String? = null): Drawable {
     val width = 68
     val height = 90
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
 
     val (mainColor, iconColor) = when (type) {
-        CustomPlaceType.FAVORITE -> Pair(Color.parseColor("#F59E0B"), Color.parseColor("#D97706")) // Amber Gold
+        CustomPlaceType.FAVORITE -> {
+            val parsed = if (!customColorHex.isNullOrBlank()) {
+                try { Color.parseColor(customColorHex) } catch (_: Exception) { Color.parseColor("#F59E0B") }
+            } else {
+                Color.parseColor("#F59E0B")
+            }
+            Pair(parsed, parsed)
+        }
         CustomPlaceType.HOME -> Pair(Color.parseColor("#10B981"), Color.parseColor("#047857"))     // Emerald Teal
         CustomPlaceType.WORK -> Pair(Color.parseColor("#6366F1"), Color.parseColor("#4338CA"))     // Indigo
     }
@@ -213,7 +217,7 @@ private fun createCustomPlacePinDrawable(context: Context, type: CustomPlaceType
     return BitmapDrawable(context.resources, bitmap)
 }
 
-private fun createCustomPlaceBadgeDrawable(context: Context, type: CustomPlaceType): Drawable {
+private fun createCustomPlaceBadgeDrawable(context: Context, type: CustomPlaceType, customColorHex: String? = null): Drawable {
     val size = 42
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
@@ -221,7 +225,13 @@ private fun createCustomPlaceBadgeDrawable(context: Context, type: CustomPlaceTy
     val cy = size / 2f
 
     val mainColor = when (type) {
-        CustomPlaceType.FAVORITE -> Color.parseColor("#F59E0B")
+        CustomPlaceType.FAVORITE -> {
+            if (!customColorHex.isNullOrBlank()) {
+                try { Color.parseColor(customColorHex) } catch (_: Exception) { Color.parseColor("#F59E0B") }
+            } else {
+                Color.parseColor("#F59E0B")
+            }
+        }
         CustomPlaceType.HOME -> Color.parseColor("#10B981")
         CustomPlaceType.WORK -> Color.parseColor("#6366F1")
     }
@@ -253,7 +263,7 @@ private fun createCustomPlaceBadgeDrawable(context: Context, type: CustomPlaceTy
     return BitmapDrawable(context.resources, bitmap)
 }
 
-private fun createCustomPlaceDotDrawable(context: Context, type: CustomPlaceType): Drawable {
+private fun createCustomPlaceDotDrawable(context: Context, type: CustomPlaceType, customColorHex: String? = null): Drawable {
     val size = 22
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
@@ -261,7 +271,13 @@ private fun createCustomPlaceDotDrawable(context: Context, type: CustomPlaceType
     val cy = size / 2f
 
     val mainColor = when (type) {
-        CustomPlaceType.FAVORITE -> Color.parseColor("#F59E0B")
+        CustomPlaceType.FAVORITE -> {
+            if (!customColorHex.isNullOrBlank()) {
+                try { Color.parseColor(customColorHex) } catch (_: Exception) { Color.parseColor("#F59E0B") }
+            } else {
+                Color.parseColor("#F59E0B")
+            }
+        }
         CustomPlaceType.HOME -> Color.parseColor("#10B981")
         CustomPlaceType.WORK -> Color.parseColor("#6366F1")
     }

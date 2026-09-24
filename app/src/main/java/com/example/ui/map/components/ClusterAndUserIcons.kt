@@ -16,13 +16,51 @@ import android.util.LruCache
 
 private val clusterAndUserIconCache = LruCache<String, Drawable>(64)
 
-private var lastContext: Context? = null
+private var lastContext: java.lang.ref.WeakReference<Context>? = null
 private var sensorManager: SensorManager? = null
 private var targetHeading: Float = 0f
 private var smoothHeading: Float = 0f
 private var sensorListenerRegistered = false
 private var isAnimRunning = false
 private var pulsePhase = 0f
+
+// Reusable bitmap and drawing structures for live compass icon to eliminate GC churn at 30 FPS
+private const val LIVE_USER_ICON_SIZE = 96
+private val liveUserBitmap = Bitmap.createBitmap(LIVE_USER_ICON_SIZE, LIVE_USER_ICON_SIZE, Bitmap.Config.ARGB_8888)
+private val liveUserCanvas = Canvas(liveUserBitmap)
+
+private val liveGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = Color.parseColor("#3322C55E")
+    style = Paint.Style.FILL
+}
+private val liveShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = Color.argb(45, 0, 0, 0)
+    style = Paint.Style.FILL
+}
+private val liveWhitePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = Color.WHITE
+    style = Paint.Style.FILL
+}
+private val liveGreenPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = Color.parseColor("#22C55E")
+    style = Paint.Style.FILL
+}
+private val liveGleamPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = Color.parseColor("#86EFAC")
+    style = Paint.Style.FILL
+}
+private val liveArrowStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = Color.WHITE
+    style = Paint.Style.STROKE
+    strokeWidth = 3f
+    strokeJoin = Paint.Join.ROUND
+    strokeCap = Paint.Cap.ROUND
+}
+private val liveArrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = Color.parseColor("#10B981")
+    style = Paint.Style.FILL
+}
+private val liveArrowPath = android.graphics.Path()
 
 private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -39,13 +77,18 @@ private val animRunnable = object : Runnable {
         while (diff > 180f) diff -= 360f
         smoothHeading = (smoothHeading + diff * 0.12f + 360f) % 360f
 
-        val context = lastContext
+        val ctx = lastContext?.get()
         val marker = MapMarkersManager.userMarker
-        if (context != null && marker != null) {
-            marker.icon = createUserLiveIcon(context)
-            MapMarkersManager.lastMapView?.invalidate()
+        val mv = MapMarkersManager.lastMapView
+        if (ctx != null && marker != null && mv != null && (mv.isAttachedToWindow || mv.parent != null)) {
+            marker.icon = createUserLiveIcon(ctx)
+            try {
+                mv.invalidate()
+            } catch (_: Exception) {}
         }
-        handler.postDelayed(this, 33L)
+        if (isAnimRunning) {
+            handler.postDelayed(this, 33L)
+        }
     }
 }
 
@@ -159,81 +202,48 @@ internal fun createUserLocationIcon(context: Context): Drawable {
 }
 
 internal fun createUserLiveIcon(context: Context): Drawable {
-    val size = 96
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val size = LIVE_USER_ICON_SIZE
+    val canvas = liveUserCanvas
+    // Clear previous drawing cleanly
+    canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
     val center = size / 2f
     val baseRadius = 16f
     val outerRadius = baseRadius + 4f
 
-    val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#3322C55E")
-        style = Paint.Style.FILL
-    }
     val glowRadius = outerRadius + 8f + 6f * kotlin.math.sin(pulsePhase).toFloat().coerceAtLeast(0f)
-    canvas.drawCircle(center, center, glowRadius, glowPaint)
+    canvas.drawCircle(center, center, glowRadius, liveGlowPaint)
 
-    val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(45, 0, 0, 0)
-        style = Paint.Style.FILL
-    }
-    canvas.drawCircle(center, center + 2f, outerRadius, shadowPaint)
+    canvas.drawCircle(center, center + 2f, outerRadius, liveShadowPaint)
 
-    val whitePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        style = Paint.Style.FILL
-    }
-    canvas.drawCircle(center, center, outerRadius, whitePaint)
+    canvas.drawCircle(center, center, outerRadius, liveWhitePaint)
 
-    val greenPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#22C55E")
-        style = Paint.Style.FILL
-    }
     val innerRadius = (outerRadius - 5f) * (1.0f + 0.08f * kotlin.math.sin(pulsePhase).toFloat())
-    canvas.drawCircle(center, center, innerRadius, greenPaint)
+    canvas.drawCircle(center, center, innerRadius, liveGreenPaint)
 
-    val gleamPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#86EFAC")
-        style = Paint.Style.FILL
-    }
-    canvas.drawCircle(center - innerRadius * 0.3f, center - innerRadius * 0.3f, innerRadius * 0.25f, gleamPaint)
+    canvas.drawCircle(center - innerRadius * 0.3f, center - innerRadius * 0.3f, innerRadius * 0.25f, liveGleamPaint)
 
     canvas.save()
     canvas.rotate(smoothHeading, center, center)
 
-    val arrowPath = android.graphics.Path().apply {
-        moveTo(center, center - outerRadius - 16f)
-        lineTo(center - 9f, center - outerRadius + 1f)
-        lineTo(center + 9f, center - outerRadius + 1f)
-        close()
-    }
+    liveArrowPath.reset()
+    liveArrowPath.moveTo(center, center - outerRadius - 16f)
+    liveArrowPath.lineTo(center - 9f, center - outerRadius + 1f)
+    liveArrowPath.lineTo(center + 9f, center - outerRadius + 1f)
+    liveArrowPath.close()
 
-    val arrowStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-        strokeJoin = Paint.Join.ROUND
-        strokeCap = Paint.Cap.ROUND
-    }
-    canvas.drawPath(arrowPath, arrowStrokePaint)
-
-    val arrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#10B981")
-        style = Paint.Style.FILL
-    }
-    canvas.drawPath(arrowPath, arrowFillPaint)
+    canvas.drawPath(liveArrowPath, liveArrowStrokePaint)
+    canvas.drawPath(liveArrowPath, liveArrowFillPaint)
 
     canvas.restore()
 
-    return BitmapDrawable(context.resources, bitmap)
+    return BitmapDrawable(context.resources, liveUserBitmap)
 }
 
 internal fun startLiveLocationUpdates(context: Context) {
-    lastContext = context
+    lastContext = java.lang.ref.WeakReference(context.applicationContext)
     if (sensorManager == null) {
-        sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        sensorManager = context.applicationContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
     }
 
     if (!sensorListenerRegistered && sensorManager != null) {
@@ -249,17 +259,19 @@ internal fun startLiveLocationUpdates(context: Context) {
 
     if (!isAnimRunning) {
         isAnimRunning = true
+        handler.removeCallbacks(animRunnable)
         handler.post(animRunnable)
     }
 }
 
 internal fun stopLiveLocationUpdates() {
+    isAnimRunning = false
+    handler.removeCallbacksAndMessages(null)
     if (sensorListenerRegistered && sensorManager != null) {
-        sensorManager?.unregisterListener(sensorListener)
+        try {
+            sensorManager?.unregisterListener(sensorListener)
+        } catch (_: Exception) {}
         sensorListenerRegistered = false
     }
-    if (isAnimRunning) {
-        isAnimRunning = false
-        handler.removeCallbacks(animRunnable)
-    }
+    lastContext = null
 }

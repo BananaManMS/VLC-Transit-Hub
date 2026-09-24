@@ -17,98 +17,93 @@ object MetroCardNetworkSource {
     suspend fun fetchCardFromNetwork(
         trimmedCard: String,
         client: OkHttpClient = defaultClient
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val clean = trimmedCard.filter { it.isDigit() }
+        val candidates = mutableListOf<String>()
+        candidates.add(clean)
+        if (clean.length == 12) {
+            candidates.add(clean.take(10))
+        }
+
+        var lastException: Exception? = null
+        for (candidate in candidates) {
+            try {
+                return@withContext queryApiForCard(candidate, client)
+            } catch (e: Exception) {
+                lastException = e
+            }
+        }
+        throw lastException ?: Exception("No se pudo obtener información de la tarjeta $trimmedCard desde el servidor.")
+    }
+
+    private fun queryApiForCard(
+        card: String,
+        client: OkHttpClient
     ): JSONObject {
-        val urlViajes = "https://metroapi.alexbadi.es/viajes/$trimmedCard"
-        val urlTarjeta = "https://metroapi.alexbadi.es/tarjeta/$trimmedCard"
+        val url = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/tarjeta/$card"
 
-        val requestViajes = Request.Builder()
-            .url(urlViajes)
+        val request = Request.Builder()
+            .url(url)
             .header("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
             .build()
 
-        val requestTarjeta = Request.Builder()
-            .url(urlTarjeta)
-            .header("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
-            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("HTTP Error: ${response.code}")
+            }
+            val body = response.body?.string() ?: throw Exception("Empty body")
+            
+            if (!body.trim().startsWith("<")) {
+                val root = JSONObject(body)
+                val success = root.optBoolean("success", false)
+                if (success) {
+                    val dataObj = root.optJSONObject("data")
+                    if (dataObj != null) {
+                        val tarjetasArray = dataObj.optJSONArray("tarjetas")
+                        if (tarjetasArray != null && tarjetasArray.length() > 0) {
+                            val firstCard = tarjetasArray.getJSONObject(0)
+                            val merged = JSONObject()
 
-        return withContext(Dispatchers.IO) {
-            val merged = JSONObject()
-            var tarjetaSuccess = false
+                            val title = firstCard.optString("titulo", "Móbilis / SUMA")
+                            merged.put("nombre", title)
+                            merged.put("titulo", title)
+                            
+                            val tipo = firstCard.optString("tipo", "MULTIVIAJE")
+                            merged.put("clase", tipo)
+                            
+                            val rawSaldo = firstCard.optDouble("saldo", 0.0)
+                            merged.put("saldo_restante", rawSaldo * 100.0)
+                            merged.put("viajes_restantes", rawSaldo.toInt())
+                            merged.put("saldo", firstCard.optString("saldoFormateado", "${rawSaldo.toInt()} viajes"))
 
-            try {
-                client.newCall(requestTarjeta).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string()
-                        if (!body.isNullOrBlank()) {
-                            val json = JSONObject(body)
-                            val resObj = json.optJSONObject("resultado")
-                            if (resObj != null) {
-                                tarjetaSuccess = true
-                                val resKeys = resObj.keys()
-                                while (resKeys.hasNext()) {
-                                    val key = resKeys.next()
-                                    val value = resObj.get(key)
-                                    if (value != null && value != JSONObject.NULL) {
-                                        merged.put(key, value)
-                                    }
-                                }
-                            }
+                            val zona = firstCard.optString("zona", "A")
+                            val zonaFormatted = if (zona.isBlank()) "Zona A" else if (zona.startsWith("Zona", ignoreCase = true)) zona else "Zona $zona"
+                            merged.put("zona", zonaFormatted)
+                            merged.put("zonas", zonaFormatted)
+
+                            val fechaCaducidad = firstCard.optString("fechaCaducidad", "")
+                            merged.put("fecha_caducidad", fechaCaducidad)
+                            merged.put("caducidad", fechaCaducidad)
+                            merged.put("fechaCaducidad", fechaCaducidad)
+
+                            val ampliado = firstCard.optBoolean("ampliado", false)
+                            val ampliadoFormateado = firstCard.optString("ampliadoFormateado", if (ampliado) "Sí" else "No")
+                            merged.put("ampliado", if (ampliado) "Ampliado" else "No ampliado")
+                            merged.put("ampliadoFormateado", ampliadoFormateado)
+
+                            merged.put("viajes", firstCard.optJSONArray("viajes") ?: JSONArray())
+                            merged.put("viajes_realizados", 0)
+
+                            return merged
+                        } else {
+                            val msg = dataObj.optString("mensaje", "No se encontraron títulos cargados para la tarjeta $card.")
+                            throw Exception(msg)
                         }
                     }
                 }
-            } catch (e: Exception) {
-                // ignore
             }
 
-            var viajesSuccess = false
-            try {
-                client.newCall(requestViajes).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string()
-                        if (!body.isNullOrBlank()) {
-                            val json = JSONObject(body)
-                            val infoObj = json.optJSONObject("info")
-                            val viajesArray = json.optJSONArray("viajes") ?: JSONArray()
-
-                            if (!tarjetaSuccess && infoObj != null) {
-                                val infoKeys = infoObj.keys()
-                                while (infoKeys.hasNext()) {
-                                    val key = infoKeys.next()
-                                    val value = infoObj.get(key)
-                                    if (value != null && value != JSONObject.NULL) {
-                                        merged.put(key, value)
-                                    }
-                                }
-                            }
-
-                            merged.put("viajes", viajesArray)
-                            merged.put("viajes_realizados", viajesArray.length())
-                            viajesSuccess = true
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // ignore
-            }
-
-            if (!tarjetaSuccess && !viajesSuccess) {
-                throw Exception("La tarjeta no existe o no se pudieron obtener los datos")
-            }
-
-            if (!merged.has("viajes")) {
-                merged.put("viajes", JSONArray())
-                merged.put("viajes_realizados", 0)
-            }
-
-            if (merged.has("zona") && !merged.has("zonas")) {
-                merged.put("zonas", merged.optString("zona"))
-            }
-
-            if (!merged.has("operador")) {
-                merged.put("operador", "Metrovalencia")
-            }
-
-            merged
+            throw Exception("No se pudo obtener información de la tarjeta $card desde el servidor.")
         }
     }
 }

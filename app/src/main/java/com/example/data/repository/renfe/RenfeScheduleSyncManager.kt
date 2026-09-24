@@ -113,14 +113,8 @@ class RenfeScheduleSyncManager(
     private fun getScheduleJsonString(): String {
         return try {
             if (localScheduleFile.exists() && localScheduleFile.length() > 100) {
-                val text = localScheduleFile.readText()
-                if (isValidScheduleJson(text)) {
-                    text
-                } else {
-                    Log.w("RenfeScheduleSyncManager", "Local schedule file invalid or corrupted, deleting and falling back to assets.")
-                    try { localScheduleFile.delete() } catch (e: Exception) {}
-                    readAssetSchedule()
-                }
+                // Trust the local file since we only ever save it after complete validation
+                localScheduleFile.readText()
             } else {
                 readAssetSchedule()
             }
@@ -140,9 +134,8 @@ class RenfeScheduleSyncManager(
         val now = System.currentTimeMillis()
         val lastSync = lastSyncStr?.toLongOrNull() ?: 0L
         
-        val isCacheValid = localScheduleFile.exists() && isValidScheduleJson(
-            try { localScheduleFile.readText() } catch (e: Exception) { "" }
-        )
+        // Trust existence and size (>1000 bytes) instead of parsing the entire 689KB JSON
+        val isCacheValid = localScheduleFile.exists() && localScheduleFile.length() > 1000
 
         // Only skip remote sync if DB is complete, local cache is valid, and last sync was less than 12h ago
         if (now - lastSync < 12 * 60 * 60 * 1000L && currentDbCount >= 10 && isCacheValid) {
@@ -158,14 +151,7 @@ class RenfeScheduleSyncManager(
                 if (response.isSuccessful) {
                     val text = response.body?.string() ?: ""
                     if (isValidScheduleJson(text)) {
-                        tempScheduleFile.writeText(text)
-                        if (tempScheduleFile.exists() && tempScheduleFile.length() > 100) {
-                            tempScheduleFile.copyTo(localScheduleFile, overwrite = true)
-                            try { tempScheduleFile.delete() } catch (e: Exception) {}
-                            database.preferenceDao().insertPreference(
-                                com.example.data.database.PreferenceEntity("last_schedule_sync", now.toString())
-                            )
-                            reloadFromAssets()
+                        if (saveValidatedSchedule(text, now)) {
                             Log.i("RenfeScheduleSyncManager", "Remote schedule updated and validated successfully.")
                         }
                     } else {
@@ -200,14 +186,7 @@ class RenfeScheduleSyncManager(
                 if (response.isSuccessful) {
                     val text = response.body?.string() ?: ""
                     if (isValidScheduleJson(text)) {
-                        tempScheduleFile.writeText(text)
-                        if (tempScheduleFile.exists() && tempScheduleFile.length() > 100) {
-                            tempScheduleFile.copyTo(localScheduleFile, overwrite = true)
-                            try { tempScheduleFile.delete() } catch (e: Exception) {}
-                            database.preferenceDao().insertPreference(
-                                com.example.data.database.PreferenceEntity("last_schedule_sync", now.toString())
-                            )
-                            reloadFromAssets()
+                        if (saveValidatedSchedule(text, now)) {
                             Log.i("RenfeScheduleSyncManager", "Force sync remote schedule succeeded.")
                             return@withContext true
                         }
@@ -219,6 +198,36 @@ class RenfeScheduleSyncManager(
         }
 
         return@withContext true
+    }
+
+    private suspend fun saveValidatedSchedule(text: String, timestamp: Long): Boolean {
+        return try {
+            val bytes = text.toByteArray(Charsets.UTF_8)
+            tempScheduleFile.writeBytes(bytes)
+            if (tempScheduleFile.exists() && tempScheduleFile.length() > 0) {
+                if (localScheduleFile.exists()) {
+                    localScheduleFile.delete()
+                }
+                if (!tempScheduleFile.renameTo(localScheduleFile)) {
+                    tempScheduleFile.copyTo(localScheduleFile, overwrite = true)
+                    tempScheduleFile.delete()
+                }
+            }
+            // Clean up any stale AtomicFile leftover files (.new or .bak)
+            val newFile = File(context.filesDir, "cercanias_valencia_schedule.json.new")
+            if (newFile.exists()) try { newFile.delete() } catch (_: Exception) {}
+            val bakFile = File(context.filesDir, "cercanias_valencia_schedule.json.bak")
+            if (bakFile.exists()) try { bakFile.delete() } catch (_: Exception) {}
+
+            database.preferenceDao().insertPreference(
+                com.example.data.database.PreferenceEntity("last_schedule_sync", timestamp.toString())
+            )
+            reloadFromAssets()
+            true
+        } catch (e: Exception) {
+            Log.e("RenfeScheduleSyncManager", "Error saving schedule file: ${e.message}", e)
+            false
+        }
     }
 
     suspend fun initDatabaseFromAssetsIfNeeded() = withContext(Dispatchers.IO) {
@@ -346,8 +355,7 @@ class RenfeScheduleSyncManager(
             
             tripDestinationMap = processTripDestinationMap(jsonArray)
             if (stationsToInsert.size >= 10) {
-                stationDao.deleteAllStations()
-                stationDao.insertAll(stationsToInsert)
+                stationDao.replaceAllStations(stationsToInsert)
                 Log.i("RenfeScheduleSyncManager", "Successfully saved ${stationsToInsert.size} Cercanías stations to database.")
             } else {
                 Log.w("RenfeScheduleSyncManager", "Parsed only ${stationsToInsert.size} stations (expected >= 10), skipping database update.")

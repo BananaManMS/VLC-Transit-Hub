@@ -1,5 +1,6 @@
 package com.example.ui.map.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -23,7 +24,7 @@ fun ValenbisiStationCard(
     isDarkMode: Boolean,
     onClick: () -> Unit
 ) {
-    val cardBg = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF8FAFC)
+    val cardBg = if (isDarkMode) Color(0xFF222222) else Color(0xFFFFFFFF)
     val textColor = if (isDarkMode) Color.White else Color(0xFF0F172A)
     val subtextColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
 
@@ -34,6 +35,8 @@ fun ValenbisiStationCard(
     } else {
         Color(0xFF10B981) // Emerald green
     }
+
+    val cardBorder = if (isDarkMode) Color(0xFF333333) else Color(0xFFE2E8F0)
 
     Card(
         onClick = onClick,

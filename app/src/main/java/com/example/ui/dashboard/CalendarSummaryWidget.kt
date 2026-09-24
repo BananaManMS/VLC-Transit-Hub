@@ -67,15 +67,14 @@ fun CalendarSummaryWidget(
     ) {
         if (isTablet) {
             // TABLET LAYOUT: Styled inside an OutlinedCard with primary container background, and a scrollable list
-            OutlinedCard(
+            Card(
                 modifier = Modifier
                     .fillMaxSize()
                     .testTag("google_calendar_card"),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.outlinedCardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                ),
-                border = appCardBorder()
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                )
             ) {
                 Column(
                     modifier = Modifier

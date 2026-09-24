@@ -1,39 +1,83 @@
 package com.example.ui.map.components
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RectF
-import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.Drawable
-import android.graphics.drawable.GradientDrawable
 import android.util.Log
-import android.util.LruCache
-import android.view.View
-import android.widget.TextView
 import org.json.JSONObject
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
-import org.osmdroid.views.overlay.infowindow.InfoWindow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.example.data.model.MetroStation
 
 object MetroStationFootprintsOverlayManager {
 
     private const val TAG = "MetroFootprints"
-    // Show station footprints and access points only at close-to-maximum zoom (>= 16.2)
-    private const val MIN_ZOOM_THRESHOLD = 16.2
+    // Show station footprints and access points at zoom >= 15.8 by default, or >= 15.2 when a station is selected
+    private const val MIN_ZOOM_THRESHOLD = 15.8
+    private const val SELECTED_MIN_ZOOM_THRESHOLD = 15.2
 
+    @Volatile
     private var isLoaded = false
-    private val stationPolygons = mutableListOf<Polygon>()
-    private val accessMarkers = mutableListOf<Marker>()
+    @Volatile
+    private var isLoading = false
+    private val stationPolygonsData = java.util.concurrent.CopyOnWriteArrayList<StationPolygonData>()
+    private val accessPointsData = java.util.concurrent.CopyOnWriteArrayList<AccessPointData>()
 
-    private val iconCache = LruCache<String, Drawable>(32)
+    private val cachedStationPolygons = mutableListOf<Pair<Polygon, StationPolygonData>>()
+    private val cachedAccessMarkers = mutableListOf<Pair<Marker, AccessPointData>>()
+    private var cachedMapViewRef = java.lang.ref.WeakReference<MapView>(null)
+
+    data class StationPolygonData(
+        val points: List<GeoPoint>,
+        val stationName: String,
+        val centerLat: Double,
+        val centerLon: Double
+    )
+
+    data class AccessPointData(
+        val geoPoint: GeoPoint,
+        val typeCas: String,
+        val labelText: String,
+        val stationName: String,
+        val stationAreaId: String = ""
+    )
+
+    fun preloadGeoJson(context: Context, mapView: MapView? = null) {
+        if (mapView != null) {
+            cachedMapViewRef = java.lang.ref.WeakReference(mapView)
+        }
+        if (isLoaded || isLoading) return
+        isLoading = true
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                loadGeoJsonDataInternal(context.applicationContext)
+                withContext(Dispatchers.Main) {
+                    val mv = cachedMapViewRef.get()
+                    if (mv != null && (mv.isAttachedToWindow || mv.parent != null)) {
+                        mv.postInvalidate()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed async preload of GeoJSON", e)
+            } finally {
+                isLoading = false
+            }
+        }
+    }
 
     private fun loadGeoJsonDataIfNeeded(context: Context, mapView: MapView) {
+        if (isLoaded) return
+        if (!isLoading) {
+            preloadGeoJson(context, mapView)
+        }
+    }
+
+    private fun loadGeoJsonDataInternal(context: Context) {
         if (isLoaded) return
         try {
             // 1. Load Station Footprints (Formas estaciones metrovalencia.geojson)
@@ -41,20 +85,24 @@ object MetroStationFootprintsOverlayManager {
                 .bufferedReader().use { it.readText() }
             val footprintsObj = JSONObject(footprintsJson)
             val features = footprintsObj.optJSONArray("features")
+            val loadedPolygonsList = mutableListOf<StationPolygonData>()
             if (features != null) {
                 for (i in 0 until features.length()) {
                     val feature = features.optJSONObject(i) ?: continue
+                    val props = feature.optJSONObject("properties")
+                    val rawName = props?.optString("nombre") ?: ""
+                    val stationName = MetroStationAccessMatcher.resolveFootprintStationName(rawName)
                     val geometry = feature.optJSONObject("geometry") ?: continue
                     val geomType = geometry.optString("type")
                     val coordsArray = geometry.optJSONArray("coordinates") ?: continue
-
-                    val polygonGeoPointsList = mutableListOf<List<GeoPoint>>()
 
                     if (geomType == "Polygon") {
                         val ring = coordsArray.optJSONArray(0) ?: continue
                         val pts = parseRingCoordinates(ring)
                         if (pts.isNotEmpty()) {
-                            polygonGeoPointsList.add(pts)
+                            val avgLat = pts.map { it.latitude }.average()
+                            val avgLon = pts.map { it.longitude }.average()
+                            loadedPolygonsList.add(StationPolygonData(pts, stationName, avgLat, avgLon))
                         }
                     } else if (geomType == "MultiPolygon") {
                         for (j in 0 until coordsArray.length()) {
@@ -62,21 +110,11 @@ object MetroStationFootprintsOverlayManager {
                             val ring = polyArray.optJSONArray(0) ?: continue
                             val pts = parseRingCoordinates(ring)
                             if (pts.isNotEmpty()) {
-                                polygonGeoPointsList.add(pts)
+                                val avgLat = pts.map { it.latitude }.average()
+                                val avgLon = pts.map { it.longitude }.average()
+                                loadedPolygonsList.add(StationPolygonData(pts, stationName, avgLat, avgLon))
                             }
                         }
-                    }
-
-                    for (pts in polygonGeoPointsList) {
-                        val polygon = Polygon().apply {
-                            points = pts
-                            fillColor = Color.parseColor("#33EF4444") // Subtle semi-transparent red fill (~20% opacity)
-                            strokeColor = Color.parseColor("#99DC2626") // Semi-transparent red border (~60% opacity)
-                            strokeWidth = 2.5f
-                            isEnabled = true
-                        }
-                        polygon.setOnClickListener { _, _, _ -> false } // Non-clickable
-                        stationPolygons.add(polygon)
                     }
                 }
             }
@@ -86,6 +124,7 @@ object MetroStationFootprintsOverlayManager {
                 .bufferedReader().use { it.readText() }
             val accessesObj = JSONObject(accessesJson)
             val accessFeatures = accessesObj.optJSONArray("features")
+            val loadedAccessPoints = mutableListOf<AccessPointData>()
             if (accessFeatures != null) {
                 for (i in 0 until accessFeatures.length()) {
                     val feature = accessFeatures.optJSONObject(i) ?: continue
@@ -96,7 +135,7 @@ object MetroStationFootprintsOverlayManager {
                     if (typeCas.contains("emergencia", ignoreCase = true) || typeVal.contains("emerg", ignoreCase = true)) {
                         continue
                     }
-                    val stationName = props?.optString("nom_cataleg") ?: ""
+                    val areaId = props?.optString("id_stationarea") ?: ""
                     val geometry = feature.optJSONObject("geometry") ?: continue
                     if (geometry.optString("type") == "Point") {
                         val coords = geometry.optJSONArray("coordinates") ?: continue
@@ -104,37 +143,34 @@ object MetroStationFootprintsOverlayManager {
                             val lon = coords.optDouble(0)
                             val lat = coords.optDouble(1)
                             if (lat != 0.0 && lon != 0.0) {
+                                val stationName = MetroStationAccessMatcher.resolveAccessStationName(areaId, lat, lon)
                                 val labelText = when {
                                     typeCas.contains("Ascensor", ignoreCase = true) -> "Ascensor"
                                     typeCas.contains("Tranvía", ignoreCase = true) -> "Acceso Tranvía"
                                     else -> "Acceso Metro"
                                 }
-                                val toolTipInfoWindow = AccessToolTipInfoWindow(labelText, mapView)
-                                val marker = Marker(mapView).apply {
-                                    position = GeoPoint(lat, lon)
-                                    icon = getAccessIcon(context, typeCas)
-                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                                    setInfoWindowAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_TOP)
-                                    alpha = 0.85f // Make entire marker semi-transparent
-                                    infoWindow = toolTipInfoWindow
-                                    setOnMarkerClickListener { m, _ ->
-                                        if (m.isInfoWindowShown) {
-                                            m.closeInfoWindow()
-                                        } else {
-                                            m.showInfoWindow()
-                                        }
-                                        true
-                                    }
-                                }
-                                accessMarkers.add(marker)
+                                loadedAccessPoints.add(
+                                    AccessPointData(
+                                        geoPoint = GeoPoint(lat, lon),
+                                        typeCas = typeCas,
+                                        labelText = labelText,
+                                        stationName = stationName,
+                                        stationAreaId = areaId
+                                    )
+                                )
                             }
                         }
                     }
                 }
             }
 
+            stationPolygonsData.clear()
+            stationPolygonsData.addAll(loadedPolygonsList)
+            accessPointsData.clear()
+            accessPointsData.addAll(loadedAccessPoints)
+
             isLoaded = true
-            Log.d(TAG, "Loaded ${stationPolygons.size} station polygons and ${accessMarkers.size} access markers.")
+            Log.d(TAG, "Loaded ${stationPolygonsData.size} station footprints and ${accessPointsData.size} access points.")
         } catch (e: Exception) {
             Log.e(TAG, "Error loading GeoJSON overlays", e)
         }
@@ -157,14 +193,45 @@ object MetroStationFootprintsOverlayManager {
         context: Context,
         mapView: MapView,
         showMetro: Boolean,
-        zoomLevel: Double
+        zoomLevel: Double,
+        selectedStation: MetroStation? = null
     ) {
         loadGeoJsonDataIfNeeded(context, mapView)
-        val shouldShow = showMetro && zoomLevel >= MIN_ZOOM_THRESHOLD
-        if (shouldShow) {
-            for (polygon in stationPolygons) {
-                polygon.isEnabled = true
-                mapView.overlays.add(polygon)
+        val minZoom = if (selectedStation != null) SELECTED_MIN_ZOOM_THRESHOLD else MIN_ZOOM_THRESHOLD
+        val shouldShow = showMetro && zoomLevel >= minZoom
+        if (shouldShow && isLoaded) {
+            if (cachedMapViewRef.get() != mapView || cachedStationPolygons.isEmpty()) {
+                cachedMapViewRef = java.lang.ref.WeakReference(mapView)
+                cachedStationPolygons.clear()
+                for (polyData in stationPolygonsData) {
+                    val polygon = Polygon(mapView).apply {
+                        points = polyData.points
+                        isEnabled = true
+                    }
+                    polygon.setOnClickListener { _, _, _ -> false } // Non-clickable
+                    cachedStationPolygons.add(Pair(polygon, polyData))
+                }
+            }
+
+            for ((polygon, polyData) in cachedStationPolygons) {
+                if (selectedStation != null) {
+                    // Strict filtering: ONLY add the polygon belonging to the selected station
+                    val isSelected = MetroStationAccessMatcher.matchesStation(polyData.stationName, selectedStation)
+                    if (isSelected) {
+                        polygon.fillColor = Color.parseColor("#4DE2001A") // Vibrant 30% red fill
+                        polygon.strokeColor = Color.parseColor("#FFE2001A") // Solid prominent red border
+                        polygon.strokeWidth = 3.5f
+                        polygon.isEnabled = true
+                        mapView.overlays.add(polygon)
+                    }
+                } else {
+                    // No station selected: show standard subtle footprints at high zoom
+                    polygon.fillColor = Color.parseColor("#33EF4444") // Standard ~20% fill
+                    polygon.strokeColor = Color.parseColor("#99DC2626") // Standard ~60% border
+                    polygon.strokeWidth = 2.5f
+                    polygon.isEnabled = true
+                    mapView.overlays.add(polygon)
+                }
             }
         }
     }
@@ -173,160 +240,88 @@ object MetroStationFootprintsOverlayManager {
         context: Context,
         mapView: MapView,
         showMetro: Boolean,
-        zoomLevel: Double
+        zoomLevel: Double,
+        selectedStation: MetroStation? = null,
+        isEmtHighlighted: Boolean = false,
+        secondaryAlpha: Float = 1.0f,
+        metroStations: List<MetroStation> = emptyList(),
+        onSelectItem: ((com.example.ui.map.SelectedMapItem) -> Unit)? = null
     ) {
         loadGeoJsonDataIfNeeded(context, mapView)
-        val shouldShow = showMetro && zoomLevel >= MIN_ZOOM_THRESHOLD
-        if (shouldShow) {
-            for (marker in accessMarkers) {
-                marker.isEnabled = true
-                marker.setVisible(true)
-                mapView.overlays.add(marker)
+        val minZoom = if (selectedStation != null) SELECTED_MIN_ZOOM_THRESHOLD else MIN_ZOOM_THRESHOLD
+        val shouldShow = showMetro && zoomLevel >= minZoom
+        if (shouldShow && isLoaded) {
+            if (cachedMapViewRef.get() != mapView || cachedAccessMarkers.isEmpty()) {
+                cachedMapViewRef = java.lang.ref.WeakReference(mapView)
+                cachedAccessMarkers.clear()
+                for (access in accessPointsData) {
+                    val icon = MetroAccessPointRenderer.getAccessIcon(context, access.typeCas)
+                    val marker = Marker(mapView).apply {
+                        position = access.geoPoint
+                        this.icon = icon
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        setInfoWindowAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_TOP)
+                        alpha = 0.85f
+                        infoWindow = MetroAccessPointRenderer.AccessToolTipInfoWindow(access.labelText, mapView)
+                        setOnMarkerClickListener { m, _ ->
+                            if (m.isInfoWindowShown) {
+                                m.closeInfoWindow()
+                            } else {
+                                m.showInfoWindow()
+                            }
+                            if (metroStations.isNotEmpty() && onSelectItem != null) {
+                                val match = metroStations.find {
+                                    MetroStationAccessMatcher.matchesStation(access.stationName, it)
+                                }
+                                if (match != null) {
+                                    onSelectItem.invoke(com.example.ui.map.SelectedMapItem.Metro(match))
+                                }
+                            }
+                            true
+                        }
+                    }
+                    cachedAccessMarkers.add(Pair(marker, access))
+                }
+            }
+
+            val metroAlpha = MapFadeTransitionManager.getLayerAlpha(MapFadeTransitionManager.Layer.METRO)
+            for ((marker, accessData) in cachedAccessMarkers) {
+                if (selectedStation != null) {
+                    // Strict filtering: ONLY add access markers belonging to the selected station
+                    val isSelected = MetroStationAccessMatcher.matchesStation(accessData.stationName, selectedStation)
+                    if (isSelected) {
+                        marker.setVisible(true)
+                        marker.alpha = 1.0f * metroAlpha
+                        marker.isEnabled = true
+                        mapView.overlays.add(marker)
+                    }
+                } else {
+                    // No station selected: show at high zoom, dim if bus or another transit element is selected
+                    val isDimmed = isEmtHighlighted || secondaryAlpha < 1.0f
+                    val base = if (isDimmed) (secondaryAlpha * 0.85f).coerceAtMost(0.25f) else 0.85f
+                    marker.setVisible(true)
+                    marker.alpha = base * metroAlpha
+                    marker.isEnabled = true
+                    mapView.overlays.add(marker)
+                }
             }
         }
     }
 
     fun clearFromMap(mapView: MapView) {
-        mapView.overlays.removeAll(stationPolygons)
-        mapView.overlays.removeAll(accessMarkers)
-        mapView.invalidate()
-    }
-
-    private fun getAccessIcon(context: Context, typeCas: String): Drawable {
-        val cacheKey = typeCas
-        iconCache.get(cacheKey)?.let { return it }
-
-        val density = context.resources.displayMetrics.density
-        // Compact icon size: 18dp
-        val sizePx = (18 * density).toInt()
-        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-
-        // Semi-transparent Metro red background (~70% opacity)
-        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#B3DC2626")
-            style = Paint.Style.FILL
-        }
-
-        // Crisp subtle border (~80% white opacity)
-        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#CCFFFFFF")
-            style = Paint.Style.STROKE
-            strokeWidth = 1f * density
-        }
-
-        val cornerRadius = 4f * density
-        val rect = RectF(1f * density, 1f * density, sizePx - 1f * density, sizePx - 1f * density)
-        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, bgPaint)
-        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, borderPaint)
-
-        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            style = Paint.Style.STROKE
-            strokeWidth = 1.4f * density
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-        }
-
-        val cx = sizePx / 2f
-        val cy = sizePx / 2f
-
-        when {
-            typeCas.contains("Ascensor", ignoreCase = true) -> {
-                // Elevator icon: frame with up/down arrows
-                val boxWidth = 6.5f * density
-                val boxHeight = 8f * density
-                val boxRect = RectF(cx - boxWidth / 2f, cy - boxHeight / 2f, cx + boxWidth / 2f, cy + boxHeight / 2f)
-                canvas.drawRoundRect(boxRect, 1.5f * density, 1.5f * density, iconPaint)
-
-                val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.WHITE
-                    style = Paint.Style.FILL
-                }
-                val pathUp = Path().apply {
-                    moveTo(cx, cy - 2f * density)
-                    lineTo(cx - 1.5f * density, cy + 0.2f * density)
-                    lineTo(cx + 1.5f * density, cy + 0.2f * density)
-                    close()
-                }
-                val pathDown = Path().apply {
-                    moveTo(cx, cy + 2f * density)
-                    lineTo(cx - 1.5f * density, cy - 0.2f * density)
-                    lineTo(cx + 1.5f * density, cy - 0.2f * density)
-                    close()
-                }
-                canvas.drawPath(pathUp, arrowPaint)
-                canvas.drawPath(pathDown, arrowPaint)
+        try {
+            if (cachedStationPolygons.isNotEmpty()) {
+                mapView.overlays.removeAll(cachedStationPolygons.map { it.first })
             }
-            else -> {
-                // Boca metro / Acceso subterráneo / Acceso estación / Tranvía -> Stairs icon
-                val stairsPath = Path().apply {
-                    moveTo(cx - 3.5f * density, cy + 3.5f * density)
-                    lineTo(cx - 1f * density, cy + 3.5f * density)
-                    lineTo(cx - 1f * density, cy + 1f * density)
-                    lineTo(cx + 1f * density, cy + 1f * density)
-                    lineTo(cx + 1f * density, cy - 1.5f * density)
-                    lineTo(cx + 3.5f * density, cy - 1.5f * density)
-                    lineTo(cx + 3.5f * density, cy - 3.5f * density)
-                }
-                canvas.drawPath(stairsPath, iconPaint)
+            if (cachedAccessMarkers.isNotEmpty()) {
+                mapView.overlays.removeAll(cachedAccessMarkers.map { it.first })
             }
-        }
-
-        val drawable = BitmapDrawable(context.resources, bitmap)
-        iconCache.put(cacheKey, drawable)
-        return drawable
-    }
-
-    private class AccessToolTipInfoWindow(
-        titleText: String,
-        mapView: MapView
-    ) : InfoWindow(createView(mapView.context, titleText), mapView) {
-
-        override fun onOpen(item: Any?) {
-            closeAllInfoWindowsOn(mMapView)
-            val density = mMapView.context.resources.displayMetrics.density
-            mView.translationY = -6f * density
-            mView.removeCallbacks(dismissRunnable)
-            mView.postDelayed(dismissRunnable, 2200)
-        }
-
-        override fun onClose() {
-            mView.removeCallbacks(dismissRunnable)
-        }
-
-        private val dismissRunnable = Runnable {
-            if (isOpen) {
-                close()
-                mMapView.invalidate()
+            if (mapView.isAttachedToWindow || mapView.parent != null) {
+                mapView.invalidate()
             }
-        }
-
-        companion object {
-            private fun createView(context: Context, text: String): View {
-                val density = context.resources.displayMetrics.density
-                return TextView(context).apply {
-                    setText(text)
-                    setTextColor(Color.WHITE)
-                    textSize = 11f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setPadding(
-                        (8 * density).toInt(),
-                        (4 * density).toInt(),
-                        (8 * density).toInt(),
-                        (4 * density).toInt()
-                    )
-                    background = GradientDrawable().apply {
-                        setColor(Color.parseColor("#F00F172A")) // Modern dark slate tooltip badge
-                        cornerRadius = 6f * density
-                        setStroke(
-                            (1f * density).toInt(),
-                            Color.parseColor("#475569")
-                        )
-                    }
-                    elevation = 4f * density
-                }
-            }
-        }
+        } catch (_: Exception) {}
+        cachedMapViewRef.clear()
+        cachedStationPolygons.clear()
+        cachedAccessMarkers.clear()
     }
 }

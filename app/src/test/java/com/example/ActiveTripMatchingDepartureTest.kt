@@ -23,7 +23,8 @@ class ActiveTripMatchingDepartureTest {
 
     @Test
     fun testSubway15MinDepartureDoesNotMatch4MinEarlierTrain() = runBlocking {
-        val calNow = Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
+        val calNow = Calendar.getInstance()
+        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(calNow.time)
         val nowFormatted = String.format(Locale.getDefault(), "%02d:%02d", calNow.get(Calendar.HOUR_OF_DAY), calNow.get(Calendar.MINUTE))
         val metroDepartureTime = TripTimeParser.addMinutesToNow(15)
 
@@ -32,8 +33,8 @@ class ActiveTripMatchingDepartureTest {
             durationSeconds = 600, // 10 min walk
             distanceMeters = 750.0,
             formattedDuration = "10 min",
-            startTime = "2026-08-18T$nowFormatted:00+02:00",
-            endTime = "2026-08-18T$metroDepartureTime:00+02:00",
+            startTime = "${todayStr}T$nowFormatted:00",
+            endTime = "${todayStr}T$metroDepartureTime:00",
             formattedStartTime = nowFormatted,
             formattedEndTime = metroDepartureTime,
             agencyName = null,
@@ -56,8 +57,8 @@ class ActiveTripMatchingDepartureTest {
             durationSeconds = 900,
             distanceMeters = 8000.0,
             formattedDuration = "15 min",
-            startTime = "2026-08-18T$metroDepartureTime:00+02:00",
-            endTime = "2026-08-18T${TripTimeParser.addMinutesToNow(30)}:00+02:00",
+            startTime = "${todayStr}T$metroDepartureTime:00",
+            endTime = "${todayStr}T${TripTimeParser.addMinutesToNow(30)}:00",
             formattedStartTime = metroDepartureTime,
             formattedEndTime = TripTimeParser.addMinutesToNow(30),
             scheduledStartTime = metroDepartureTime,
@@ -76,8 +77,8 @@ class ActiveTripMatchingDepartureTest {
         val plannedItinerary = PlannedItinerary(
             id = "test_trip_15m",
             totalDurationSeconds = 1800,
-            startTime = "2026-08-18T$nowFormatted:00+02:00",
-            endTime = "2026-08-18T${TripTimeParser.addMinutesToNow(30)}:00+02:00",
+            startTime = "${todayStr}T$nowFormatted:00",
+            endTime = "${todayStr}T${TripTimeParser.addMinutesToNow(30)}:00",
             recommendedStartTime = nowFormatted,
             formattedDuration = "30 min",
             formattedDepartureTime = nowFormatted,

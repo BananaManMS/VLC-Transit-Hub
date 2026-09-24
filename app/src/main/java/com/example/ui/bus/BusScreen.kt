@@ -1,6 +1,8 @@
 package com.example.ui.bus
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,8 +76,10 @@ fun EmtBusScreen(
     viewModel: DashboardViewModel,
     busViewModel: BusViewModel = viewModel(),
     metroViewModel: com.example.ui.metro.MetroViewModel = viewModel(),
+    initialPage: Int = 0,
     modifier: Modifier = Modifier,
-    isDarkMode: Boolean = true
+    isDarkMode: Boolean = true,
+    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val appLanguage by viewModel.appLanguage.collectAsState()
     val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
@@ -95,6 +99,10 @@ fun EmtBusScreen(
     val selectedBusStop by busViewModel.selectedBusStop.collectAsState()
     val busTimes by busViewModel.busTimes.collectAsState()
     val busTimesLoading by busViewModel.busTimesLoading.collectAsState()
+    val isLoadingMoreScheduled by busViewModel.isLoadingMoreScheduled.collectAsState()
+    val emtScheduledTimes by busViewModel.emtScheduledTimes.collectAsState()
+    val isEmtScheduledLoading by busViewModel.isEmtScheduledLoading.collectAsState()
+    val isEmtScheduledLoaded by busViewModel.isEmtScheduledLoaded.collectAsState()
 
     // Metrobus State
     val favoriteMetrobusStops by busViewModel.favoriteMetrobusStops.collectAsState()
@@ -105,6 +113,10 @@ fun EmtBusScreen(
     val selectedMetrobusStop by busViewModel.selectedMetrobusStop.collectAsState()
     val metrobusTimes by busViewModel.metrobusTimes.collectAsState()
     val metrobusTimesLoading by busViewModel.metrobusTimesLoading.collectAsState()
+    val isLoadingMoreMetrobusScheduled by busViewModel.isLoadingMoreMetrobusScheduled.collectAsState()
+    val metrobusScheduledTimes by busViewModel.metrobusScheduledTimes.collectAsState()
+    val isMetrobusScheduledLoading by busViewModel.isMetrobusScheduledLoading.collectAsState()
+    val isMetrobusScheduledLoaded by busViewModel.isMetrobusScheduledLoaded.collectAsState()
 
     // Valenbisi State
     val favoriteValenbisi by busViewModel.favoriteValenbisi.collectAsState()
@@ -121,6 +133,18 @@ fun EmtBusScreen(
     var editingMetrobusStopForAlias by remember { mutableStateOf<MetrobusStop?>(null) }
 
     val isBusBackHandlerEnabled = showTimesSheet || showMetrobusTimesSheet || searchQuery.isNotEmpty() || metrobusSearchQuery.isNotEmpty() || valenbisiSearchQuery.isNotEmpty()
+
+    LaunchedEffect(selectedBusStop) {
+        if (selectedBusStop != null) {
+            showTimesSheet = true
+        }
+    }
+
+    LaunchedEffect(selectedMetrobusStop) {
+        if (selectedMetrobusStop != null) {
+            showMetrobusTimesSheet = true
+        }
+    }
 
     BackHandler(enabled = isBusBackHandlerEnabled) {
         when {
@@ -176,29 +200,91 @@ fun EmtBusScreen(
         }
     }
 
+    val metroStationsList = remember(favoriteMetroStations, allMetroStations) {
+        val favs = favoriteMetroStations.mapNotNull { id ->
+            allMetroStations.find { it.id == id }
+                ?: com.example.data.model.ValenciaMetroData.mainMetroStations.find { it.id == id }
+        }
+        if (favs.isNotEmpty()) favs else com.example.data.model.ValenciaMetroData.mainMetroStations
+    }
+
+    LaunchedEffect(allMetroStations) {
+        if (allMetroStations.isNotEmpty()) {
+            busViewModel.updateNetworkStations(allMetroStations)
+        }
+    }
+
+    LaunchedEffect(currentFilter, metroStationsList) {
+        if (currentFilter == BusFilterSource.METRO_STATION && metroStationsList.isNotEmpty()) {
+            if (selectedMetroStationId == null || metroStationsList.none { it.id == selectedMetroStationId }) {
+                busViewModel.selectMetroStationForBus(metroStationsList.first().id)
+            }
+        }
+    }
+
     val busListState = rememberLazyListState()
     val metrobusListState = rememberLazyListState()
 
     LaunchedEffect(currentFilter, searchQuery, selectedMetroStationId) {
         busViewModel.loadBusStops()
-        busListState.scrollToItem(0)
+    }
+
+    LaunchedEffect(busStopsList) {
+        if (busStopsList.isNotEmpty() && !busListState.isScrollInProgress) {
+            try {
+                busListState.scrollToItem(0)
+            } catch (e: Exception) {}
+        }
     }
 
     LaunchedEffect(currentFilter, metrobusSearchQuery, selectedMetroStationId) {
         busViewModel.loadMetrobusStops()
-        try {
-            metrobusListState.scrollToItem(0)
-        } catch (e: Exception) {}
+    }
+
+    LaunchedEffect(metrobusStopsList) {
+        if (metrobusStopsList.isNotEmpty() && !metrobusListState.isScrollInProgress) {
+            try {
+                metrobusListState.scrollToItem(0)
+            } catch (e: Exception) {}
+        }
+    }
+
+    val currentSavedTab by busViewModel.selectedBusTabIndex.collectAsState()
+    val pagerState = rememberPagerState(initialPage = initialPage.coerceIn(0, 2), pageCount = { 3 })
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(pagerState.currentPage) {
+        busViewModel.setSelectedBusTabIndex(pagerState.currentPage)
+        if (pagerState.currentPage == 0 && !busListState.isScrollInProgress) {
+            try {
+                busListState.scrollToItem(0)
+            } catch (e: Exception) {}
+        } else if (pagerState.currentPage == 1) {
+            if (!metrobusListState.isScrollInProgress) {
+                try {
+                    metrobusListState.scrollToItem(0)
+                } catch (e: Exception) {}
+            }
+            busViewModel.loadMetrobusStops()
+        } else if (pagerState.currentPage == 2 && valenbisiStations.isEmpty()) {
+            busViewModel.fetchValenbisiStations()
+        }
     }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val busTimesState by busViewModel.busTimes.collectAsState()
     LaunchedEffect(selectedBusStop) {
         if (selectedBusStop != null) {
+            showTimesSheet = true
             lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
                 val stopId = selectedBusStop!!.opId
+                var isFirst = true
                 while (true) {
-                    busViewModel.fetchBusTimes(stopId)
+                    if (!isFirst) {
+                        busViewModel.fetchBusTimes(stopId, isSilent = true)
+                    } else {
+                        isFirst = false
+                    }
 
                     // Adaptive polling delay based on closest bus arrival
                     val minMins = busTimesState.mapNotNull { it.minutos.toIntOrNull() }.minOfOrNull { it } ?: 999
@@ -213,28 +299,21 @@ fun EmtBusScreen(
         }
     }
 
-    val pagerState = rememberPagerState(pageCount = { 2 })
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage == 1 && valenbisiStations.isEmpty()) {
-            busViewModel.fetchValenbisiStations()
+    LaunchedEffect(initialPage) {
+        if (pagerState.currentPage != initialPage && initialPage in 0..2) {
+            pagerState.scrollToPage(initialPage)
         }
     }
     
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .testTag("emt_bus_screen")
-    ) {
-        ScreenHeader(
-            title = texts.headerBusTitle,
-            subtitle = texts.headerBusSubtitle
-        )
-
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("emt_bus_screen")
+        ) {
         UnifiedTabRow(
             selectedTabIndex = pagerState.currentPage,
-            tabs = listOf("EMT", "Valenbisi"),
+            tabs = listOf("EMT", "Metrobús", "Valenbisi"),
             onTabSelected = { index ->
                 scope.launch {
                     pagerState.animateScrollToPage(index)
@@ -314,10 +393,7 @@ fun EmtBusScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         
                         if (currentFilter == BusFilterSource.METRO_STATION) {
-                            val favStationsList = remember(favoriteMetroStations, allMetroStations) {
-                                favoriteMetroStations.mapNotNull { id -> allMetroStations.find { it.id == id } }
-                            }
-                            if (favStationsList.isNotEmpty()) {
+                            if (metroStationsList.isNotEmpty()) {
                                 Column(modifier = Modifier.padding(bottom = 8.dp)) {
                                     Text(
                                         text = if (appLanguage == AppLanguage.CA) "Selecciona l'estació de metro:" else "Selecciona estación de metro:",
@@ -331,7 +407,7 @@ fun EmtBusScreen(
                                             .horizontalScroll(rememberScrollState()),
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        favStationsList.forEach { station ->
+                                        metroStationsList.forEach { station ->
                                             val isSelected = selectedMetroStationId == station.id
                                             BusFilterChip(
                                                 selected = isSelected,
@@ -342,13 +418,6 @@ fun EmtBusScreen(
                                         }
                                     }
                                 }
-                            } else {
-                                Text(
-                                    text = texts.addMetroFavDesc,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                )
                             }
                         }
                         
@@ -407,7 +476,7 @@ fun EmtBusScreen(
                             } else {
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(vertical = 8.dp),
+                                    contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp + activeTripBottomPadding),
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                     state = busListState
                                 ) {
@@ -437,6 +506,32 @@ fun EmtBusScreen(
                     }
                 }
                 1 -> {
+                    MetrobusTab(
+                        appLanguage = appLanguage,
+                        metrobusStopsList = metrobusStopsList,
+                        favoriteMetrobusStops = favoriteMetrobusStops.toSet(),
+                        metrobusStopAliases = metrobusStopAliases,
+                        filterSource = currentFilter,
+                        searchQuery = metrobusSearchQuery,
+                        isLoading = metrobusStopsLoading,
+                        selectedMetroStationId = selectedMetroStationId,
+                        isDarkMode = isDarkMode,
+                        favoriteMetroStations = favoriteMetroStations,
+                        allMetroStations = allMetroStations,
+                        listState = metrobusListState,
+                        onFilterSourceSelected = { busViewModel.setBusFilterSource(it) },
+                        onSearchQueryChanged = { busViewModel.setMetrobusSearchQuery(it) },
+                        onSelectMetroStation = { busViewModel.selectMetroStationForBus(it) },
+                        onSelectStop = { stop ->
+                            busViewModel.selectMetrobusStop(stop)
+                            showMetrobusTimesSheet = true
+                        },
+                        onToggleFavorite = { busViewModel.toggleFavoriteMetrobusStop(it) },
+                        onEditAliasClick = { stop -> editingMetrobusStopForAlias = stop },
+                        activeTripBottomPadding = activeTripBottomPadding
+                    )
+                }
+                2 -> {
                     ValenbisiTab(
                         appLanguage = appLanguage,
                         valenbisiStations = valenbisiStations,
@@ -459,7 +554,8 @@ fun EmtBusScreen(
                         onUpdateLocation = { lat, lng ->
                             viewModel.updateLocation(lat, lng)
                             busViewModel.updateLocation(lat, lng)
-                        }
+                        },
+                        activeTripBottomPadding = activeTripBottomPadding
                     )
                 }
             }
@@ -484,7 +580,17 @@ fun EmtBusScreen(
             },
             onEditAliasClick = {
                 editingStopForAlias = selectedBusStop
-            }
+            },
+            scheduledDepartures = emtScheduledTimes,
+            isScheduledLoaded = isEmtScheduledLoaded,
+            isScheduledLoading = isEmtScheduledLoading,
+            onLoadScheduled = {
+                busViewModel.fetchEmtScheduledTimes(selectedBusStop!!.opId)
+            },
+            onLoadMoreScheduled = {
+                busViewModel.loadMoreScheduledTimes(selectedBusStop!!.opId)
+            },
+            isLoadingMoreScheduled = isLoadingMoreScheduled
         )
     }
 
@@ -508,7 +614,18 @@ fun EmtBusScreen(
             },
             onRefresh = {
                 busViewModel.fetchMetrobusTimes(selectedMetrobusStop!!.idParada)
-            }
+            },
+            scheduledDepartures = metrobusScheduledTimes,
+            isScheduledLoaded = isMetrobusScheduledLoaded,
+            isScheduledLoading = isMetrobusScheduledLoading,
+            onLoadScheduled = {
+                busViewModel.fetchMetrobusScheduledTimes(selectedMetrobusStop!!.idParada)
+            },
+            onLoadMoreScheduled = {
+                busViewModel.loadMoreMetrobusScheduledTimes(selectedMetrobusStop!!.idParada)
+            },
+            isLoadingMoreScheduled = isLoadingMoreMetrobusScheduled,
+            appLanguage = appLanguage
         )
     }
 
@@ -665,6 +782,7 @@ fun EmtBusScreen(
             }
         )
     }
+}
 }
 
 

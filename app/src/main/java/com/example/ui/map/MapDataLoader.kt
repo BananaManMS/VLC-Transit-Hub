@@ -17,6 +17,8 @@ import com.example.data.mapper.CercaniasDepartureMapper
 import com.example.ui.map.components.ValenbisiStation
 import com.example.ui.metro.RealTimeDeparture
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +51,21 @@ class MapDataLoader(
 ) {
 
     private val metrobusRepository = com.example.data.repository.MetrobusRepository(database, httpClient)
+    private var valenbisiPeriodicJob: Job? = null
+    val busTimesLoadingMore = MutableStateFlow(false)
+    val metrobusTimesLoadingMore = MutableStateFlow(false)
+    val selectedMetrobusShapes = MutableStateFlow<Map<String, List<org.osmdroid.util.GeoPoint>>>(emptyMap())
+
+    // Dedicated Scheduled Departures States
+    val emtScheduledDepartures = MutableStateFlow<List<EmtBusTime>>(emptyList())
+    val emtScheduledLoading = MutableStateFlow(false)
+    val isEmtScheduledLoaded = MutableStateFlow(false)
+    private var emtScheduledLimit = 5
+
+    val metrobusScheduledDepartures = MutableStateFlow<List<com.example.ui.bus.MetrobusDepartureUiModel>>(emptyList())
+    val metrobusScheduledLoading = MutableStateFlow(false)
+    val isMetrobusScheduledLoaded = MutableStateFlow(false)
+    private var metrobusScheduledLimit = 5
 
     fun loadData() {
         scope.launch(Dispatchers.IO) {
@@ -57,7 +74,9 @@ class MapDataLoader(
                 val stations = metroRepository.loadMetroStations()
                 metroStations.value = stations
             } catch (e: Exception) {
-                Log.e("MapDataLoader", "Error loading metro stations", e)
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.e("MapDataLoader", "Error loading metro stations", e)
+                }
             }
         }
 
@@ -73,23 +92,25 @@ class MapDataLoader(
                 }
                 metrobusStops.value = activeStops
             } catch (e: Exception) {
-                Log.e("MapDataLoader", "Error loading metrobus stops", e)
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.e("MapDataLoader", "Error loading metrobus stops", e)
+                }
             }
         }
 
         scope.launch(Dispatchers.IO) {
-            // Load Bus Stops from Room DB / Assets
+            // Load Bus Stops from Room DB / Assets / stops.json
             try {
-                val activeStops = database.geoportalStopDao().getAllActiveStops()
-                if (activeStops.isNotEmpty()) {
-                    busStops.value = activeStops
-                } else {
-                    val loaded = BusMapper.loadStopsFromAssets(application)
-                    database.geoportalStopDao().insertAll(loaded)
-                    busStops.value = loaded.filter { it.suprimida == 0 }
+                val loadedFromSync = BusMapper.parseStopsFromJsonDirect(application)
+                if (loadedFromSync.isNotEmpty()) {
+                    database.geoportalStopDao().replaceAllStops(loadedFromSync)
                 }
+                val activeStops = database.geoportalStopDao().getAllActiveStops()
+                busStops.value = activeStops
             } catch (e: Exception) {
-                Log.e("MapDataLoader", "Error loading bus stops", e)
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.e("MapDataLoader", "Error loading bus stops", e)
+                }
             }
         }
 
@@ -103,24 +124,43 @@ class MapDataLoader(
                     cercaniasStations.value = stations.distinctBy { it.stop_id }
                 }
             } catch (e: Exception) {
-                Log.e("MapDataLoader", "Error loading cercanias stations", e)
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.e("MapDataLoader", "Error loading cercanias stations", e)
+                }
             }
         }
 
-        // Load Valenbisi Stations initially and set up periodic refresh
-        scope.launch(Dispatchers.IO) {
-            while (true) {
-                refreshValenbisiStations()
-                delay(45_000)
+    }
+
+    fun startValenbisiPeriodicRefresh() {
+        if (valenbisiPeriodicJob?.isActive == true) return
+        valenbisiPeriodicJob = scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(600_000L) // 10 minutes interval matching Valenbisi API update cycle
+                if (isActive) {
+                    refreshValenbisiStations()
+                }
             }
         }
     }
 
-    fun refreshValenbisiStations() {
+    fun stopValenbisiPeriodicRefresh() {
+        valenbisiPeriodicJob?.cancel()
+        valenbisiPeriodicJob = null
+    }
+
+    fun refreshValenbisiStations(force: Boolean = false) {
         scope.launch(Dispatchers.IO) {
+            val cached = ValenbisiRepository.getCachedStations()
+            if (!force && cached.isNotEmpty()) {
+                if (valenbisiStations.value.isEmpty()) {
+                    valenbisiStations.value = cached
+                }
+                return@launch
+            }
             valenbisiLoading.value = true
             try {
-                val stations = valenbisiRepository.fetchStations()
+                val stations = valenbisiRepository.fetchStations(force)
                 if (stations.isNotEmpty()) {
                     valenbisiStations.value = stations
                 }
@@ -132,24 +172,114 @@ class MapDataLoader(
         }
     }
 
-    fun fetchBusTimes(stopId: String) {
+    private var isEmtScheduledExpanded = false
+    private var busScheduledLimit = 3
+
+    fun resetEmtScheduledState() {
+        isEmtScheduledExpanded = false
+        busScheduledLimit = 3
+        emtScheduledDepartures.value = emptyList()
+        emtScheduledLoading.value = false
+        isEmtScheduledLoaded.value = false
+        emtScheduledLimit = 100
+    }
+
+    fun fetchEmtScheduledDepartures(stopId: String, stopName: String? = null, isLoadMore: Boolean = false) {
+        if (isEmtScheduledLoaded.value && emtScheduledDepartures.value.isNotEmpty() && !isLoadMore) {
+            return
+        }
         scope.launch(Dispatchers.IO) {
-            busTimesLoading.value = true
-            busTimes.value = emptyList()
+            emtScheduledLoading.value = true
             try {
-                val arrivals = com.example.data.repository.RealTimeTransitRepository.getEmtLiveArrivals(stopId)
-                busTimes.value = arrivals
+                val sched = com.example.data.repository.RealTimeTransitRepository.getEmtScheduledDepartures(
+                    stopNumber = stopId,
+                    stopName = stopName,
+                    limitPerLine = 100
+                )
+                emtScheduledDepartures.value = sched
+                isEmtScheduledLoaded.value = true
             } catch (e: Exception) {
-                Log.w("MapDataLoader", "EMT API issue for $stopId: ${e.message}")
-                busTimes.value = emptyList()
+                Log.w("MapDataLoader", "Error loading EMT scheduled departures: ${e.message}")
             } finally {
-                busTimesLoading.value = false
+                emtScheduledLoading.value = false
             }
         }
     }
 
+    private var busTimesJob: kotlinx.coroutines.Job? = null
+    private var metroDeparturesJob: kotlinx.coroutines.Job? = null
+    private var cercaniasDeparturesJob: kotlinx.coroutines.Job? = null
+    private var metrobusTimesJob: kotlinx.coroutines.Job? = null
+
+    fun clearBusTimes() {
+        busTimesJob?.cancel()
+        busTimesJob = null
+        busTimes.value = emptyList()
+        busTimesLoading.value = false
+        busTimesLoadingMore.value = false
+    }
+
+    fun clearMetroDepartures() {
+        metroDeparturesJob?.cancel()
+        metroDeparturesJob = null
+        metroDepartures.value = emptyList()
+        metroDeparturesLoading.value = false
+    }
+
+    fun clearCercaniasDepartures() {
+        cercaniasDeparturesJob?.cancel()
+        cercaniasDeparturesJob = null
+        cercaniasDepartures.value = emptyList()
+        cercaniasDeparturesLoading.value = false
+    }
+
+    fun clearMetrobusTimes() {
+        metrobusTimesJob?.cancel()
+        metrobusTimesJob = null
+        metrobusTimesLoadingMore.value = false
+    }
+
+    fun fetchBusTimes(
+        stopId: String,
+        stopName: String? = null,
+        limitPerLine: Int = 3,
+        isLoadMore: Boolean = false,
+        includeScheduled: Boolean = false
+    ) {
+        busTimesJob?.cancel()
+        busTimesJob = scope.launch(Dispatchers.IO) {
+            if (!isLoadMore) {
+                busTimesLoading.value = true
+            } else {
+                busTimesLoadingMore.value = true
+            }
+            try {
+                val arrivals = com.example.data.repository.RealTimeTransitRepository.getEmtLiveArrivals(
+                    stopNumber = stopId,
+                    stopName = stopName,
+                    limitPerLine = limitPerLine,
+                    includeScheduled = includeScheduled
+                )
+                busTimes.value = arrivals
+            } catch (e: Exception) {
+                Log.w("MapDataLoader", "EMT API issue for $stopId: ${e.message}")
+            } finally {
+                if (!isLoadMore) {
+                    busTimesLoading.value = false
+                } else {
+                    busTimesLoadingMore.value = false
+                }
+            }
+        }
+    }
+
+    fun loadMoreScheduledBusTimes(stopId: String) {
+        fetchEmtScheduledDepartures(stopId, isLoadMore = true)
+    }
+
     fun fetchMetroDepartures(station: MetroStation) {
-        scope.launch(Dispatchers.IO) {
+        metroDeparturesJob?.cancel()
+        metroDeparturesJob = scope.launch(Dispatchers.IO) {
             metroDeparturesLoading.value = true
             try {
                 val numericId = station.id.toIntOrNull()
@@ -165,7 +295,12 @@ class MapDataLoader(
                             minutesRemaining = arrival.minutes,
                             secondsRemaining = arrival.seconds,
                             colorHex = colorHex,
-                            id = "${arrival.line}_${arrival.destination}_$i"
+                            estimatedTime = arrival.estimatedTime,
+                            status = arrival.status,
+                            track = arrival.track,
+                            capacidad = arrival.capacidad,
+                            id = "${arrival.line}_${arrival.destination}_$i",
+                            isRealTime = arrival.isRealTime
                         )
                     }.sortedBy { it.secondsRemaining }
                 }
@@ -181,7 +316,8 @@ class MapDataLoader(
     }
 
     fun fetchCercaniasDepartures(stationId: String) {
-        scope.launch(Dispatchers.IO) {
+        cercaniasDeparturesJob?.cancel()
+        cercaniasDeparturesJob = scope.launch(Dispatchers.IO) {
             cercaniasDeparturesLoading.value = true
             try {
                 val rawDeps = renfeRepository.getDeparturesForStation(stationId)
@@ -193,6 +329,136 @@ class MapDataLoader(
             } finally {
                 cercaniasDeparturesLoading.value = false
             }
+        }
+    }
+
+    private var isMetrobusScheduledExpanded = false
+    private var scheduledMetrobusLimitPerLine = 3
+
+    fun resetMetrobusScheduledState() {
+        isMetrobusScheduledExpanded = false
+        scheduledMetrobusLimitPerLine = 3
+        metrobusScheduledDepartures.value = emptyList()
+        metrobusScheduledLoading.value = false
+        isMetrobusScheduledLoaded.value = false
+        metrobusScheduledLimit = 100
+    }
+
+    fun fetchMetrobusScheduledDepartures(stopId: String, isLoadMore: Boolean = false) {
+        if (isMetrobusScheduledLoaded.value && metrobusScheduledDepartures.value.isNotEmpty() && !isLoadMore) {
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            metrobusScheduledLoading.value = true
+            try {
+                val sched = metrobusRepository.getMetrobusScheduledDepartures(
+                    stopId = stopId,
+                    limitPerLine = 100
+                )
+                metrobusScheduledDepartures.value = sched
+                isMetrobusScheduledLoaded.value = true
+            } catch (e: Exception) {
+                Log.w("MapDataLoader", "Error loading Metrobus scheduled departures: ${e.message}")
+            } finally {
+                metrobusScheduledLoading.value = false
+            }
+        }
+    }
+
+    fun fetchMetrobusTimes(
+        stopId: String,
+        metrobusTimes: MutableStateFlow<List<com.example.ui.bus.MetrobusDepartureUiModel>>,
+        metrobusTimesLoading: MutableStateFlow<Boolean>? = null,
+        limitPerLine: Int = 3,
+        isLoadMore: Boolean = false,
+        includeScheduled: Boolean = false
+    ) {
+        metrobusTimesJob?.cancel()
+        metrobusTimesJob = scope.launch(Dispatchers.IO) {
+            if (!isLoadMore) {
+                metrobusTimesLoading?.value = true
+            } else {
+                metrobusTimesLoadingMore.value = true
+            }
+            try {
+                val results = metrobusRepository.getMetrobusArrivals(
+                    stopId = stopId,
+                    limitPerLine = limitPerLine,
+                    includeScheduled = includeScheduled
+                )
+                metrobusTimes.value = results
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.e("MapDataLoader", "Error fetching metrobus times for $stopId", e)
+                }
+                if (!isLoadMore) {
+                    metrobusTimes.value = emptyList()
+                }
+            } finally {
+                if (!isLoadMore) {
+                    metrobusTimesLoading?.value = false
+                } else {
+                    metrobusTimesLoadingMore.value = false
+                }
+            }
+        }
+    }
+
+    fun loadMoreScheduledMetrobusTimes(
+        stopId: String,
+        metrobusTimes: MutableStateFlow<List<com.example.ui.bus.MetrobusDepartureUiModel>>
+    ) {
+        fetchMetrobusScheduledDepartures(stopId, isLoadMore = true)
+    }
+
+    fun fetchMetrobusShapes(
+        lineCodes: List<String>,
+        stopLat: Double? = null,
+        stopLon: Double? = null
+    ) {
+        scope.launch(Dispatchers.IO) {
+            val shapesMap = mutableMapOf<String, List<org.osmdroid.util.GeoPoint>>()
+            lineCodes.forEach { lineCode ->
+                try {
+                    val shapeMap = metrobusRepository.fetchLineShape(lineCode)
+                    if (stopLat != null && stopLon != null && shapeMap.size > 1) {
+                        val decodedDirs = shapeMap.mapNotNull { (dir, polylineStr) ->
+                            val points = com.example.util.PolylineDecoder.decode(polylineStr, precision = 6)
+                            if (points.isNotEmpty()) dir to points else null
+                        }
+                        if (decodedDirs.isNotEmpty()) {
+                            val isCircular = com.example.ui.map.components.EmtMapOverlayLoader.isCircularLine(lineCode)
+                            if (isCircular) {
+                                decodedDirs.forEach { (dir, points) ->
+                                    shapesMap["${lineCode}_$dir"] = points
+                                }
+                            } else {
+                                val cosLat = Math.cos(Math.toRadians(stopLat))
+                                val closest = decodedDirs.minByOrNull { (_, points) ->
+                                    points.minOfOrNull { pt ->
+                                        val dLat = (pt.latitude - stopLat) * 111320.0
+                                        val dLon = (pt.longitude - stopLon) * 111320.0 * cosLat
+                                        dLat * dLat + dLon * dLon
+                                    } ?: Double.MAX_VALUE
+                                }
+                                if (closest != null) {
+                                    shapesMap["${lineCode}_${closest.first}"] = closest.second
+                                }
+                            }
+                        }
+                    } else {
+                        shapeMap.forEach { (dir, polylineStr) ->
+                            val points = com.example.util.PolylineDecoder.decode(polylineStr, precision = 6)
+                            if (points.isNotEmpty()) {
+                                shapesMap["${lineCode}_$dir"] = points
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MapDataLoader", "Error loading metrobus shape for $lineCode", e)
+                }
+            }
+            selectedMetrobusShapes.value = shapesMap
         }
     }
 }

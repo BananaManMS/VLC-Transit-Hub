@@ -16,7 +16,10 @@ enum class TransitMode(
     SUBWAY("SUBWAY", "Metro", "Metro", "005BBB"),
     TRAM("TRAM", "Tranvía", "Tramvia", "6E2585"),
     RAIL("RAIL", "Cercanías", "Rodalia", "BF1E24"),
-    BICYCLE("BICYCLE", "Bicicleta", "Bicicleta", "10B981");
+    BICYCLE("BICYCLE", "Bicicleta", "Bicicleta", "10B981"),
+    METROBUS("METROBUS", "Metrobús", "Metrobús", "0D47A1"),
+    CERCANIAS("CERCANIAS", "Rodalia", "Rodalia", "BF1E24"),
+    VALENBISI("VALENBISI", "Valenbisi", "Valenbisi", "10B981");
 
     companion object {
         fun fromString(modeStr: String?): TransitMode {
@@ -127,6 +130,7 @@ data class PlannedLeg(
     val geometry: List<GeoPoint> = emptyList(),
     val realTimeDelayMinutes: Int? = null,
     val isRealTimeVerified: Boolean = false,
+    val schedulePhase: SchedulePhase = SchedulePhase.THEORETICAL_AWAITING_RADAR,
     val scheduledStartTime: String? = null,
     val scheduledEndTime: String? = null,
     val hasActiveAlert: Boolean = false,

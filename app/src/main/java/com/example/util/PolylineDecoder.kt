@@ -8,15 +8,23 @@ object PolylineDecoder {
     /**
      * Decodes an encoded polyline string (e.g. from Google Maps or MOTIS 2 / Transitous)
      * into a list of [GeoPoint] for osmdroid, filtering out invalid or out-of-bounds coordinates.
+     * If decoding with the requested precision yields no valid coordinates, it automatically
+     * falls back to the alternate precision (6 -> 5, or 5 -> 6).
      *
      * @param encoded The polyline string
      * @param precision The precision factor (MOTIS 2 / Transitous uses 6, Google default uses 5)
      */
     fun decode(encoded: String, precision: Int = 6): List<GeoPoint> {
-        val coordinates = decodeToCoordinates(encoded, precision)
-        return coordinates
+        var coordinates = decodeToCoordinates(encoded, precision)
             .filter { (lat, lon) -> isValidValenciaCoordinate(lat, lon) }
-            .map { (lat, lon) -> GeoPoint(lat, lon) }
+
+        if (coordinates.isEmpty() && encoded.isNotBlank()) {
+            val fallbackPrecision = if (precision == 6) 5 else 6
+            coordinates = decodeToCoordinates(encoded, fallbackPrecision)
+                .filter { (lat, lon) -> isValidValenciaCoordinate(lat, lon) }
+        }
+
+        return coordinates.map { (lat, lon) -> GeoPoint(lat, lon) }
     }
 
     /**

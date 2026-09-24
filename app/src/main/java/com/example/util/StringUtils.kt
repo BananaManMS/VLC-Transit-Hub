@@ -3,12 +3,18 @@ package com.example.util
 import java.text.Normalizer
 import java.util.Locale
 
+private val DIACRITICS_REGEX = Regex("\\p{InCombiningDiacriticalMarks}+")
+private val NON_ALPHANUMERIC_REGEX = Regex("[^a-z0-9\\s]")
+private val MULTIPLE_SPACES_REGEX = Regex("\\s+")
+
+private val normalizationCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
 /**
  * Removes accent marks/diacritics from a string.
  */
 fun String.removeAccents(): String {
     val normalized = Normalizer.normalize(this, Normalizer.Form.NFD)
-    return normalized.replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+    return normalized.replace(DIACRITICS_REGEX, "")
 }
 
 @JvmName("removeAccentsDirect")
@@ -19,19 +25,21 @@ fun removeAccents(str: String): String = str.removeAccents()
  */
 fun String.normalize(): String {
     val normalized = Normalizer.normalize(this, Normalizer.Form.NFD)
-    return normalized.replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "").lowercase(Locale.getDefault())
+    return normalized.replace(DIACRITICS_REGEX, "").lowercase(Locale.getDefault())
 }
 
 /**
  * Normalizes a string for search comparisons (removes accents, lowercase, trimmed).
  */
 fun String.normalizeForSearch(): String {
-    val unaccented = Normalizer.normalize(this, Normalizer.Form.NFD)
-        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
-    return unaccented.lowercase(Locale.ROOT)
-        .replace(Regex("[^a-z0-9\\s]"), " ")
-        .replace(Regex("\\s+"), " ")
-        .trim()
+    return normalizationCache.getOrPut(this) {
+        val unaccented = Normalizer.normalize(this, Normalizer.Form.NFD)
+            .replace(DIACRITICS_REGEX, "")
+        unaccented.lowercase(Locale.ROOT)
+            .replace(NON_ALPHANUMERIC_REGEX, " ")
+            .replace(MULTIPLE_SPACES_REGEX, " ")
+            .trim()
+    }
 }
 
 /**

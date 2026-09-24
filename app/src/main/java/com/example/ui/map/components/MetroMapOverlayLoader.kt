@@ -21,13 +21,20 @@ object MetroMapOverlayLoader {
         CLOSE      // Zoom >= 16.0
     }
 
+    data class RawPolyline(
+        val points: List<GeoPoint>,
+        val color: Int,
+        val strokeWidth: Float,
+        val lineRef: String = ""
+    )
+
     data class PolylineSets(
-        val highResClose: List<Polyline>,
-        val highResMedium: List<Polyline>,
-        val highResFar: List<Polyline>,
-        val lowResClose: List<Polyline>,
-        val lowResMedium: List<Polyline>,
-        val lowResFar: List<Polyline>
+        val highResClose: List<RawPolyline>,
+        val highResMedium: List<RawPolyline>,
+        val highResFar: List<RawPolyline>,
+        val lowResClose: List<RawPolyline>,
+        val lowResMedium: List<RawPolyline>,
+        val lowResFar: List<RawPolyline>
     )
 
     @Volatile
@@ -46,44 +53,60 @@ object MetroMapOverlayLoader {
         lowResFar = emptyList()
     )
 
-    @Volatile
-    private var cercaniasPolylineSets: PolylineSets = PolylineSets(
-        highResClose = emptyList(),
-        highResMedium = emptyList(),
-        highResFar = emptyList(),
-        lowResClose = emptyList(),
-        lowResMedium = emptyList(),
-        lowResFar = emptyList()
-    )
+    private var cachedMapViewRef: java.lang.ref.WeakReference<org.osmdroid.views.MapView>? = null
+    private var cachedZoomCategory: ZoomCategory? = null
+    private var cachedUseHighRes: Boolean? = null
+    private var cachedMetroPolylines: List<Polyline> = emptyList()
 
-    fun getLoadedPolylines(): List<Polyline> {
-        return if (useHighRes) {
-            when (zoomCategory) {
-                ZoomCategory.CLOSE -> polylineSets.highResClose
-                ZoomCategory.MEDIUM -> polylineSets.highResMedium
-                ZoomCategory.FAR -> polylineSets.highResFar
-            }
-        } else {
-            when (zoomCategory) {
-                ZoomCategory.CLOSE -> polylineSets.lowResClose
-                ZoomCategory.MEDIUM -> polylineSets.lowResMedium
-                ZoomCategory.FAR -> polylineSets.lowResFar
-            }
+    @Synchronized
+    fun getLoadedPolylines(mapView: org.osmdroid.views.MapView? = null): List<Polyline> {
+        if (mapView != null) {
+            checkAndRebuildPolylineCache(mapView)
         }
+        return cachedMetroPolylines
     }
 
-    fun getLoadedCercaniasPolylines(): List<Polyline> {
-        return if (useHighRes) {
-            when (zoomCategory) {
-                ZoomCategory.CLOSE -> cercaniasPolylineSets.highResClose
-                ZoomCategory.MEDIUM -> cercaniasPolylineSets.highResMedium
-                ZoomCategory.FAR -> cercaniasPolylineSets.highResFar
+    @Synchronized
+    fun getLoadedCercaniasPolylines(mapView: org.osmdroid.views.MapView? = null): List<Polyline> {
+        return CercaniasMapOverlayLoader.getLoadedPolylines(
+            mapView = mapView,
+            zoomCategory = zoomCategory,
+            useHighRes = useHighRes
+        )
+    }
+
+    private fun checkAndRebuildPolylineCache(mapView: org.osmdroid.views.MapView) {
+        if (cachedMapViewRef?.get() != mapView || cachedZoomCategory != zoomCategory || cachedUseHighRes != useHighRes) {
+            cachedMapViewRef = java.lang.ref.WeakReference(mapView)
+            cachedZoomCategory = zoomCategory
+            cachedUseHighRes = useHighRes
+
+            val currentMetroRaw = if (useHighRes) {
+                when (zoomCategory) {
+                    ZoomCategory.CLOSE -> polylineSets.highResClose
+                    ZoomCategory.MEDIUM -> polylineSets.highResMedium
+                    ZoomCategory.FAR -> polylineSets.highResFar
+                }
+            } else {
+                when (zoomCategory) {
+                    ZoomCategory.CLOSE -> polylineSets.lowResClose
+                    ZoomCategory.MEDIUM -> polylineSets.lowResMedium
+                    ZoomCategory.FAR -> polylineSets.lowResFar
+                }
             }
-        } else {
-            when (zoomCategory) {
-                ZoomCategory.CLOSE -> cercaniasPolylineSets.lowResClose
-                ZoomCategory.MEDIUM -> cercaniasPolylineSets.lowResMedium
-                ZoomCategory.FAR -> cercaniasPolylineSets.lowResFar
+
+            cachedMetroPolylines = currentMetroRaw.map { raw ->
+                Polyline(mapView).apply {
+                    relatedObject = raw
+                    setPoints(raw.points)
+                    outlinePaint.color = raw.color
+                    outlinePaint.strokeWidth = raw.strokeWidth
+                    outlinePaint.isAntiAlias = true
+                    outlinePaint.strokeCap = Paint.Cap.ROUND
+                    outlinePaint.strokeJoin = Paint.Join.ROUND
+                    infoWindow = null
+                    setOnClickListener { _, _, _ -> true }
+                }
             }
         }
     }
@@ -124,118 +147,7 @@ object MetroMapOverlayLoader {
     }
 
     fun loadCercaniasLines(context: Context, scope: CoroutineScope, onComplete: (() -> Unit)? = null) {
-        scope.launch {
-            try {
-                val sets = withContext(Dispatchers.IO) {
-                    parseCercaniasGeoJsonAndGeneratePolylines(context)
-                }
-                cercaniasPolylineSets = sets
-                Log.d(TAG, "Successfully loaded precomputed Cercanias polyline sets")
-                onComplete?.invoke()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load cercanias lines GeoJSON", e)
-            }
-        }
-    }
-
-    private fun parseCercaniasGeoJsonAndGeneratePolylines(context: Context): PolylineSets {
-        val highResCloseList = ArrayList<Polyline>()
-        val highResMediumList = ArrayList<Polyline>()
-        val highResFarList = ArrayList<Polyline>()
-
-        val lowResCloseList = ArrayList<Polyline>()
-        val lowResMediumList = ArrayList<Polyline>()
-        val lowResFarList = ArrayList<Polyline>()
-
-        val assetManager = context.assets
-        val fileContent = try {
-            assetManager.open("ruta_cercanias_valencia.geojson").bufferedReader().use { it.readText() }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error opening ruta_cercanias_valencia.geojson", e)
-            return PolylineSets(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
-        }
-        val root = JSONObject(fileContent)
-        val features = root.optJSONArray("features") ?: return PolylineSets(
-            emptyList(), emptyList(), emptyList(),
-            emptyList(), emptyList(), emptyList()
-        )
-
-        val epsilon = 0.0004
-
-        for (i in 0 until features.length()) {
-            val feature = features.optJSONObject(i) ?: continue
-            val properties = feature.optJSONObject("properties") ?: continue
-            val geometry = feature.optJSONObject("geometry") ?: continue
-
-            val colourHex = properties.optString("colour", "#C1272D")
-
-            val color = try {
-                if (colourHex.startsWith("#")) {
-                    Color.parseColor(colourHex)
-                } else {
-                    Color.parseColor("#$colourHex")
-                }
-            } catch (e: Exception) {
-                try {
-                    Color.parseColor("#C1272D")
-                } catch (ex: Exception) {
-                    Color.RED
-                }
-            }
-            val strokeWidth = 9f
-
-            val featureSegments = ArrayList<List<GeoPoint>>()
-            val geomType = geometry.optString("type")
-
-            if (geomType == "MultiLineString") {
-                val coordsArray = geometry.optJSONArray("coordinates") ?: continue
-                for (j in 0 until coordsArray.length()) {
-                    val lineCoords = coordsArray.optJSONArray(j) ?: continue
-                    val geoPoints = parseCoordinatesArray(lineCoords)
-                    if (geoPoints.size >= 2) {
-                        featureSegments.add(geoPoints)
-                    }
-                }
-            } else if (geomType == "LineString") {
-                val coordsArray = geometry.optJSONArray("coordinates") ?: continue
-                val geoPoints = parseCoordinatesArray(coordsArray)
-                if (geoPoints.size >= 2) {
-                    featureSegments.add(geoPoints)
-                }
-            }
-
-            val mergedSegments = mergeSegments(featureSegments)
-
-            for (segment in mergedSegments) {
-                val normalized = normalizeDirection(segment)
-                if (normalized.size < 2) continue
-
-                val pointsClose = normalized
-                val pointsMedium = normalized
-                val pointsFar = normalized
-
-                highResCloseList.add(createPolyline(pointsClose, color, strokeWidth))
-                highResMediumList.add(createPolyline(pointsMedium, color, strokeWidth))
-                highResFarList.add(createPolyline(pointsFar, color, strokeWidth))
-
-                val simplifiedClose = rdpSimplify(pointsClose, epsilon)
-                val simplifiedMedium = rdpSimplify(pointsMedium, epsilon)
-                val simplifiedFar = rdpSimplify(pointsFar, epsilon)
-
-                lowResCloseList.add(createPolyline(simplifiedClose, color, strokeWidth))
-                lowResMediumList.add(createPolyline(simplifiedMedium, color, strokeWidth))
-                lowResFarList.add(createPolyline(simplifiedFar, color, strokeWidth))
-            }
-        }
-
-        return PolylineSets(
-            highResClose = highResCloseList,
-            highResMedium = highResMediumList,
-            highResFar = highResFarList,
-            lowResClose = lowResCloseList,
-            lowResMedium = lowResMediumList,
-            lowResFar = lowResFarList
-        )
+        CercaniasMapOverlayLoader.ensureLoaded(context, scope, onComplete)
     }
 
     private data class ParsedRoute(
@@ -247,17 +159,6 @@ object MetroMapOverlayLoader {
         val isMetro: Boolean,
         val segments: List<List<GeoPoint>>
     )
-
-    private class RouteGroup(
-        val ref: String,
-        val color: Int,
-        val strokeWidthClose: Float,
-        val strokeWidthMedium: Float,
-        val strokeWidthFar: Float,
-        val isMetro: Boolean
-    ) {
-        val rawSegments = ArrayList<List<GeoPoint>>()
-    }
 
     private fun distancePointToSegment(p: GeoPoint, s1: GeoPoint, s2: GeoPoint): Double {
         val latMid = Math.toRadians((s1.latitude + s2.latitude) / 2.0)
@@ -341,13 +242,13 @@ object MetroMapOverlayLoader {
     }
 
     private fun parseGeoJsonAndGeneratePolylines(context: Context): PolylineSets {
-        val highResCloseList = ArrayList<Polyline>()
-        val highResMediumList = ArrayList<Polyline>()
-        val highResFarList = ArrayList<Polyline>()
+        val highResCloseList = ArrayList<RawPolyline>()
+        val highResMediumList = ArrayList<RawPolyline>()
+        val highResFarList = ArrayList<RawPolyline>()
 
-        val lowResCloseList = ArrayList<Polyline>()
-        val lowResMediumList = ArrayList<Polyline>()
-        val lowResFarList = ArrayList<Polyline>()
+        val lowResCloseList = ArrayList<RawPolyline>()
+        val lowResMediumList = ArrayList<RawPolyline>()
+        val lowResFarList = ArrayList<RawPolyline>()
 
         val assetManager = context.assets
         val filesToLoad = listOf("ruta_metrovalencia_2.geojson", "linea_4.geojson", "linea_6.geojson")
@@ -512,18 +413,18 @@ object MetroMapOverlayLoader {
                 // 3. Zoom < 13.5: Factor 0.0x (collapses to center)
                 val pointsFar = segment
 
-                highResCloseList.add(createPolyline(pointsClose, route.color, route.strokeWidthClose))
-                highResMediumList.add(createPolyline(pointsMedium, route.color, route.strokeWidthMedium))
-                highResFarList.add(createPolyline(pointsFar, route.color, route.strokeWidthFar))
+                highResCloseList.add(createPolyline(pointsClose, route.color, route.strokeWidthClose, route.ref))
+                highResMediumList.add(createPolyline(pointsMedium, route.color, route.strokeWidthMedium, route.ref))
+                highResFarList.add(createPolyline(pointsFar, route.color, route.strokeWidthFar, route.ref))
 
                 // Perform Ramer-Douglas-Peucker simplification for Low-Res lists
                 val simplifiedClose = rdpSimplify(pointsClose, epsilon)
                 val simplifiedMedium = rdpSimplify(pointsMedium, epsilon)
                 val simplifiedFar = rdpSimplify(pointsFar, epsilon)
 
-                lowResCloseList.add(createPolyline(simplifiedClose, route.color, route.strokeWidthClose))
-                lowResMediumList.add(createPolyline(simplifiedMedium, route.color, route.strokeWidthMedium))
-                lowResFarList.add(createPolyline(simplifiedFar, route.color, route.strokeWidthFar))
+                lowResCloseList.add(createPolyline(simplifiedClose, route.color, route.strokeWidthClose, route.ref))
+                lowResMediumList.add(createPolyline(simplifiedMedium, route.color, route.strokeWidthMedium, route.ref))
+                lowResFarList.add(createPolyline(simplifiedFar, route.color, route.strokeWidthFar, route.ref))
             }
         }
 
@@ -537,16 +438,8 @@ object MetroMapOverlayLoader {
         )
     }
 
-    private fun createPolyline(points: List<GeoPoint>, color: Int, strokeWidth: Float): Polyline {
-        return Polyline().apply {
-            setPoints(points)
-            setColor(color)
-            width = strokeWidth
-            outlinePaint.strokeCap = Paint.Cap.ROUND
-            outlinePaint.strokeJoin = Paint.Join.ROUND
-            infoWindow = null
-            setOnClickListener { _, _, _ -> true }
-        }
+    private fun createPolyline(points: List<GeoPoint>, color: Int, strokeWidth: Float, lineRef: String = ""): RawPolyline {
+        return RawPolyline(points, color, strokeWidth, lineRef)
     }
 
     private fun parseCoordinatesArray(array: org.json.JSONArray): List<GeoPoint> {
@@ -748,50 +641,6 @@ object MetroMapOverlayLoader {
         val num = Math.abs(dy * x - dx * y + x2 * y1 - y2 * x1)
         val den = Math.sqrt(dy * dy + dx * dx)
         return if (den == 0.0) 0.0 else num / den
-    }
-
-    private fun isPointCloseToSegment(point: GeoPoint, segment: List<GeoPoint>, maxDistance: Double): Boolean {
-        if (segment.isEmpty()) return false
-        if (segment.size == 1) {
-            return distanceBetween(point, segment[0]) < maxDistance
-        }
-        for (i in 0 until segment.size - 1) {
-            val s1 = segment[i]
-            val s2 = segment[i + 1]
-
-            val minLat = Math.min(s1.latitude, s2.latitude) - 0.001
-            val maxLat = Math.max(s1.latitude, s2.latitude) + 0.001
-            val minLon = Math.min(s1.longitude, s2.longitude) - 0.001
-            val maxLon = Math.max(s1.longitude, s2.longitude) + 0.001
-
-            if (point.latitude < minLat || point.latitude > maxLat ||
-                point.longitude < minLon || point.longitude > maxLon) {
-                continue
-            }
-
-            if (distancePointToSegment(point, s1, s2) < maxDistance) {
-                return true
-            }
-        }
-        return false
-    }
-
-    private fun isSegmentRedundant(segment: List<GeoPoint>, existingSegments: List<List<GeoPoint>>): Boolean {
-        if (segment.isEmpty()) return true
-        var closePoints = 0
-        for (p in segment) {
-            var isClose = false
-            for (existing in existingSegments) {
-                if (isPointCloseToSegment(p, existing, 15.0)) {
-                    isClose = true
-                    break
-                }
-            }
-            if (isClose) {
-                closePoints++
-            }
-        }
-        return (closePoints.toDouble() / segment.size) > 0.85
     }
 
     private data class Point2D(val x: Double, val y: Double)

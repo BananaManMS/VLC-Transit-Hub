@@ -1,84 +1,63 @@
 package com.example.ui.map
 
-import android.content.Intent
-import android.net.Uri
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.height
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.sp
-import androidx.compose.animation.core.animateDpAsState
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.Spring
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.unit.coerceAtLeast
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Directions
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.foundation.layout.offset
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.ui.text.font.FontWeight
 import com.example.data.database.GeoportalStopEntity
-import com.example.ui.bus.BusTimesBottomSheet
+import com.example.data.model.NominatimResult
+import com.example.data.model.routing.PlannedItinerary
 import com.example.ui.cercanias.CercaniasViewModel
 import com.example.ui.dashboard.AppLanguage
-import com.example.ui.dashboard.AppTexts
 import com.example.ui.dashboard.DashboardViewModel
-import com.example.ui.bus.EditValenbisiAliasDialog
-import com.example.ui.map.components.AddressDestinationBottomSheet
-import com.example.ui.map.components.CercaniasStationBottomSheet
-import com.example.ui.map.components.DisambiguationMenuSheet
+import com.example.ui.map.RecentSearch
+import com.example.ui.map.SelectedMapItem
+import com.example.ui.map.components.ActiveItineraryBanner
+import com.example.ui.map.components.DetailSheetState
+import com.example.ui.map.components.DisambiguationDialog
 import com.example.ui.map.components.EditBusStopAliasDialog
-import com.example.ui.map.components.SaveFavoriteDialog
 import com.example.ui.map.components.MapControlsOverlay
-import com.example.ui.map.components.MetroStationBottomSheet
-import com.example.ui.map.components.OsmdroidMapView
+import com.example.ui.map.components.MapDetailBottomSheetsHost
+import com.example.ui.map.components.MapLocationSelectionOverlay
 import com.example.ui.map.components.NearbyStopsBottomSheet
+import com.example.ui.map.components.OsmdroidMapView
+import com.example.ui.map.components.SaveFavoriteDialog
 import com.example.ui.map.components.SheetState
-import com.example.ui.map.components.ValenbisiStationBottomSheet
 import com.example.ui.metro.MetroViewModel
+import com.example.ui.routing.PlannerLocation
+import com.example.ui.routing.components.RouteDetailBottomSheet
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -92,12 +71,14 @@ fun MapScreen(
     appLanguage: AppLanguage = AppLanguage.CA,
     onNavigateToMetro: ((String) -> Unit)? = null,
     onNavigateToCercanias: ((String) -> Unit)? = null,
-    onNavigateToRoutePlanner: ((com.example.ui.routing.PlannerLocation) -> Unit)? = null,
-    onPlannerLocationPicked: ((com.example.ui.routing.PlannerLocation, Boolean) -> Unit)? = null,
+    onNavigateToRoutePlanner: ((PlannerLocation) -> Unit)? = null,
+    onPlannerLocationPicked: ((PlannerLocation, Boolean) -> Unit)? = null,
     onCancelPlannerLocationPicking: (() -> Unit)? = null,
-    selectedItinerary: com.example.data.model.routing.PlannedItinerary? = null,
+    onCommuteLocationConfigured: (() -> Unit)? = null,
+    selectedItinerary: PlannedItinerary? = null,
     onClearItinerary: (() -> Unit)? = null,
-    onOpenRouteDetail: (() -> Unit)? = null
+    onOpenRouteDetail: (() -> Unit)? = null,
+    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val context = LocalContext.current
     val mapFilter by mapViewModel.mapFilter.collectAsState()
@@ -106,9 +87,11 @@ fun MapScreen(
     val visibleMetroStations by mapViewModel.visibleMetroStations.collectAsState()
     val visibleCercaniasStations by mapViewModel.visibleCercaniasStations.collectAsState()
     val selectedItem by mapViewModel.selectedMapItem.collectAsState()
+    val selectedBusLineFilters by mapViewModel.selectedBusLineFilters.collectAsState()
     val userLocation by mapViewModel.userLocation.collectAsState()
     val isFollowingUser by mapViewModel.isFollowingUser.collectAsState()
     val cameraTarget by mapViewModel.cameraTarget.collectAsState()
+    val debouncedCameraTarget by mapViewModel.debouncedCameraTarget.collectAsState()
     val cameraZoom by mapViewModel.cameraZoom.collectAsState()
     val cameraAnimTrigger by mapViewModel.cameraAnimTrigger.collectAsState()
     val busStopAliases by mapViewModel.busStopAliases.collectAsState()
@@ -127,6 +110,7 @@ fun MapScreen(
     val isSearching by mapViewModel.isSearching.collectAsState()
     val destinationLocation by mapViewModel.destinationLocation.collectAsState()
     val destinationTitle by mapViewModel.destinationTitle.collectAsState()
+    val isSatelliteMode by mapViewModel.isSatelliteMode.collectAsState()
 
     // Phase 2 State collections
     val recentSearches by mapViewModel.recentSearches.collectAsState()
@@ -135,65 +119,72 @@ fun MapScreen(
     val customFavorites by mapViewModel.customFavorites.collectAsState()
     val unifiedTransitFavorites by mapViewModel.unifiedTransitFavorites.collectAsState()
     val selectionMode by mapViewModel.selectionMode.collectAsState()
+    val selectedMetrobusShapes by mapViewModel.selectedMetrobusShapes.collectAsState()
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     var isSearchFocused by remember { mutableStateOf(false) }
     var isMapMoving by remember { mutableStateOf(false) }
 
-    val pinOffset by animateDpAsState(
-        targetValue = if (isMapMoving) (-42).dp else (-24).dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "pinOffset"
-    )
-
-    val shadowScale by animateFloatAsState(
-        targetValue = if (isMapMoving) 0.5f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "shadowScale"
-    )
-
-    val shadowAlpha by animateFloatAsState(
-        targetValue = if (isMapMoving) 0.2f else 0.45f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "shadowAlpha"
-    )
-
-    val pinRotation by animateFloatAsState(
-        targetValue = if (isMapMoving) -6f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "pinRotation"
-    )
-
     var editingStopForAlias by remember { mutableStateOf<GeoportalStopEntity?>(null) }
     var showSaveFavoriteDialog by remember { mutableStateOf(false) }
-    var locationToSave by remember { mutableStateOf<com.example.data.model.NominatimResult?>(null) }
+    var locationToSave by remember { mutableStateOf<NominatimResult?>(null) }
     var showRouteDetailSheet by remember { mutableStateOf(false) }
     var zoomInTrigger by remember { mutableStateOf(0) }
     var zoomOutTrigger by remember { mutableStateOf(0) }
     var disambiguationItems by remember { mutableStateOf<List<SelectedMapItem>?>(null) }
-    var currentNearbySheetHeight by remember { mutableStateOf(240.dp) }
-    var nearbySheetState by remember { mutableStateOf(SheetState.COLLAPSED) }
+    val density = LocalDensity.current
+    val defaultCollapsedHeightPx = with(density) { 240.dp.toPx() }
+    val defaultDetailHalfHeightPx = with(density) { 340.dp.toPx() }
+    val defaultAddressHalfHeightPx = with(density) { 210.dp.toPx() }
 
-    DisposableEffect(context) {
-        mapViewModel.startLocationTracking(context)
+    var currentNearbySheetHeight by remember { mutableStateOf(240.dp) }
+    var nearbySheetHeightPx by remember { mutableFloatStateOf(defaultCollapsedHeightPx) }
+    var busStopDetailSheetHeightPx by remember { mutableFloatStateOf(defaultDetailHalfHeightPx) }
+    var metroStationDetailSheetHeightPx by remember { mutableFloatStateOf(defaultDetailHalfHeightPx) }
+    var cercaniasStationDetailSheetHeightPx by remember { mutableFloatStateOf(defaultDetailHalfHeightPx) }
+    var valenbisiStationDetailSheetHeightPx by remember { mutableFloatStateOf(defaultDetailHalfHeightPx) }
+    var metrobusStopDetailSheetHeightPx by remember { mutableFloatStateOf(defaultDetailHalfHeightPx) }
+    var addressDetailSheetHeightPx by remember { mutableFloatStateOf(defaultAddressHalfHeightPx) }
+    var nearbySheetState by remember { mutableStateOf(SheetState.COLLAPSED) }
+    var detailSheetState by remember { mutableStateOf(DetailSheetState.HALF_EXPANDED) }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    mapViewModel.startLocationTracking(context)
+                    if (mapFilter.showValenbisi) {
+                        mapViewModel.startValenbisiPeriodicRefresh()
+                    }
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                    mapViewModel.stopLocationTracking()
+                    mapViewModel.stopValenbisiPeriodicRefresh()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             mapViewModel.stopLocationTracking()
+            mapViewModel.stopValenbisiPeriodicRefresh()
         }
     }
 
     LaunchedEffect(Unit) {
         mapViewModel.reloadFavorites()
+    }
+
+    LaunchedEffect(selectedItinerary) {
+        if (selectedItinerary != null) {
+            mapViewModel.selectItem(null)
+            disambiguationItems = null
+            mapViewModel.clearDestination()
+        }
     }
 
     LaunchedEffect(cameraTarget, cameraZoom, selectionMode) {
@@ -204,26 +195,42 @@ fun MapScreen(
         }
     }
 
-    val busTimes by mapViewModel.busTimes.collectAsState()
-    val busTimesLoading by mapViewModel.busTimesLoading.collectAsState()
+    LaunchedEffect(selectedItem) {
+        if (selectedItem != null) {
+            detailSheetState = DetailSheetState.HALF_EXPANDED
+        }
+    }
 
-    val metroDepartures by mapViewModel.metroDepartures.collectAsState()
-    val metroDeparturesLoading by mapViewModel.metroDeparturesLoading.collectAsState()
-
-    val cercaniasDepartures by mapViewModel.cercaniasDepartures.collectAsState()
-    val cercaniasDeparturesLoading by mapViewModel.cercaniasDeparturesLoading.collectAsState()
-    val cercaniasAlerts by (cercaniasViewModel?.cercaniasAlerts ?: MutableStateFlow(emptyList())).collectAsState()
-
-    val isMapBackHandlerEnabled = selectionMode != MapSelectionMode.NORMAL ||
+    val isMapBackHandlerEnabled = !disambiguationItems.isNullOrEmpty() ||
         showRouteDetailSheet ||
-        selectedItinerary != null ||
+        (selectedItem != null && (detailSheetState == DetailSheetState.FULLY_EXPANDED || detailSheetState == DetailSheetState.HALF_EXPANDED)) ||
         selectedItem != null ||
-        searchQuery.isNotEmpty() ||
+        selectedItinerary != null ||
+        selectionMode != MapSelectionMode.NORMAL ||
         nearbySheetState == SheetState.EXPANDED ||
-        !disambiguationItems.isNullOrEmpty()
+        isSearchFocused ||
+        searchQuery.isNotEmpty()
 
     BackHandler(enabled = isMapBackHandlerEnabled) {
         when {
+            isSearchFocused || searchQuery.isNotEmpty() -> {
+                isSearchFocused = false
+                mapViewModel.setSearchQuery("")
+                focusManager.clearFocus()
+                keyboardController?.hide()
+            }
+            !disambiguationItems.isNullOrEmpty() -> {
+                disambiguationItems = null
+            }
+            showRouteDetailSheet -> {
+                showRouteDetailSheet = false
+            }
+            selectedItem != null -> {
+                mapViewModel.selectItem(null)
+            }
+            selectedItinerary != null -> {
+                onClearItinerary?.invoke()
+            }
             selectionMode != MapSelectionMode.NORMAL -> {
                 val wasPlannerPicking = (selectionMode == MapSelectionMode.SELECTING_FOR_PLANNER_ORIGIN || 
                                         selectionMode == MapSelectionMode.SELECTING_FOR_PLANNER_DESTINATION)
@@ -232,23 +239,8 @@ fun MapScreen(
                     onCancelPlannerLocationPicking?.invoke()
                 }
             }
-            showRouteDetailSheet -> {
-                showRouteDetailSheet = false
-            }
-            selectedItinerary != null -> {
-                onClearItinerary?.invoke()
-            }
-            searchQuery.isNotEmpty() -> {
-                mapViewModel.setSearchQuery("")
-            }
-            selectedItem != null -> {
-                mapViewModel.selectItem(null)
-            }
             nearbySheetState == SheetState.EXPANDED -> {
                 nearbySheetState = SheetState.COLLAPSED
-            }
-            !disambiguationItems.isNullOrEmpty() -> {
-                disambiguationItems = null
             }
         }
     }
@@ -256,10 +248,39 @@ fun MapScreen(
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val maxExpandedSheetHeight = (maxHeight - 85.dp).coerceAtLeast(300.dp)
 
+        // Real-time bottom panel offset: active for BusStop/Metro/Cercanias/Valenbisi/Metrobus/Address detail sheet OR NearbyStopsBottomSheet
+        val isBusStopDetailActive = (selectedItem is SelectedMapItem.BusStop && selectedItinerary == null && selectionMode == MapSelectionMode.NORMAL)
+        val isMetroStationDetailActive = (selectedItem is SelectedMapItem.Metro && selectedItinerary == null && selectionMode == MapSelectionMode.NORMAL)
+        val isCercaniasStationDetailActive = (selectedItem is SelectedMapItem.Cercanias && selectedItinerary == null && selectionMode == MapSelectionMode.NORMAL)
+        val isValenbisiStationDetailActive = (selectedItem is SelectedMapItem.Valenbisi && selectedItinerary == null && selectionMode == MapSelectionMode.NORMAL)
+        val isMetrobusStopDetailActive = (selectedItem is SelectedMapItem.MetrobusStopItem && selectedItinerary == null && selectionMode == MapSelectionMode.NORMAL)
+        val isAddressDetailActive = (selectedItem is SelectedMapItem.Address && selectedItinerary == null && selectionMode == MapSelectionMode.NORMAL)
+        val isNearbySheetActive = (selectedItem == null && searchQuery.isEmpty() && !isSearchFocused && selectedItinerary == null && selectionMode == MapSelectionMode.NORMAL)
+        val rawBottomOffsetPx = when {
+            isBusStopDetailActive -> busStopDetailSheetHeightPx
+            isMetroStationDetailActive -> metroStationDetailSheetHeightPx
+            isCercaniasStationDetailActive -> cercaniasStationDetailSheetHeightPx
+            isValenbisiStationDetailActive -> valenbisiStationDetailSheetHeightPx
+            isMetrobusStopDetailActive -> metrobusStopDetailSheetHeightPx
+            isAddressDetailActive -> addressDetailSheetHeightPx
+            isNearbySheetActive -> nearbySheetHeightPx
+            else -> 0f
+        }
+
+        val animatedBottomOffsetPx by animateFloatAsState(
+            targetValue = rawBottomOffsetPx,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            ),
+            label = "mapBottomOffsetAnim"
+        )
+
         // Base Osmdroid Map
         OsmdroidMapView(
             modifier = Modifier.fillMaxSize(),
             isDarkMode = isDarkMode,
+            isSatelliteMode = isSatelliteMode,
             cameraTarget = cameraTarget,
             cameraZoom = cameraZoom,
             cameraAnimTrigger = cameraAnimTrigger,
@@ -280,23 +301,52 @@ fun MapScreen(
             busStopAliases = busStopAliases,
             appLanguage = appLanguage,
             selectedItinerary = selectedItinerary,
+            selectedMapItem = selectedItem,
+            selectedBusLineFilters = selectedBusLineFilters,
+            selectedMetrobusShapes = selectedMetrobusShapes,
+            bottomPanelOffsetPx = animatedBottomOffsetPx,
             onSelectItem = { item ->
-                mapViewModel.selectItem(item)
+                if (selectedItinerary == null) {
+                    mapViewModel.selectItem(item)
+                }
             },
             onMapClick = {
+                if (isSearchFocused || searchQuery.isNotEmpty()) {
+                    isSearchFocused = false
+                    mapViewModel.setSearchQuery("")
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                }
                 mapViewModel.clearDestination()
-                mapViewModel.selectItem(null)
+                if (selectedItem !is SelectedMapItem.BusStop &&
+                    selectedItem !is SelectedMapItem.Metro &&
+                    selectedItem !is SelectedMapItem.Cercanias &&
+                    selectedItem !is SelectedMapItem.Valenbisi &&
+                    selectedItem !is SelectedMapItem.MetrobusStopItem) {
+                    mapViewModel.selectItem(null)
+                }
                 if (nearbySheetState == SheetState.EXPANDED) {
                     nearbySheetState = SheetState.COLLAPSED
+                }
+                if (detailSheetState != DetailSheetState.COLLAPSED) {
+                    detailSheetState = DetailSheetState.COLLAPSED
                 }
             },
             onMapTouch = {
+                if (isSearchFocused || searchQuery.isNotEmpty()) {
+                    isSearchFocused = false
+                    mapViewModel.setSearchQuery("")
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                }
                 mapViewModel.disableFollowUser()
+            },
+            onMapPan = {
                 if (nearbySheetState == SheetState.EXPANDED) {
                     nearbySheetState = SheetState.COLLAPSED
                 }
-                if (selectionMode != MapSelectionMode.NORMAL) {
-                    isMapMoving = true
+                if (detailSheetState != DetailSheetState.COLLAPSED) {
+                    detailSheetState = DetailSheetState.COLLAPSED
                 }
             },
             onCameraPositionChanged = { center, zoom ->
@@ -309,20 +359,43 @@ fun MapScreen(
                 mapViewModel.setCameraZoom(newZoom)
             },
             onShowDisambiguationMenu = { items ->
-                disambiguationItems = items
+                if (selectedItinerary == null) {
+                    disambiguationItems = items
+                }
             },
             onMapLongClick = {
-                mapViewModel.onMapLongClick(it)
+                if (selectedItinerary == null) {
+                    mapViewModel.onMapLongClick(it)
+                }
             }
+        )
+
+        // Subtle top gradient scrim to protect status bar indicators (clock, battery) and provide a clean transition
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            if (isDarkMode || isSatelliteMode) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.25f),
+                            Color.Transparent
+                        )
+                    )
+                )
+                .align(Alignment.TopCenter)
         )
 
         val isAtUserLocation = userLocation != null && cameraTarget.distanceToAsDouble(userLocation) < 15.0
         // Central focal crosshair indicator when no individual item is selected and not centered on user location
         if (selectedItem == null && !isAtUserLocation) {
+            val density = LocalDensity.current
+            val crosshairOffsetY = with(density) { (animatedBottomOffsetPx / 2f).toDp() }
             Box(
                 modifier = Modifier
                     .size(24.dp)
                     .align(Alignment.Center)
+                    .offset(y = -crosshairOffsetY)
             ) {
                 Surface(
                     shape = CircleShape,
@@ -346,69 +419,17 @@ fun MapScreen(
 
         // Active Itinerary Banner Overlay
         if (selectedItinerary != null) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 10.dp, start = 14.dp, end = 14.dp)
-                    .fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
-                shadowElevation = 8.dp,
-                tonalElevation = 4.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Directions,
-                                contentDescription = null,
-                                tint = Color(0xFF0284C7),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "${selectedItinerary.formattedDuration} • " + (if (appLanguage == AppLanguage.CA) "Arribada " else "Llegada ") + selectedItinerary.formattedArrivalTime,
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                            )
-                        }
-                        Text(
-                            text = "${selectedItinerary.transfersCount} " + (if (appLanguage == AppLanguage.CA) "transbords" else "transbordos"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
-                        )
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(
-                            onClick = {
-                                showRouteDetailSheet = true
-                                onOpenRouteDetail?.invoke()
-                            }
-                        ) {
-                            Text(
-                                text = if (appLanguage == AppLanguage.CA) "Detalls" else "Detalles",
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0284C7)
-                            )
-                        }
-                        if (onClearItinerary != null) {
-                            IconButton(onClick = onClearItinerary) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Cerrar ruta",
-                                    tint = if (isDarkMode) Color.White else Color.Black
-                                )
-                            }
-                        }
-                    }
+            ActiveItineraryBanner(
+                modifier = Modifier.align(Alignment.TopCenter),
+                itinerary = selectedItinerary,
+                isDarkMode = isDarkMode,
+                appLanguage = appLanguage,
+                onClearItinerary = onClearItinerary,
+                onOpenRouteDetail = {
+                    showRouteDetailSheet = true
+                    onOpenRouteDetail?.invoke()
                 }
-            }
+            )
         }
 
         // Map Controls & Filters Overlay
@@ -438,15 +459,24 @@ fun MapScreen(
                 searchResults = searchResults,
                 onSearchResultClick = { result ->
                     isSearchFocused = false
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
                     mapViewModel.selectItemFromSearch(result)
                 },
                 isSearching = isSearching,
                 appLanguage = appLanguage,
-                hasPersistentBottomPanel = (selectedItem == null && searchQuery.isEmpty() && selectedItinerary == null),
+                isSatelliteMode = isSatelliteMode,
+                onToggleSatelliteMode = { mapViewModel.toggleSatelliteMode() },
+                hasPersistentBottomPanel = isNearbySheetActive,
                 currentNearbySheetHeight = currentNearbySheetHeight,
+                bottomPanelHeightPx = animatedBottomOffsetPx,
                 isFollowingUser = isFollowingUser,
                 selectedItem = selectedItem,
                 onDirectionsClick = { item ->
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                    isSearchFocused = false
+                    mapViewModel.setSearchQuery("")
                     mapViewModel.clearDestination()
                     if (item != null) {
                         val (lat, lon, title) = when (item) {
@@ -459,14 +489,14 @@ fun MapScreen(
                         }
                         mapViewModel.selectItem(null)
                         onNavigateToRoutePlanner?.invoke(
-                            com.example.ui.routing.PlannerLocation(title = title, latitude = lat, longitude = lon)
+                            PlannerLocation(title = title, latitude = lat, longitude = lon)
                         )
                     } else if (destinationLocation != null) {
                         val lat = destinationLocation!!.latitude
                         val lon = destinationLocation!!.longitude
                         val title = destinationTitle ?: "Ubicación seleccionada"
                         onNavigateToRoutePlanner?.invoke(
-                            com.example.ui.routing.PlannerLocation(
+                            PlannerLocation(
                                 title = title,
                                 latitude = lat,
                                 longitude = lon
@@ -474,7 +504,7 @@ fun MapScreen(
                         )
                     } else {
                         onNavigateToRoutePlanner?.invoke(
-                            com.example.ui.routing.PlannerLocation(
+                            PlannerLocation(
                                 title = "Ubicación actual",
                                 latitude = userLocation?.latitude ?: 0.0,
                                 longitude = userLocation?.longitude ?: 0.0,
@@ -484,6 +514,7 @@ fun MapScreen(
                     }
                 },
                 isItineraryActive = (selectedItinerary != null),
+                activeTripBottomPadding = activeTripBottomPadding,
                 recentSearches = recentSearches,
                 homeLocation = homeLocation,
                 workLocation = workLocation,
@@ -509,12 +540,12 @@ fun MapScreen(
         }
 
         // Persistent nearby transit bottom sheet when no stop/station is selected and no active route
-        if (selectedItem == null && searchQuery.isEmpty() && !isSearchFocused && selectedItinerary == null && selectionMode == MapSelectionMode.NORMAL) {
+        if (isNearbySheetActive) {
             NearbyStopsBottomSheet(
                 nearbyItems = nearbyTransitItems,
                 nearbyValenbisiStations = nearbyValenbisiStations,
-                cameraCenterLat = cameraTarget.latitude,
-                cameraCenterLon = cameraTarget.longitude,
+                cameraCenterLat = debouncedCameraTarget.latitude,
+                cameraCenterLon = debouncedCameraTarget.longitude,
                 isDarkMode = isDarkMode,
                 appLanguage = appLanguage,
                 busStopAliases = busStopAliases,
@@ -524,382 +555,95 @@ fun MapScreen(
                     mapViewModel.selectItem(item)
                 },
                 modifier = Modifier.align(Alignment.BottomCenter),
+                activeTripBottomPadding = activeTripBottomPadding,
                 sheetState = nearbySheetState,
                 onSheetStateChanged = { nearbySheetState = it },
                 onHeightChanged = { currentNearbySheetHeight = it },
-                maxExpandedHeight = maxExpandedSheetHeight
+                onHeightPxChanged = { nearbySheetHeightPx = it },
+                maxExpandedHeight = maxExpandedSheetHeight,
+                valenbisiEnabled = mapFilter.showValenbisi
             )
         }
 
         // Phase 2 Map Selection Overlays
         if (selectionMode != MapSelectionMode.NORMAL) {
-            // Shadow dot exactly at the center with dynamic scale & alpha
-            Box(
-                modifier = Modifier
-                    .size(width = 16.dp, height = 4.dp)
-                    .align(Alignment.Center)
-                    .graphicsLayer {
-                        scaleX = shadowScale
-                        scaleY = shadowScale
-                        alpha = shadowAlpha
+            MapLocationSelectionOverlay(
+                selectionMode = selectionMode,
+                isMapMoving = isMapMoving,
+                isSearching = isSearching,
+                isDarkMode = isDarkMode,
+                appLanguage = appLanguage,
+                cameraTarget = cameraTarget,
+                onCancelSelection = {
+                    val wasPlannerPicking = (selectionMode == MapSelectionMode.SELECTING_FOR_PLANNER_ORIGIN || 
+                                            selectionMode == MapSelectionMode.SELECTING_FOR_PLANNER_DESTINATION)
+                    val wasCommutePicking = (selectionMode == MapSelectionMode.SELECTING_HOME ||
+                                            selectionMode == MapSelectionMode.SELECTING_WORK)
+                    mapViewModel.setSelectionMode(MapSelectionMode.NORMAL)
+                    if (wasPlannerPicking) {
+                        onCancelPlannerLocationPicking?.invoke()
+                    } else if (wasCommutePicking) {
+                        onCommuteLocationConfigured?.invoke()
                     }
-                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
-            )
-            // Bouncing/floating Pin above center with realistic sway (balanceo)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = pinOffset)
-                    .graphicsLayer {
-                        rotationZ = pinRotation
-                        transformOrigin = TransformOrigin(0.5f, 1f) // bottom center pivot
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Place,
-                    contentDescription = "Selection Center Pin",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(48.dp)
-                )
-            }
-
-            // Top Floating Instructions Card
-            val titleText = when (selectionMode) {
-                MapSelectionMode.SELECTING_LOCATION -> if (appLanguage == AppLanguage.CA) "Triar ubicació al mapa" else "Elegir ubicación en el mapa"
-                MapSelectionMode.SELECTING_HOME -> if (appLanguage == AppLanguage.CA) "Establir ubicació de Casa" else "Establecer ubicación de Casa"
-                MapSelectionMode.SELECTING_WORK -> if (appLanguage == AppLanguage.CA) "Establir ubicació de Feina" else "Establecer ubicación de Trabajo"
-                MapSelectionMode.SELECTING_FOR_PLANNER_ORIGIN -> if (appLanguage == AppLanguage.CA) "Triar origen al mapa" else "Elegir origen en el mapa"
-                MapSelectionMode.SELECTING_FOR_PLANNER_DESTINATION -> if (appLanguage == AppLanguage.CA) "Triar destí al mapa" else "Elegir destino en el mapa"
-                else -> ""
-            }
-            val subtitleText = if (appLanguage == AppLanguage.CA) "Mou el mapa per a situar el marcador al centre" else "Arrastra el mapa para situar el marcador en el centro"
-            
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
-                shadowElevation = 10.dp,
-                border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(16.dp)
-                    .fillMaxWidth()
-                    .widthIn(max = 500.dp)
-                    .statusBarsPadding()
-                    .testTag("selection_mode_instruction_card")
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = titleText,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDarkMode) Color.White else Color.Black
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = subtitleText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    IconButton(
-                        onClick = {
-                            val wasPlannerPicking = (selectionMode == MapSelectionMode.SELECTING_FOR_PLANNER_ORIGIN || 
-                                                    selectionMode == MapSelectionMode.SELECTING_FOR_PLANNER_DESTINATION)
-                            mapViewModel.setSelectionMode(MapSelectionMode.NORMAL)
-                            if (wasPlannerPicking) {
-                                onCancelPlannerLocationPicking?.invoke()
-                            }
-                        },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(
-                                if (isDarkMode) Color(0xFF334155) else Color(0xFFF1F5F9),
-                                CircleShape
-                            )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Cancelar selección",
-                            tint = if (isDarkMode) Color.White else Color.Black,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-
-            // Bottom Confirm Selection FAB
-            ExtendedFloatingActionButton(
-                onClick = {
-                    val currentCenter = cameraTarget
-                    val isOrigin = (selectionMode == MapSelectionMode.SELECTING_FOR_PLANNER_ORIGIN)
+                },
+                onConfirmSelection = { target, isOrigin ->
+                    val wasCommutePicking = (selectionMode == MapSelectionMode.SELECTING_HOME ||
+                                            selectionMode == MapSelectionMode.SELECTING_WORK)
                     mapViewModel.confirmSelectedLocationOnMap(
                         mode = selectionMode,
-                        lat = currentCenter.latitude,
-                        lon = currentCenter.longitude,
+                        lat = target.latitude,
+                        lon = target.longitude,
                         onLocationSelected = { loc ->
                             onPlannerLocationPicked?.invoke(loc, isOrigin)
                         }
                     )
-                },
-                icon = {
-                    if (isSearching) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.MyLocation,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
+                    if (wasCommutePicking) {
+                        onCommuteLocationConfigured?.invoke()
                     }
-                },
-                text = {
-                    Text(
-                        text = if (isSearching) {
-                            if (appLanguage == AppLanguage.CA) "Processant..." else "Procesando..."
-                        } else {
-                            if (appLanguage == AppLanguage.CA) "Confirmar ubicació" else "Confirmar ubicación"
-                        },
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 32.dp)
-                    .testTag("confirm_selection_fab")
+                }
             )
         }
 
         // Bottom Sheets for details
-        if (selectionMode == MapSelectionMode.NORMAL) {
-            when (val item = selectedItem) {
-            is SelectedMapItem.BusStop -> {
-                BusTimesBottomSheet(
-                    stop = item.emtStopModel,
-                    busTimes = busTimes,
-                    busTimesLoading = busTimesLoading,
-                    isDarkMode = isDarkMode,
-                    texts = AppTexts.get(appLanguage),
-                    alias = busStopAliases[item.stop.id_parada],
-                    onEditAliasClick = {
-                        editingStopForAlias = item.stop
-                    },
-                    isFavorite = favoriteBusStops.contains(item.stop.id_parada),
-                    onToggleFavorite = {
-                        mapViewModel.toggleFavoriteBusStop(item.stop.id_parada)
-                    },
-                    onDirectionsClick = {
-                        mapViewModel.selectItem(null)
-                        onNavigateToRoutePlanner?.invoke(
-                            com.example.ui.routing.PlannerLocation(
-                                title = "Parada ${item.stop.id_parada} - ${item.stop.denominacion}",
-                                latitude = item.stop.lat,
-                                longitude = item.stop.lon
-                            )
-                        )
-                    },
-                    onDismissRequest = {
-                        mapViewModel.selectItem(null)
-                    }
-                )
-            }
-            is SelectedMapItem.Metro -> {
-                LaunchedEffect(item.station.id) {
-                    metroViewModel?.selectRealTimeStation(item.station.id)
-                }
-
-                val sharedDepartures by (metroViewModel?.realTimeDepartures ?: mapViewModel.metroDepartures).collectAsState()
-                val sharedLoading by (metroViewModel?.realTimeLoading ?: mapViewModel.metroDeparturesLoading).collectAsState()
-
-                MetroStationBottomSheet(
-                    station = item.station,
-                    departures = sharedDepartures,
-                    isLoading = sharedLoading,
-                    isDarkMode = isDarkMode,
-                    appLanguage = appLanguage,
-                    texts = AppTexts.get(appLanguage),
-                    isFavorite = favoriteMetroStations.contains(item.station.id),
-                    onToggleFavorite = { mapViewModel.toggleFavoriteMetroStation(item.station.id) },
-                    onNavigateToMetro = { stationId ->
-                        metroViewModel?.selectRealTimeStation(stationId)
-                        mapViewModel.selectItem(null)
-                        onNavigateToMetro?.invoke(stationId)
-                    },
-                    metroViewModel = metroViewModel,
-                    onDirectionsClick = {
-                        val lat = item.station.latitude ?: 0.0
-                        val lon = item.station.longitude ?: 0.0
-                        mapViewModel.selectItem(null)
-                        onNavigateToRoutePlanner?.invoke(
-                            com.example.ui.routing.PlannerLocation(
-                                title = "Metro ${item.station.name}",
-                                latitude = lat,
-                                longitude = lon
-                            )
-                        )
-                    },
-                    onDismiss = {
-                        mapViewModel.selectItem(null)
-                    }
-                )
-            }
-            is SelectedMapItem.Cercanias -> {
-                CercaniasStationBottomSheet(
-                    station = item.station,
-                    departures = cercaniasDepartures,
-                    isLoading = cercaniasDeparturesLoading,
-                    alerts = cercaniasAlerts,
-                    isDarkMode = isDarkMode,
-                    appLanguage = appLanguage,
-                    isFavorite = favoriteCercaniasStations.contains(item.station.stop_id),
-                    onToggleFavorite = { mapViewModel.toggleFavoriteCercaniasStation(item.station.stop_id) },
-                    onNavigateToCercanias = { stationId ->
-                        cercaniasViewModel?.selectCercaniasStation(stationId)
-                        mapViewModel.selectItem(null)
-                        onNavigateToCercanias?.invoke(stationId)
-                    },
-                    onDirectionsClick = {
-                        mapViewModel.selectItem(null)
-                        onNavigateToRoutePlanner?.invoke(
-                            com.example.ui.routing.PlannerLocation(
-                                title = "Estación ${item.station.displayName}",
-                                latitude = item.station.lat,
-                                longitude = item.station.lon
-                            )
-                        )
-                    },
-                    onDismiss = {
-                        mapViewModel.selectItem(null)
-                    }
-                )
-            }
-            is SelectedMapItem.Valenbisi -> {
-                var showEditValenbisiAliasDialog by remember { mutableStateOf(false) }
-                val stationNum = item.station.number.toString()
-                val isFav = favoriteValenbisiSet.contains(stationNum)
-                val alias = valenbisiAliasesMap[stationNum]
-
-                if (showEditValenbisiAliasDialog) {
-                    EditValenbisiAliasDialog(
-                        stationNumber = stationNum,
-                        stationDefaultName = item.station.name,
-                        currentAlias = alias ?: "",
-                        appLanguage = appLanguage,
-                        onSaveAlias = { newAlias ->
-                            mapViewModel.saveValenbisiAlias(stationNum, newAlias)
-                        },
-                        onDismiss = { showEditValenbisiAliasDialog = false }
-                    )
-                }
-
-                ValenbisiStationBottomSheet(
-                    station = item.station,
-                    isDarkMode = isDarkMode,
-                    appLanguage = appLanguage,
-                    isFavorite = isFav,
-                    alias = alias,
-                    onToggleFavorite = {
-                        mapViewModel.toggleFavoriteValenbisiStation(stationNum)
-                    },
-                    onEditAlias = {
-                        showEditValenbisiAliasDialog = true
-                    },
-                    onDirectionsClick = {
-                        mapViewModel.selectItem(null)
-                        onNavigateToRoutePlanner?.invoke(
-                            com.example.ui.routing.PlannerLocation(
-                                title = "Valenbisi ${item.station.name}",
-                                latitude = item.station.latitude,
-                                longitude = item.station.longitude
-                            )
-                        )
-                    },
-                    onDismiss = {
-                        mapViewModel.selectItem(null)
-                    }
-                )
-            }
-            is SelectedMapItem.MetrobusStopItem -> {
-                com.example.ui.bus.MetrobusTimesBottomSheet(
-                    stop = item.metrobusModel,
-                    times = emptyList(),
-                    isLoading = false,
-                    isDarkMode = isDarkMode,
-                    onDismissRequest = { mapViewModel.selectItem(null) },
-                    alias = busStopAliases[item.stop.id_parada],
-                    onEditAliasClick = {
-                        editingStopForAlias = GeoportalStopEntity(
-                            id_parada = item.stop.id_parada,
-                            denominacion = item.stop.denominacion,
-                            suprimida = item.stop.suprimida,
-                            lat = item.stop.lat,
-                            lon = item.stop.lon,
-                            lineas = item.stop.lineas
-                        )
-                    },
-                    isFavorite = favoriteBusStops.contains(item.stop.id_parada),
-                    onToggleFavorite = { mapViewModel.toggleFavoriteBusStop(item.stop.id_parada) },
-                    onRefresh = {}
-                )
-            }
-            is SelectedMapItem.Address -> {
-                val matchingFav = customFavorites.find {
-                    Math.abs(it.latitude - item.result.latitude) < 0.0001 &&
-                    Math.abs(it.longitude - item.result.longitude) < 0.0001
-                }
-                val isFav = matchingFav != null
-                val displayAddress = if (matchingFav != null) {
-                    item.result.copy(
-                        displayName = if (matchingFav.subtitle.isNotEmpty()) "${matchingFav.title}, ${matchingFav.subtitle}" else matchingFav.title,
-                        category = "favorite",
-                        type = "favorite"
-                    )
-                } else item.result
-
-                AddressDestinationBottomSheet(
-                    address = displayAddress,
-                    isDarkMode = isDarkMode,
-                    appLanguage = appLanguage,
-                    isFavorite = isFav,
-                    onSaveFavorite = {
-                        locationToSave = item.result
-                        showSaveFavoriteDialog = true
-                    },
-                    onNavigate = { lat, lon, title ->
-                        mapViewModel.clearDestination()
-                        mapViewModel.selectItem(null)
-                        onNavigateToRoutePlanner?.invoke(
-                            com.example.ui.routing.PlannerLocation(
-                                title = title,
-                                latitude = lat,
-                                longitude = lon
-                            )
-                        )
-                    },
-                    onDismiss = {
-                        mapViewModel.clearDestination()
-                        mapViewModel.selectItem(null)
-                    }
-                )
-            }
-            null -> {}
+        if (selectionMode == MapSelectionMode.NORMAL && selectedItinerary == null) {
+            MapDetailBottomSheetsHost(
+                selectedItem = selectedItem,
+                isDarkMode = isDarkMode,
+                appLanguage = appLanguage,
+                busStopAliases = busStopAliases,
+                favoriteBusStops = favoriteBusStops,
+                favoriteMetroStations = favoriteMetroStations,
+                favoriteCercaniasStations = favoriteCercaniasStations,
+                favoriteValenbisiSet = favoriteValenbisiSet,
+                valenbisiAliasesMap = valenbisiAliasesMap,
+                customFavorites = customFavorites,
+                mapViewModel = mapViewModel,
+                metroViewModel = metroViewModel,
+                cercaniasViewModel = cercaniasViewModel,
+                onNavigateToMetro = onNavigateToMetro,
+                onNavigateToCercanias = onNavigateToCercanias,
+                onNavigateToRoutePlanner = onNavigateToRoutePlanner,
+                onEditBusStopAlias = { stop -> editingStopForAlias = stop },
+                onSaveFavoriteAddress = { res ->
+                    locationToSave = res
+                    showSaveFavoriteDialog = true
+                },
+                onDismissItem = { mapViewModel.selectItem(null) },
+                onBusStopDetailHeightPxChanged = { busStopDetailSheetHeightPx = it },
+                onMetroStationDetailHeightPxChanged = { metroStationDetailSheetHeightPx = it },
+                onCercaniasStationDetailHeightPxChanged = { cercaniasStationDetailSheetHeightPx = it },
+                onValenbisiStationDetailHeightPxChanged = { valenbisiStationDetailSheetHeightPx = it },
+                onMetrobusStopDetailHeightPxChanged = { metrobusStopDetailSheetHeightPx = it },
+                onAddressDetailHeightPxChanged = { addressDetailSheetHeightPx = it },
+                maxExpandedSheetHeight = maxExpandedSheetHeight,
+                detailSheetState = detailSheetState,
+                onDetailSheetStateChanged = { detailSheetState = it },
+                activeTripBottomPadding = activeTripBottomPadding
+            )
         }
-    }
 
         // Disambiguation Menu
-        val itemsList = disambiguationItems
+        val itemsList = if (selectedItinerary == null) disambiguationItems else null
         if (itemsList != null) {
             val sortedItemsList = remember(itemsList, favoriteBusStops, favoriteMetroStations, favoriteCercaniasStations) {
                 itemsList.sortedByDescending { item: SelectedMapItem ->
@@ -914,19 +658,19 @@ fun MapScreen(
                 }
             }
 
-            DisambiguationMenuSheet(
+            DisambiguationDialog(
                 items = sortedItemsList,
                 isDarkMode = isDarkMode,
                 appLanguage = appLanguage,
                 busStopAliases = busStopAliases,
-                onSelectItem = { item ->
+                onSelectItem = { item: SelectedMapItem ->
                     mapViewModel.selectItem(item)
                 },
                 onDismiss = { disambiguationItems = null }
             )
         }
 
-        // Custom Alias Dialog
+        // Custom Bus Stop Alias Dialog
         val stopToEdit = editingStopForAlias
         if (stopToEdit != null) {
             EditBusStopAliasDialog(
@@ -943,17 +687,27 @@ fun MapScreen(
         // Custom Save Favorite Dialog
         val favToSave = locationToSave
         if (showSaveFavoriteDialog && favToSave != null) {
-            val existingFav = customFavorites.find { it.latitude == favToSave.latitude && it.longitude == favToSave.longitude }
-            val initialAlias = existingFav?.title ?: favToSave.displayName.split(",").firstOrNull()?.trim() ?: ""
+            val existingFav = customFavorites.find {
+                Math.abs(it.latitude - favToSave.latitude) < 0.0001 &&
+                Math.abs(it.longitude - favToSave.longitude) < 0.0001
+            }
+            val initialAlias = existingFav?.title ?: favToSave.placeName ?: favToSave.displayName.split(",").firstOrNull()?.trim() ?: ""
+            val initialShowOnMap = existingFav?.showOnMap ?: true
+            val initialColorHex = existingFav?.colorHex ?: "#F59E0B"
             SaveFavoriteDialog(
                 initialAlias = initialAlias,
+                initialShowOnMap = initialShowOnMap,
+                initialColorHex = initialColorHex,
                 appLanguage = appLanguage,
-                onSave = { aliasInput ->
+                onSave = { aliasInput, showOnMap, colorHex ->
                     mapViewModel.saveCustomFavorite(
                         alias = aliasInput,
                         subtitle = favToSave.displayName,
                         latitude = favToSave.latitude,
-                        longitude = favToSave.longitude
+                        longitude = favToSave.longitude,
+                        showOnMap = showOnMap,
+                        colorHex = colorHex,
+                        nominatimResult = favToSave
                     )
                     showSaveFavoriteDialog = false
                     locationToSave = null
@@ -974,7 +728,7 @@ fun MapScreen(
 
         // Active Route Detail Bottom Sheet
         if (selectedItinerary != null && showRouteDetailSheet) {
-            com.example.ui.routing.components.RouteDetailBottomSheet(
+            RouteDetailBottomSheet(
                 itinerary = selectedItinerary,
                 onDismiss = { showRouteDetailSheet = false },
                 onViewOnMap = { showRouteDetailSheet = false },
