@@ -8,7 +8,8 @@ data class MetroStation(
     val latitude: Double = 0.0,
     val longitude: Double = 0.0,
     val accessibility: Boolean = true,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val description: String = zone
 )
 
 data class Departure(
@@ -21,20 +22,7 @@ data class Departure(
     val isImminent: Boolean = minutesRemaining <= 1
 )
 
-data class ForecastHour(
-    val hour: Int = 12,
-    val occupancyPercentage: Int = 30,
-    val time: String = "$hour:00",
-    val tempCelsius: Double = 22.0,
-    val condition: WeatherCondition = WeatherCondition.SUNNY
-) {
-    constructor(time: String, tempCelsius: Double) : this(
-        hour = time.takeWhile { it.isDigit() }.toIntOrNull() ?: 12,
-        occupancyPercentage = 30,
-        time = time,
-        tempCelsius = tempCelsius
-    )
-}
+
 
 data class MetroScheduledDeparture(
     val line: String = "",
@@ -81,21 +69,36 @@ data class MetroTrainTimeline(
     val stops: List<MetroScheduledStopPass> = emptyList()
 )
 
-data class MetroLineInfo(val id: String, val colorHex: String)
+data class MetroLineInfo(
+    val id: String,
+    val colorHex: String,
+    val name: String = "Línea $id",
+    val destinations: List<String> = emptyList()
+)
 
 object ValenciaMetroData {
     val lines = listOf(
-        MetroLineInfo("1", "#E2001A"),
-        MetroLineInfo("2", "#A60067"),
-        MetroLineInfo("3", "#EE1D23"),
-        MetroLineInfo("4", "#00A859"),
-        MetroLineInfo("5", "#0083B9"),
-        MetroLineInfo("6", "#883A88"),
-        MetroLineInfo("7", "#F08200"),
-        MetroLineInfo("8", "#009999"),
-        MetroLineInfo("9", "#8B5B29"),
-        MetroLineInfo("10", "#5E2750")
+        MetroLineInfo("1", "#E1A92A", "Línea 1", listOf("Bétera", "Castelló")),
+        MetroLineInfo("2", "#B3257D", "Línea 2", listOf("Llíria", "Torrent Avinguda")),
+        MetroLineInfo("3", "#C41833", "Línea 3", listOf("Rafelbunyol", "Aeroport")),
+        MetroLineInfo("4", "#1E4B90", "Línea 4", listOf("Mas del Rosari", "Dr. Lluch")),
+        MetroLineInfo("5", "#068E63", "Línea 5", listOf("Marítim", "Aeroport")),
+        MetroLineInfo("6", "#7657AA", "Línea 6", listOf("Tossal del Rei", "Marítim")),
+        MetroLineInfo("7", "#DA7A18", "Línea 7", listOf("Marítim", "Torrent Avinguda")),
+        MetroLineInfo("8", "#52BACC", "Línea 8", listOf("Marítim", "Neptú")),
+        MetroLineInfo("9", "#A16E42", "Línea 9", listOf("Alboraya Peris Aragó", "Riba-roja de Túria")),
+        MetroLineInfo("10", "#B3CB6D", "Línea 10", listOf("Alacant", "Natzaret"))
     )
+
+    fun getLine(lineId: String): MetroLineInfo? {
+        val cleanId = lineId.replace("L", "", ignoreCase = true).trim()
+        return lines.find {
+            it.id.equals(lineId, ignoreCase = true) ||
+            it.id.equals(cleanId, ignoreCase = true) ||
+            "L${it.id}".equals(lineId, ignoreCase = true)
+        }
+    }
+
     val mainMetroStations = listOf(
         MetroStation("1", "Xàtiva", listOf("3", "5", "9"), "A", 39.4667, -0.3768),
         MetroStation("2", "Colón", listOf("3", "5", "7", "9"), "A", 39.4692, -0.3711),

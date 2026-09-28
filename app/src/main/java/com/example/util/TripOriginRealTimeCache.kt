@@ -33,12 +33,13 @@ class TripOriginRealTimeCache {
     private var lastKnownOriginDelayMinutes: Int = 0
     private var lastKnownOriginAdjustedDepTime: String? = null
 
-    // 5-minute departure courtesy state: holds departed vehicle at 0m so user can confirm boarding
-    private var departedVehicleGraceUntilMs: Long? = null
-    private var departedVehicleLine: String? = null
-    private var departedVehicleDest: String? = null
-    private var departedVehicleDelay: Int = 0
-    private var departedVehicleAdjustedDep: String? = null
+    // 2-minute departure courtesy state: holds departed vehicle at 0m so user can confirm boarding
+    var departedVehicleGraceUntilMs: Long? = null
+    var departedVehicleStartMs: Long? = null
+    var departedVehicleLine: String? = null
+    var departedVehicleDest: String? = null
+    var departedVehicleDelay: Int = 0
+    var departedVehicleAdjustedDep: String? = null
 
     fun reset() {
         lastMatchedOriginVehicleKey = null
@@ -51,6 +52,7 @@ class TripOriginRealTimeCache {
         lastKnownOriginDelayMinutes = 0
         lastKnownOriginAdjustedDepTime = null
         departedVehicleGraceUntilMs = null
+        departedVehicleStartMs = null
         departedVehicleLine = null
         departedVehicleDest = null
         departedVehicleDelay = 0
@@ -62,6 +64,7 @@ class TripOriginRealTimeCache {
         lastMatchedOriginVehicleId = null
         lastMatchedOriginArrivalEpochMs = null
         departedVehicleGraceUntilMs = null
+        departedVehicleStartMs = null
         departedVehicleLine = null
         departedVehicleDest = null
         departedVehicleDelay = 0
@@ -78,6 +81,7 @@ class TripOriginRealTimeCache {
         if (!isUserPhysicallyAtStation) {
             // User is still in transit / far away from platform: clear any departed vehicle grace
             departedVehicleGraceUntilMs = null
+            departedVehicleStartMs = null
             departedVehicleLine = null
             departedVehicleDest = null
         }
@@ -86,16 +90,19 @@ class TripOriginRealTimeCache {
             consecutiveEmptyOriginPolls = 0
             val liveMins = legLiveResult.liveMinutes
 
-            // If a matched vehicle reaches platform/departure (<= 1 min or <= 0 min) AND user is at station, initiate 5-minute courtesy window
+            // If a matched vehicle reaches platform/departure (<= 1 min or <= 0 min) AND user is at station, initiate 2-minute courtesy window
             if (isUserPhysicallyAtStation && liveMins != null && liveMins <= 1) {
-                departedVehicleGraceUntilMs = nowMs + (5 * 60 * 1000L)
+                if (departedVehicleGraceUntilMs == null) {
+                    departedVehicleStartMs = nowMs
+                }
+                departedVehicleGraceUntilMs = nowMs + (2 * 60 * 1000L)
                 departedVehicleLine = legLiveResult.matchedLineShortName ?: legLiveResult.normalizedLine
                 departedVehicleDest = legLiveResult.liveDestination
                 departedVehicleDelay = legLiveResult.delayMinutes
                 departedVehicleAdjustedDep = legLiveResult.adjustedDepartureTime
             }
 
-            // Check if the API jumped to a subsequent vehicle (e.g. >= 4 min) while user is at station within the 5-minute courtesy
+            // Check if the API jumped to a subsequent vehicle (e.g. >= 4 min) while user is at station within the 2-minute courtesy
             val graceUntil = departedVehicleGraceUntilMs
             if (isUserPhysicallyAtStation && graceUntil != null && nowMs < graceUntil && liveMins != null && liveMins >= 4) {
                 // Hold the departed vehicle at 0 min ("En andén / Saliendo") so boarding confirmation remains available
@@ -112,6 +119,7 @@ class TripOriginRealTimeCache {
             } else if (graceUntil != null && (!isUserPhysicallyAtStation || nowMs >= graceUntil)) {
                 // Courtesy expired or user not at station -> roll over to next vehicle
                 departedVehicleGraceUntilMs = null
+                departedVehicleStartMs = null
                 departedVehicleLine = null
                 departedVehicleDest = null
             }
@@ -133,7 +141,7 @@ class TripOriginRealTimeCache {
                 normalizedLine = legLiveResult.matchedLineShortName ?: legLiveResult.normalizedLine
             )
         } else {
-            // Check 5-minute departure courtesy if API returned empty/no live candidates
+            // Check 2-minute departure courtesy if API returned empty/no live candidates
             val graceUntil = departedVehicleGraceUntilMs
             if (graceUntil != null && nowMs < graceUntil) {
                 return OriginCacheReconciliationResult(

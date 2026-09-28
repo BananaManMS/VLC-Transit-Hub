@@ -9,7 +9,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -63,9 +63,6 @@ import androidx.compose.ui.window.PopupProperties
 import com.example.ui.cercanias.CercaniasAlert
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.metro.AccessibilityIncident
-import com.example.util.AccessibilityNoticeFormatter.cleanAccessibilityNoticeText
-import com.example.util.AccessibilityNoticeFormatter.deduplicateAccessibilityTexts
-import com.example.util.AccessibilityNoticeFormatter.groupAccessibilityTexts
 import com.example.util.normalizeForSearch
 
 data class StationAccessibilityInfo(
@@ -73,6 +70,56 @@ data class StationAccessibilityInfo(
     val stationName: String,
     val issues: List<String> = emptyList()
 )
+
+data class GroupedAccessibilityIssue(
+    val title: String,
+    val details: List<String> = emptyList()
+)
+
+fun cleanAccessibilityText(rawText: String, stationName: String? = null): String {
+    var cleaned = rawText.trim()
+
+    val patterns = listOf(
+        Regex("^(?:Afectaci[oó]n?|Av[ií]s|Aviso)\\s+(?:d['’]accessibilitat|de\\s+accesibilidad)\\s+(?:en|a)\\s+(?:la\\s+|l['’])?estaci[oó]n?\\s+[^:]+:\\s*", RegexOption.IGNORE_CASE),
+        Regex("^(?:Afectaci[oó]n?|Av[ií]s|Aviso)\\s+(?:d['’]accessibilitat|de\\s+accesibilidad)\\s+(?:en|a)\\s+(?:la\\s+|l['’])?estaci[oó]n?\\s+[^:\\.\\n]+[\\.\\:]?\\s*", RegexOption.IGNORE_CASE),
+        Regex("^(?:Afectaci[oó]n?|Av[ií]s|Aviso)\\s+(?:d['’]accessibilitat|de\\s+accesibilidad)\\s*:\\s*", RegexOption.IGNORE_CASE)
+    )
+
+    for (pattern in patterns) {
+        cleaned = pattern.replace(cleaned, "").trim()
+    }
+
+    if (!stationName.isNullOrBlank()) {
+        val escapedName = java.util.regex.Pattern.quote(stationName.trim())
+        cleaned = cleaned.replace(Regex("^Afectaci[oó]n?.*?$escapedName\\s*:\\s*", RegexOption.IGNORE_CASE), "").trim()
+    }
+
+    return cleaned.ifBlank { rawText.trim() }
+}
+
+fun groupAccessibilityIssues(issues: List<String>, stationName: String? = null): List<GroupedAccessibilityIssue> {
+    if (issues.isEmpty()) return emptyList()
+
+    val map = LinkedHashMap<String, MutableList<String>>()
+
+    for (raw in issues) {
+        val cleaned = cleanAccessibilityText(raw, stationName)
+        if (cleaned.isBlank()) continue
+
+        val parts = cleaned.split(Regex("\\s*[-–—:]\\s+"), 2)
+        val title = parts[0].trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() }
+        val detail = if (parts.size > 1) parts[1].trim() else null
+
+        val detailsList = map.getOrPut(title) { mutableListOf() }
+        if (!detail.isNullOrBlank() && !detailsList.contains(detail)) {
+            detailsList.add(detail)
+        }
+    }
+
+    return map.map { (title, details) ->
+        GroupedAccessibilityIssue(title = title, details = details)
+    }
+}
 
 fun computeMetroStationAccessibility(
     stationId: String,
@@ -104,25 +151,16 @@ fun computeMetroStationAccessibility(
         false
     }
 
-    val issuesRaw = matching.mapNotNull { inc ->
-        val rawText = when {
+    val issues = matching.mapNotNull { inc ->
+        val text = when {
             inc.descripcionEs.isNotBlank() -> inc.descripcionEs
             inc.descripcionCa.isNotBlank() -> inc.descripcionCa
             inc.tituloEs.isNotBlank() -> inc.tituloEs
             inc.tituloCa.isNotBlank() -> inc.tituloCa
             else -> null
         }
-        if (rawText != null) {
-            val cleaned = cleanAccessibilityNoticeText(rawText, stationName)
-            cleaned.ifBlank { null }
-        } else null
-    }
-    val dedupedIssues = deduplicateAccessibilityTexts(issuesRaw)
-    val issues = if (dedupedIssues.isEmpty() && matching.isNotEmpty()) {
-        listOf("Incidencia en elementos de accesibilidad")
-    } else {
-        dedupedIssues
-    }
+        text?.let { cleanAccessibilityText(it, stationName) }
+    }.filter { it.isNotBlank() }.distinct()
 
     return StationAccessibilityInfo(
         isAccessible = issues.isEmpty(),
@@ -169,15 +207,14 @@ fun computeCercaniasStationAccessibility(
         false
     }
 
-    val issuesRaw = matching.mapNotNull { alert ->
+    val issues = matching.mapNotNull { alert ->
         val desc = when {
             alert.descriptionEs.isNotBlank() -> alert.descriptionEs
             alert.headerEs.isNotBlank() -> alert.headerEs
             else -> null
         }
-        if (desc != null) cleanAccessibilityNoticeText(desc, stationName) else null
-    }
-    val issues = deduplicateAccessibilityTexts(issuesRaw)
+        desc?.let { cleanAccessibilityText(it, stationName) }
+    }.filter { it.isNotBlank() }.distinct()
 
     return StationAccessibilityInfo(
         isAccessible = issues.isEmpty(),
@@ -190,11 +227,17 @@ fun computeCercaniasStationAccessibility(
 fun StationAccessibilityBadge(
     accessibilityInfo: StationAccessibilityInfo,
     appLanguage: AppLanguage = AppLanguage.ES,
-    isDarkMode: Boolean = isSystemInDarkTheme(),
+    isDarkMode: Boolean = MaterialTheme.colorScheme.surface.luminance() < 0.5f,
     modifier: Modifier = Modifier,
     iconSize: Dp = 19.dp,
-    showContainerBadge: Boolean = false
+    showContainerBadge: Boolean = false,
+    showOnlyWhenNotAccessible: Boolean = true
 ) {
+    // Hidden when accessible to avoid cluttering selection lists and favorite chips
+    if (accessibilityInfo.isAccessible && showOnlyWhenNotAccessible) {
+        return
+    }
+
     var showBocadillo by remember { mutableStateOf(false) }
 
     val greenColor = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669)
@@ -210,7 +253,8 @@ fun StationAccessibilityBadge(
         if (appLanguage == AppLanguage.CA) "Incidència d'accessibilitat" else "Incidencia de accesibilidad"
     }
 
-    val interactionSource = remember { MutableInteractionSource() }
+    // Accessible icons are non-clickable (no dialog popup). Only non-accessible (red) icons are clickable.
+    val isClickable = !accessibilityInfo.isAccessible
 
     Box(
         modifier = modifier
@@ -221,7 +265,13 @@ fun StationAccessibilityBadge(
             Surface(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { showBocadillo = true },
+                    .then(
+                        if (isClickable) {
+                            Modifier.clickable { showBocadillo = true }
+                        } else {
+                            Modifier
+                        }
+                    ),
                 shape = RoundedCornerShape(8.dp),
                 color = activeBg,
                 border = BorderStroke(1.dp, activeBorder)
@@ -244,7 +294,13 @@ fun StationAccessibilityBadge(
                 modifier = Modifier
                     .size(iconSize + 10.dp)
                     .clip(CircleShape)
-                    .clickable { showBocadillo = true },
+                    .then(
+                        if (isClickable) {
+                            Modifier.clickable { showBocadillo = true }
+                        } else {
+                            Modifier
+                        }
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -256,8 +312,8 @@ fun StationAccessibilityBadge(
             }
         }
 
-        // Bocadillo (Tooltip / Dialog popup con detalle de accesibilidad)
-        if (showBocadillo) {
+        // Bocadillo popup (only triggers if non-accessible and user clicks)
+        if (showBocadillo && !accessibilityInfo.isAccessible) {
             AccessibilityBocadilloDialog(
                 accessibilityInfo = accessibilityInfo,
                 appLanguage = appLanguage,
@@ -281,6 +337,10 @@ fun AccessibilityBocadilloDialog(
     val textColor = if (isDarkMode) Color(0xFFF3F4F6) else Color(0xFF111827)
     val subtextColor = if (isDarkMode) Color(0xFF9CA3AF) else Color(0xFF4B5563)
     val borderCol = if (accessibilityInfo.isAccessible) greenColor.copy(alpha = 0.5f) else redColor.copy(alpha = 0.5f)
+
+    val groupedIssues = remember(accessibilityInfo.issues, accessibilityInfo.stationName) {
+        groupAccessibilityIssues(accessibilityInfo.issues, accessibilityInfo.stationName)
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -385,89 +445,71 @@ fun AccessibilityBocadilloDialog(
                         )
                     }
                 } else {
-                    val groupedNotices = remember(accessibilityInfo.issues) {
-                        groupAccessibilityTexts(accessibilityInfo.issues)
-                    }
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        groupedNotices.forEach { group ->
-                            if (group.category != null && group.details.size > 1) {
-                                Column(
+                        Text(
+                            text = if (appLanguage == AppLanguage.CA) "Avisos reportats en esta estació:" else "Avisos reportados en esta estación:",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = subtextColor
+                        )
+
+                        groupedIssues.forEach { grouped ->
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    verticalAlignment = Alignment.Top,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Warning,
-                                            contentDescription = null,
-                                            tint = redColor,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Text(
-                                            text = group.category,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = textColor
-                                        )
-                                    }
-                                    group.details.forEach { detail ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(start = 26.dp, top = 2.dp, bottom = 2.dp),
-                                            verticalAlignment = Alignment.Top,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = "•",
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = redColor
-                                            )
-                                            Text(
-                                                text = detail,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                color = textColor,
-                                                lineHeight = 18.sp
-                                            )
-                                        }
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = redColor,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = grouped.title,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = textColor,
+                                        lineHeight = 20.sp
+                                    )
                                 }
-                            } else {
-                                val singleText = if (group.category != null && group.details.isNotEmpty()) {
-                                    "${group.category} - ${group.details.first()}"
-                                } else {
-                                    group.details.firstOrNull() ?: ""
-                                }
-                                if (singleText.isNotBlank()) {
-                                    Row(
+
+                                if (grouped.details.isNotEmpty()) {
+                                    Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 2.dp),
-                                        verticalAlignment = Alignment.Top,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            .padding(start = 28.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Warning,
-                                            contentDescription = null,
-                                            tint = redColor,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Text(
-                                            text = singleText,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textColor,
-                                            lineHeight = 20.sp
-                                        )
+                                        grouped.details.forEach { detail ->
+                                            Row(
+                                                verticalAlignment = Alignment.Top,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "•",
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = redColor
+                                                )
+                                                Text(
+                                                    text = detail,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = textColor,
+                                                    lineHeight = 18.sp
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -494,4 +536,27 @@ fun AccessibilityBocadilloDialog(
             }
         }
     }
+}
+
+@Composable
+fun AccessibilityAlertsDialog(
+    stationName: String,
+    rawAlerts: List<String>,
+    appLanguage: AppLanguage,
+    onDismiss: () -> Unit,
+    isDarkMode: Boolean = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+) {
+    val info = remember(stationName, rawAlerts) {
+        StationAccessibilityInfo(
+            isAccessible = rawAlerts.isEmpty(),
+            stationName = stationName,
+            issues = rawAlerts
+        )
+    }
+    AccessibilityBocadilloDialog(
+        accessibilityInfo = info,
+        appLanguage = appLanguage,
+        isDarkMode = isDarkMode,
+        onDismiss = onDismiss
+    )
 }

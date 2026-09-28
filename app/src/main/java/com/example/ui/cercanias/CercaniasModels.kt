@@ -4,8 +4,8 @@ data class CercaniasDeparture(
     val routeId: String,
     val destination: String,
     val minutesRemaining: Int,
-    val delayMinutes: Int,
-    val tripId: String,
+    val delayMinutes: Int = 0,
+    val tripId: String = "",
     val departureTime: String = "",
     val estimatedTime: String = "",
     val isLive: Boolean = false,
@@ -20,7 +20,10 @@ data class CercaniasDeparture(
     val isRecoveredStopped: Boolean = false,
     val isStoppedAt: Boolean = false,
     val isIncomingAt: Boolean = false,
-    val isTomorrow: Boolean = false
+    val isTomorrow: Boolean = false,
+    val isIndeterminateDelay: Boolean = false,
+    val statusDescription: String = "",
+    val allTripIds: List<String> = emptyList()
 )
 
 data class CercaniasAlert(
@@ -44,7 +47,11 @@ data class LiveVehicleInfo(
     val platform: String,
     val speed: Double? = null,
     val currentStopId: String = "",
-    val timestamp: Long = 0L
+    val timestamp: Long = 0L,
+    val nextStopId: String = "",
+    val nextPlatform: String = "",
+    val nextArrivalTime: String = "",
+    val delayMinutes: Int = 0
 )
 
 data class ScheduledDeparture(

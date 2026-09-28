@@ -256,12 +256,13 @@ object ItineraryMapRenderer {
         }
 
         // Auto-fit bounding box to entire route ONLY the first time an itinerary is loaded or selected
-        if (allPoints.isNotEmpty() && lastZoomedItineraryId != itinerary.id) {
+        val validPoints = allPoints.filter { it.latitude in 38.0..41.0 && it.longitude in -2.0..1.0 }
+        if (validPoints.isNotEmpty() && lastZoomedItineraryId != itinerary.id) {
             updatedZoomedId = itinerary.id
-            val minLat = allPoints.minOf { it.latitude }
-            val maxLat = allPoints.maxOf { it.latitude }
-            val minLon = allPoints.minOf { it.longitude }
-            val maxLon = allPoints.maxOf { it.longitude }
+            val minLat = validPoints.minOf { it.latitude }
+            val maxLat = validPoints.maxOf { it.latitude }
+            val minLon = validPoints.minOf { it.longitude }
+            val maxLon = validPoints.maxOf { it.longitude }
             if (maxLat - minLat > 0.0001 && maxLon - minLon > 0.0001) {
                 val box = org.osmdroid.util.BoundingBox(maxLat + 0.002, maxLon + 0.002, minLat - 0.002, minLon - 0.002)
                 mapView.post {

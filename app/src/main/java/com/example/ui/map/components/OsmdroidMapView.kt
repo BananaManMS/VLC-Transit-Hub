@@ -94,6 +94,7 @@ fun OsmdroidMapView(
     selectedMapItem: SelectedMapItem? = null,
     selectedBusLineFilters: Set<String> = emptySet(),
     selectedMetrobusShapes: Map<String, List<GeoPoint>> = emptyMap(),
+    selectedDirectionFilter: String? = null,
     bottomPanelOffsetPx: Float = 0f,
     onSelectItem: (SelectedMapItem) -> Unit,
     onMapClick: () -> Unit,
@@ -121,14 +122,18 @@ fun OsmdroidMapView(
 
     val mapView = remember {
         MapView(context).apply {
+            // Re-enabled hardware GPU rendering for modern devices (Pixel 7, etc.) to run at fluid 60-90 FPS.
+            // Hardware acceleration is fully stable on modern Android APIs.
+
             val initialTileSource = if (isDarkMode) MapConfig.CARTO_DARK_SOURCE else MapConfig.CARTO_LIGHT_SOURCE
             setTileSource(initialTileSource)
             setMultiTouchControls(true)
             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
             minZoomLevel = MapConfig.MIN_ZOOM
             maxZoomLevel = MapConfig.MAX_ZOOM
-            resetScrollableAreaLimitLatitude()
-            resetScrollableAreaLimitLongitude()
+            
+            // Lock map scrollable area within the boundaries of Comunitat Valenciana
+            setScrollableAreaLimitDouble(MapConfig.VALENCIA_BOUNDS)
 
             isHorizontalMapRepetitionEnabled = false
             isVerticalMapRepetitionEnabled = false
@@ -255,15 +260,9 @@ fun OsmdroidMapView(
 
     fun getFocalCenterGeoPoint(): GeoPoint {
         val proj = mapView.projection
-        val width = mapView.width
-        val height = mapView.height
-        if (proj != null && width > 0 && height > 0) {
-            val focalX = width / 2
-            val focalY = height / 2 + targetOffsetY
-            val igp = proj.fromPixels(focalX, focalY)
-            if (igp != null) {
-                return GeoPoint(igp.latitude, igp.longitude)
-            }
+        if (proj != null) {
+            val cur = proj.currentCenter
+            if (cur != null) return GeoPoint(cur.latitude, cur.longitude)
         }
         val center = mapView.mapCenter
         return if (center != null) GeoPoint(center.latitude, center.longitude) else MapConfig.VALENCIA_CENTER
@@ -329,12 +328,17 @@ fun OsmdroidMapView(
     val currentOnShowDisambiguationMenu by rememberUpdatedState(onShowDisambiguationMenu)
     val currentSelectedBusLineFilters by rememberUpdatedState(selectedBusLineFilters)
     val currentSelectedMetrobusShapes by rememberUpdatedState(selectedMetrobusShapes)
+    val currentSelectedDirectionFilter by rememberUpdatedState(selectedDirectionFilter)
 
+    val isMetroLoaded by MetroMapOverlayLoader.isLoadedState.collectAsState()
     val isCercaniasLoaded by CercaniasMapOverlayLoader.isLoadedState.collectAsState()
     val isEmtLoaded by EmtMapOverlayLoader.isLoadedState.collectAsState()
 
-    // Trigger background lazy loading of Cercanías GeoJSON as soon as the layer is needed
+    // Trigger background lazy loading of Metro & Cercanías GeoJSON as soon as the layer is needed
     LaunchedEffect(mapFilter) {
+        if (mapFilter.isFavorites || mapFilter.showMetro) {
+            MetroMapOverlayLoader.ensureLoaded(context)
+        }
         if (mapFilter.isFavorites || mapFilter.showCercanias) {
             CercaniasMapOverlayLoader.ensureLoaded(context)
         }
@@ -365,7 +369,7 @@ fun OsmdroidMapView(
         customFavorites, homeLocation, workLocation, mapFilter, userLocation,
         destinationLocation, destinationTitle, isDarkMode, busStopAliases,
         appLanguage, selectedItinerary, onShowDisambiguationMenu, onMapLongClick,
-        isCercaniasLoaded, isEmtLoaded, selectedMapItem, selectedBusLineFilters, selectedMetrobusShapes
+        isMetroLoaded, isCercaniasLoaded, isEmtLoaded, selectedMapItem, selectedBusLineFilters, selectedMetrobusShapes
     ) {
         MapMarkersManager.updateMarkers(
             context = context,
@@ -390,6 +394,7 @@ fun OsmdroidMapView(
             selectedMapItem = selectedMapItem,
             selectedBusLineFilters = selectedBusLineFilters,
             selectedMetrobusShapes = selectedMetrobusShapes,
+            selectedDirectionFilter = selectedDirectionFilter,
             onSelectItem = onSelectItem,
             onMapClick = onMapClick,
             onShowDisambiguationMenu = onShowDisambiguationMenu,
@@ -427,6 +432,7 @@ fun OsmdroidMapView(
                     selectedMapItem = currentSelectedMapItem,
                     selectedBusLineFilters = currentSelectedBusLineFilters,
                     selectedMetrobusShapes = currentSelectedMetrobusShapes,
+                    selectedDirectionFilter = currentSelectedDirectionFilter,
                     onSelectItem = currentOnSelectItem,
                     onMapClick = currentOnMapClick,
                     onShowDisambiguationMenu = currentOnShowDisambiguationMenu,
@@ -438,24 +444,6 @@ fun OsmdroidMapView(
         }
 
         var lastCameraUpdateTime = 0L
-        var pendingCameraRunnable: Runnable? = null
-
-        fun dispatchCameraPosition(zoom: Double) {
-            pendingCameraRunnable?.let { handler.removeCallbacks(it) }
-            val runnable = Runnable {
-                val center = getFocalCenterGeoPoint()
-                currentOnCameraPositionChanged?.invoke(center, zoom)
-            }
-            pendingCameraRunnable = runnable
-            val now = System.currentTimeMillis()
-            if (now - lastCameraUpdateTime >= 160L) {
-                lastCameraUpdateTime = now
-                runnable.run()
-            } else {
-                handler.postDelayed(runnable, 160L)
-            }
-        }
-
         val listener = object : MapListener {
             override fun onScroll(event: ScrollEvent?): Boolean {
                 if (isSettingOffsetRef.get()) {
@@ -463,7 +451,13 @@ fun OsmdroidMapView(
                     return false
                 }
                 debouncedUpdate()
-                dispatchCameraPosition(mapView.zoomLevelDouble)
+                val now = System.currentTimeMillis()
+                // Throttle camera reporting to Compose to 160ms to avoid re-evaluating compose trees on every single pixel motion
+                if (now - lastCameraUpdateTime >= 160L) {
+                    lastCameraUpdateTime = now
+                    val center = getFocalCenterGeoPoint()
+                    currentOnCameraPositionChanged?.invoke(center, mapView.zoomLevelDouble)
+                }
                 return false
             }
 
@@ -478,7 +472,12 @@ fun OsmdroidMapView(
                 debouncedUpdate()
                 
                 currentOnZoomLevelChanged?.invoke(zoom)
-                dispatchCameraPosition(zoom)
+                val now = System.currentTimeMillis()
+                if (now - lastCameraUpdateTime >= 160L) {
+                    lastCameraUpdateTime = now
+                    val center = getFocalCenterGeoPoint()
+                    currentOnCameraPositionChanged?.invoke(center, zoom)
+                }
                 return false
             }
         }
@@ -497,7 +496,6 @@ fun OsmdroidMapView(
 
         onDispose {
             pendingUpdateRunnable?.let { handler.removeCallbacks(it) }
-            pendingCameraRunnable?.let { handler.removeCallbacks(it) }
             try {
                 mapView.removeOnFirstLayoutListener(firstLayoutListener)
             } catch (_: Exception) {}

@@ -108,9 +108,6 @@ class TripRealTimeReconciler(
         boardedDriftReconciler.reset()
     }
 
-    /**
-     * Confirms user has boarded the transit vehicle, stops origin polling, and starts corridor tracking.
-     */
     fun onBoardingConfirmed(leg: PlannedLeg, legIndex: Int, initialDepartureDelayMinutes: Int = maxAccumulatedDelayMinutes) {
         val vehicleIdToLock = originCache.lastMatchedOriginVehicleId
         originCache.clearMatchedOrigin()
@@ -120,6 +117,22 @@ class TripRealTimeReconciler(
             initialDepartureDelayMinutes = initialDepartureDelayMinutes,
             vehicleId = vehicleIdToLock
         )
+    }
+
+    fun getGracePeriodVehicleName(): String? {
+        return originCache.departedVehicleLine
+    }
+
+    fun getGracePeriodStartTimeMs(): Long? {
+        return originCache.departedVehicleStartMs
+    }
+
+    fun isGracePeriodActive(): Boolean {
+        return originCache.departedVehicleGraceUntilMs != null
+    }
+
+    fun clearGracePeriod() {
+        originCache.clearMatchedOrigin()
     }
 
     /**

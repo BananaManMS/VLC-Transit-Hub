@@ -1,6 +1,5 @@
 package com.example.ui.dashboard
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -176,7 +175,7 @@ fun DashboardDialogsHost(
         val currentLeg = activeTrip.itinerary.legs.getOrNull(activeTrip.currentLegIndex)
         val transferStopName = currentLeg?.toName?.ifBlank { "la estación de transbordo" } ?: "el transbordo"
         val destName = activeTrip.destinationName.ifBlank { "tu destino" }
-        val isDark = isSystemInDarkTheme()
+        val isDark = isDarkMode
 
         AlertDialog(
             onDismissRequest = onDismissTransferRiskDialog,

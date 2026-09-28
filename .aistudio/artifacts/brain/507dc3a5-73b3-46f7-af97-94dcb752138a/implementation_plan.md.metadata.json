@@ -1,0 +1,6 @@
+{
+  "summary":  "Plan de saneamiento paso a paso de referencias rotas, clases duplicadas y métodos inventados en la app de transporte de Valencia, agrupado por tipo de error y con verificación de compilación sin alterar llamadas de red ni datos estáticos.",
+  "updatedAt":  "2026-09-27T18:40:05.448666710Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

@@ -1,145 +1,186 @@
 package com.example.data.model
 
-enum class WeatherCondition(val description: String) {
-    SUNNY("Soleado"),
-    CLEAR("Despejado"),
-    CLOUDY("Nublado"),
-    PARTLY_CLOUDY("Parcialmente nublado"),
-    DRIZZLE("Llovizna"),
-    LIGHT_RAIN("Lluvia ligera"),
-    MODERATE_RAIN("Lluvia moderada"),
-    HEAVY_RAIN("Lluvia fuerte"),
-    RAINY("Lluvia"),
-    STORMY("Tormentoso"),
-    SNOWY("Nieve"),
-    FOGGY("Niebla"),
-    WINDY("Ventoso");
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.Request
+import org.json.JSONObject
+
+enum class WeatherCondition(val description: String, val iconCode: String) {
+    SUNNY("Sunny", "01"),
+    PARTLY_CLOUDY("Partly Cloudy", "02"),
+    CLOUDY("Cloudy", "04"),
+    DRIZZLE("Drizzle", "09"),
+    LIGHT_RAIN("Light Rain", "10"),
+    MODERATE_RAIN("Moderate Rain", "09"),
+    HEAVY_RAIN("Heavy Rain", "09"),
+    RAINY("Rainy", "10"),
+    STORMY("Stormy", "11"),
+    WINDY("Windy", "50"),
+    SNOWY("Snowy", "13"),
+    FOGGY("Foggy", "50");
 
     fun getIconUrl(isNight: Boolean = false): String {
-        return ""
+        val suffix = if (isNight) "n" else "d"
+        return "https://openweathermap.org/img/wn/$iconCode$suffix@4x.png"
     }
+}
+
+data class ForecastHour(
+    val hour: Int = 12,
+    val occupancyPercentage: Int = 30,
+    val time: String = "$hour:00",
+    val tempCelsius: Double = 22.0,
+    val condition: WeatherCondition = WeatherCondition.SUNNY
+) {
+    constructor(time: String, tempCelsius: Int, condition: WeatherCondition = WeatherCondition.SUNNY) : this(
+        hour = time.takeWhile { it.isDigit() }.toIntOrNull() ?: 12,
+        occupancyPercentage = 30,
+        time = time,
+        tempCelsius = tempCelsius.toDouble(),
+        condition = condition
+    )
+
+    constructor(time: String, tempCelsius: Double, condition: WeatherCondition = WeatherCondition.SUNNY) : this(
+        hour = time.takeWhile { it.isDigit() }.toIntOrNull() ?: 12,
+        occupancyPercentage = 30,
+        time = time,
+        tempCelsius = tempCelsius,
+        condition = condition
+    )
 }
 
 data class WeatherData(
     val cityName: String = "Valencia",
-    val currentTempCelsius: Double = 22.0,
-    val currentTempFahrenheit: Double = currentTempCelsius * 9 / 5 + 32,
-    val minTempCelsius: Double = 18.0,
-    val minTempFahrenheit: Double = minTempCelsius * 9 / 5 + 32,
-    val maxTempCelsius: Double = 26.0,
-    val maxTempFahrenheit: Double = maxTempCelsius * 9 / 5 + 32,
+    val currentTempCelsius: Int = 22,
     val condition: WeatherCondition = WeatherCondition.SUNNY,
-    val description: String = "Soleado",
-    val windKmh: Double = 12.0,
     val humidityPercent: Int = 50,
+    val windKmh: Int = 12,
     val precipitationChancePercent: Int = 10,
-    val hourlyForecast: List<ForecastHour> = emptyList()
+    val hourlyForecast: List<ForecastHour> = emptyList(),
+    val willRainTodayOrTomorrow: Boolean = false,
+    val rainProbabilityToday: Int = 0,
+    val rainProbabilityTomorrow: Int = 0,
+    val minTempCustomCelsius: Int? = null,
+    val maxTempCustomCelsius: Int? = null
 ) {
-    val temperatureCelsius: Double get() = currentTempCelsius
+    fun currentTempFahrenheit(): Int = (currentTempCelsius * 9 / 5) + 32
+    fun minTempCelsius(): Int = minTempCustomCelsius ?: (currentTempCelsius - 4)
+    fun maxTempCelsius(): Int = maxTempCustomCelsius ?: (currentTempCelsius + 4)
+    fun minTempFahrenheit(): Int = (minTempCelsius() * 9 / 5) + 32
+    fun maxTempFahrenheit(): Int = (maxTempCelsius() * 9 / 5) + 32
+
+    val currentTempFahrenheit: Double get() = currentTempFahrenheit().toDouble()
+    val minTempCelsius: Double get() = minTempCelsius().toDouble()
+    val maxTempCelsius: Double get() = maxTempCelsius().toDouble()
+    val minTempFahrenheit: Double get() = minTempFahrenheit().toDouble()
+    val maxTempFahrenheit: Double get() = maxTempFahrenheit().toDouble()
+    val temperatureCelsius: Double get() = currentTempCelsius.toDouble()
     val humidityPercentage: Int get() = humidityPercent
-    fun getIconUrl(): String = ""
+    val description: String get() = condition.description
+    fun getIconUrl(isNight: Boolean = false): String = condition.getIconUrl(isNight)
 }
 
-class WeatherService {
-    suspend fun getCurrentWeather(): WeatherData {
-        return getWeatherDataByCoords(39.46975, -0.37639, "Valencia")
+object WeatherService {
+    private val cache = ConcurrentHashMap<String, Pair<Long, WeatherData>>()
+    private const val CACHE_EXPIRATION_MS = 900_000L
+
+    fun getCachedData(key: String, ignoreExpiry: Boolean = false): WeatherData? {
+        val entry = cache[key] ?: return null
+        if (!ignoreExpiry && System.currentTimeMillis() - entry.first > CACHE_EXPIRATION_MS) {
+            return null
+        }
+        return entry.second
     }
 
-    companion object {
-        suspend fun getWeatherData(city: String): WeatherData {
-            return getWeatherDataByCoords(39.46975, -0.37639, city)
+    fun putCachedData(key: String, data: WeatherData) {
+        cache[key] = Pair(System.currentTimeMillis(), data)
+    }
+
+    fun mapWmoToCondition(code: Int): WeatherCondition {
+        return when (code) {
+            0, 1 -> WeatherCondition.SUNNY
+            2 -> WeatherCondition.PARTLY_CLOUDY
+            3 -> WeatherCondition.CLOUDY
+            45, 48 -> WeatherCondition.FOGGY
+            51, 53, 55 -> WeatherCondition.DRIZZLE
+            61, 63 -> WeatherCondition.LIGHT_RAIN
+            65 -> WeatherCondition.HEAVY_RAIN
+            71, 73, 75, 77, 85, 86 -> WeatherCondition.SNOWY
+            80, 81 -> WeatherCondition.MODERATE_RAIN
+            82 -> WeatherCondition.HEAVY_RAIN
+            95, 96, 99 -> WeatherCondition.STORMY
+            else -> WeatherCondition.SUNNY
         }
+    }
 
-        suspend fun getWeatherDataByCoords(lat: Double, lon: Double, city: String = "Valencia"): WeatherData = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current_weather=true&hourly=temperature_2m,relative_humidity_2m,weathercode,precipitation_probability&timezone=Europe%2FMadrid"
-                val request = okhttp3.Request.Builder().url(url).build()
-                val response = com.example.data.network.NetworkModule.okHttpClient.newCall(request).execute()
-                if (response.isSuccessful) {
-                    val bodyStr = response.body?.string() ?: ""
-                    if (bodyStr.isNotBlank()) {
-                        val root = org.json.JSONObject(bodyStr)
-                        val currentWeather = root.optJSONObject("current_weather")
-                        if (currentWeather != null) {
-                            val temp = currentWeather.optDouble("temperature", 22.0)
-                            val windSpeed = currentWeather.optDouble("windspeed", 12.0)
-                            val wCode = currentWeather.optInt("weathercode", 0)
+    suspend fun getWeatherData(city: String, seed: Long = 0L): WeatherData {
+        return getWeatherDataByCoords(39.46975, -0.37639, city)
+    }
 
-                            val (cond, desc) = mapWmoCode(wCode)
+    suspend fun getWeatherDataByCoords(
+        latitude: Double,
+        longitude: Double,
+        cityName: String = "Valencia"
+    ): WeatherData = withContext(Dispatchers.IO) {
+        val cacheKey = "${latitude}_${longitude}"
+        getCachedData(cacheKey)?.let { return@withContext it }
 
-                            val hourly = root.optJSONObject("hourly")
-                            val times = hourly?.optJSONArray("time")
-                            val temps = hourly?.optJSONArray("temperature_2m")
-                            val hums = hourly?.optJSONArray("relative_humidity_2m")
-                            val precipChances = hourly?.optJSONArray("precipitation_probability")
+        try {
+            val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current_weather=true&hourly=temperature_2m,relative_humidity_2m,weathercode,precipitation_probability&timezone=Europe%2FMadrid"
+            val request = Request.Builder().url(url).build()
+            val response = com.example.data.network.NetworkModule.okHttpClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                val bodyStr = response.body?.string() ?: ""
+                if (bodyStr.isNotBlank()) {
+                    val json = JSONObject(bodyStr)
+                    val current = json.getJSONObject("current_weather")
+                    val currentTemp = current.getDouble("temperature").toInt()
+                    val weatherCode = current.getInt("weathercode")
+                    val windSpeed = current.getDouble("windspeed").toInt()
+                    val condition = mapWmoToCondition(weatherCode)
 
-                            val hourlyList = mutableListOf<ForecastHour>()
-                            var currentHum = 50
-                            var currentPrecipChance = 10
+                    val hourly = json.getJSONObject("hourly")
+                    val times = hourly.getJSONArray("time")
+                    val temps = hourly.getJSONArray("temperature_2m")
+                    val codes = hourly.getJSONArray("weathercode")
+                    val precips = hourly.optJSONArray("precipitation_probability")
 
-                            if (times != null && temps != null) {
-                                val cal = java.util.Calendar.getInstance()
-                                val curHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
-                                currentHum = hums?.optInt(curHour, 50) ?: 50
-                                currentPrecipChance = precipChances?.optInt(curHour, 10) ?: 10
-
-                                for (i in 0 until minOf(24, times.length())) {
-                                    val tStr = times.optString(i, "")
-                                    val hTemp = temps.optDouble(i, temp)
-                                    val hourNum = tStr.substringAfter("T").substringBefore(":").toIntOrNull() ?: i
-                                    val formattedTime = String.format(java.util.Locale.getDefault(), "%02d:00", hourNum)
-                                    hourlyList.add(
-                                        ForecastHour(
-                                            hour = hourNum,
-                                            occupancyPercentage = 30,
-                                            time = formattedTime,
-                                            tempCelsius = hTemp,
-                                            condition = cond
-                                        )
-                                    )
-                                }
-                            }
-
-                            val minT = hourlyList.minOfOrNull { it.tempCelsius } ?: (temp - 3)
-                            val maxT = hourlyList.maxOfOrNull { it.tempCelsius } ?: (temp + 4)
-
-                            return@withContext WeatherData(
-                                cityName = city,
-                                currentTempCelsius = temp,
-                                minTempCelsius = minT,
-                                maxTempCelsius = maxT,
-                                condition = cond,
-                                description = desc,
-                                windKmh = windSpeed,
-                                humidityPercent = currentHum,
-                                precipitationChancePercent = currentPrecipChance,
-                                hourlyForecast = hourlyList
-                            )
+                    val forecastList = mutableListOf<ForecastHour>()
+                    val count = minOf(24, times.length())
+                    var totalPrecip = 0
+                    for (i in 0 until count) {
+                        val timeStr = times.getString(i).substringAfter("T").take(5)
+                        val temp = temps.getDouble(i).toInt()
+                        val code = codes.getInt(i)
+                        forecastList.add(ForecastHour(timeStr, temp, mapWmoToCondition(code)))
+                        if (precips != null && i < precips.length()) {
+                            totalPrecip += precips.getInt(i)
                         }
                     }
+                    val avgPrecip = if (count > 0) totalPrecip / count else 10
+                    val weatherData = WeatherData(
+                        cityName = cityName,
+                        currentTempCelsius = currentTemp,
+                        condition = condition,
+                        humidityPercent = 55,
+                        windKmh = windSpeed,
+                        precipitationChancePercent = avgPrecip,
+                        hourlyForecast = forecastList,
+                        willRainTodayOrTomorrow = avgPrecip > 40,
+                        rainProbabilityToday = avgPrecip,
+                        rainProbabilityTomorrow = (avgPrecip * 0.8).toInt()
+                    )
+                    putCachedData(cacheKey, weatherData)
+                    return@withContext weatherData
                 }
-                response.close()
-            } catch (e: Exception) {
-                android.util.Log.w("WeatherService", "Error fetching weather data: ${e.message}")
             }
+        } catch (_: Exception) { }
 
-            WeatherData(cityName = city)
-        }
+        getCachedData(cacheKey, ignoreExpiry = true) ?: WeatherData(cityName = cityName)
+    }
 
-        private fun mapWmoCode(code: Int): Pair<WeatherCondition, String> {
-            return when (code) {
-                0 -> Pair(WeatherCondition.SUNNY, "Soleado")
-                1 -> Pair(WeatherCondition.CLEAR, "Despejado")
-                2 -> Pair(WeatherCondition.PARTLY_CLOUDY, "Parcialmente nublado")
-                3 -> Pair(WeatherCondition.CLOUDY, "Nublado")
-                45, 48 -> Pair(WeatherCondition.FOGGY, "Niebla")
-                51, 53, 55 -> Pair(WeatherCondition.DRIZZLE, "Llovizna")
-                61, 63 -> Pair(WeatherCondition.LIGHT_RAIN, "Lluvia ligera")
-                65 -> Pair(WeatherCondition.HEAVY_RAIN, "Lluvia fuerte")
-                80, 81, 82 -> Pair(WeatherCondition.RAINY, "Chubascos")
-                95, 96, 99 -> Pair(WeatherCondition.STORMY, "Tormenta")
-                else -> Pair(WeatherCondition.SUNNY, "Soleado")
-            }
-        }
+    suspend fun getCurrentWeather(): WeatherData {
+        return getWeatherDataByCoords(39.46975, -0.37639, "Valencia")
     }
 }

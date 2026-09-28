@@ -603,7 +603,7 @@ class LiveReconciliationEngine(
                 maxWalkDuration = 30,
                 maxWalkDist = 2000
             )
-            val firstItin = resp.itineraries?.firstOrNull() ?: return null
+            val firstItin = resp.effectiveItineraries.firstOrNull() ?: return null
             RoutingDataMapper.mapDtoToItinerary(firstItin, 0)
         } catch (e: Exception) {
             Log.w(TAG, "Subquery to Transitous failed: ${e.message}")

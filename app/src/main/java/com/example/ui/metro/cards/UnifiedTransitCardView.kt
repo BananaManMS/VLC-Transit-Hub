@@ -117,6 +117,7 @@ fun getStyleForCategory(category: CardCategory): CardStyleDefinition {
     return when (category) {
         CardCategory.SUMA_SENCILLO,
         CardCategory.SUMA_MENSUAL,
+        CardCategory.SUMA_MENSUAL_JOVE,
         CardCategory.SUMA_TSERIES -> CardStyleDefinition(
             backgroundColors = listOf(Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)),
             badgeLabel = "SUMA",
@@ -131,9 +132,10 @@ fun getStyleForCategory(category: CardCategory): CardStyleDefinition {
             badgeTextColor = Color.White,
             sheenColor = Color(0x38E0F7FA)
         )
-        CardCategory.TUIN -> CardStyleDefinition(
+        CardCategory.TUIN,
+        CardCategory.TUIN_JOVE -> CardStyleDefinition(
             backgroundColors = listOf(Color(0xFF3D1200), Color(0xFFB33600), Color(0xFFFF5500)),
-            badgeLabel = "TuIN",
+            badgeLabel = "TuiN",
             badgeBgColor = Color(0xFFFF6B00),
             badgeTextColor = Color.White,
             sheenColor = Color(0x38FFE0B2)

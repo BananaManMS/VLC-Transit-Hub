@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,8 +33,8 @@ import androidx.compose.ui.unit.TextUnit
 fun MetroLineBadgesRow(
     lineasStr: String?,
     modifier: Modifier = Modifier,
-    badgeSize: Dp = 15.dp,
-    fontSize: TextUnit = 8.5.sp
+    badgeSize: Dp = 20.dp,
+    fontSize: TextUnit = 11.sp
 ) {
     if (lineasStr.isNullOrBlank()) return
     val lines = lineasStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
@@ -45,27 +46,21 @@ fun MetroLineBadgesRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         lines.forEach { rawLine ->
-            val lineId = if (rawLine.startsWith("L", ignoreCase = true)) rawLine else "L$rawLine"
-            val numOnly = rawLine.replace(Regex("[^0-9]"), "")
-            val displayText = if (numOnly.isNotEmpty()) numOnly else rawLine
-            val metroLine = remember(lineId) {
-                ValenciaMetroData.lines.find { it.id.equals(lineId, ignoreCase = true) }
-            }
-            val lineBgColor = remember(metroLine?.colorHex) {
-                try {
-                    metroLine?.colorHex?.toColorInt() ?: 0xFF64748B.toInt()
-                } catch (e: Exception) {
-                    0xFF64748B.toInt()
-                }
-            }
+            val cleanLine = rawLine.replace("L", "", ignoreCase = true).trim()
+            val lineId = "L$cleanLine"
+            val lineBgColor = com.example.util.LineColorResolver.getMetroLineColor(lineId)
+            
             Box(
                 modifier = Modifier
-                    .size(badgeSize)
-                    .background(Color(lineBgColor), CircleShape),
+                    .height(badgeSize)
+                    .widthIn(min = badgeSize)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(lineBgColor)
+                    .padding(horizontal = 5.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = displayText,
+                    text = cleanLine.ifEmpty { rawLine },
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = fontSize,
                     color = Color.White,

@@ -49,6 +49,9 @@ class MapSelectionHandler(
     private val _selectedBusLineFilters = MutableStateFlow<Set<String>>(emptySet())
     val selectedBusLineFilters: StateFlow<Set<String>> = _selectedBusLineFilters.asStateFlow()
 
+    private val _selectedDirectionFilter = MutableStateFlow<String?>(null)
+    val selectedDirectionFilter: StateFlow<String?> = _selectedDirectionFilter.asStateFlow()
+
     private var enrichmentJob: Job? = null
 
     fun setSelectionMode(mode: MapSelectionMode) {
@@ -57,6 +60,10 @@ class MapSelectionHandler(
 
     fun setBusLineFilters(filters: Set<String>) {
         _selectedBusLineFilters.value = filters
+    }
+
+    fun setSelectedDirectionFilter(direction: String?) {
+        _selectedDirectionFilter.value = direction
     }
 
     fun setIsSearching(searching: Boolean) {
@@ -78,6 +85,7 @@ class MapSelectionHandler(
 
     fun selectItem(item: SelectedMapItem?, centerCamera: Boolean = true) {
         _selectedBusLineFilters.value = emptySet()
+        _selectedDirectionFilter.value = null
         if (item == null || item !is SelectedMapItem.Address) {
             enrichmentJob?.cancel()
             enrichmentJob = null
@@ -312,13 +320,13 @@ class MapSelectionHandler(
                                         fee = updatedResult.fee ?: baseRecent.fee,
                                         charge = updatedResult.charge ?: baseRecent.charge,
                                         startDate = updatedResult.startDate ?: baseRecent.startDate,
-                                        historicType = updatedResult.historicType ?: baseRecent.historicType
-                                    ))
-                                }
-                            }
-                        }
-                    }
-                }
+                                         historicType = updatedResult.historicType ?: baseRecent.historicType
+                                     ))
+                                 }
+                             }
+                         }
+                     }
+                 }
             }
         }
     }
@@ -387,7 +395,6 @@ class MapSelectionHandler(
             }
         }
     }
-
     fun onMapLongClick(geoPoint: GeoPoint) {
         val lat = geoPoint.latitude
         val lon = geoPoint.longitude
@@ -417,8 +424,12 @@ class MapSelectionHandler(
                             Math.abs(current.result.latitude - lat) < 0.0001 &&
                             Math.abs(current.result.longitude - lon) < 0.0001
                         ) {
-                            _selectedMapItem.value = SelectedMapItem.Address(detailedResult)
-                            setDestination(geoPoint, detailedResult.displayName)
+                            val finalResult = detailedResult.copy(
+                                lat = lat.toString(),
+                                lon = lon.toString()
+                            )
+                            _selectedMapItem.value = SelectedMapItem.Address(finalResult)
+                            setDestination(geoPoint, finalResult.displayName)
                         }
                     }
                 }

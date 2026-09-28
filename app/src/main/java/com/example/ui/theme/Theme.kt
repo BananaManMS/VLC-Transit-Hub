@@ -1,7 +1,6 @@
 package com.example.ui.theme
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Box
@@ -37,6 +36,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import android.app.Activity
 import androidx.core.view.WindowCompat
@@ -351,7 +351,7 @@ fun UnifiedAppCard(
         modifier
     }
 
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     Card(
         modifier = clickableModifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),

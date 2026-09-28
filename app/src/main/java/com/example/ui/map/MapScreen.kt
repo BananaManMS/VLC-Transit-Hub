@@ -88,6 +88,7 @@ fun MapScreen(
     val visibleCercaniasStations by mapViewModel.visibleCercaniasStations.collectAsState()
     val selectedItem by mapViewModel.selectedMapItem.collectAsState()
     val selectedBusLineFilters by mapViewModel.selectedBusLineFilters.collectAsState()
+    val selectedDirectionFilter by mapViewModel.selectedDirectionFilter.collectAsState()
     val userLocation by mapViewModel.userLocation.collectAsState()
     val isFollowingUser by mapViewModel.isFollowingUser.collectAsState()
     val cameraTarget by mapViewModel.cameraTarget.collectAsState()
@@ -246,7 +247,8 @@ fun MapScreen(
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val maxExpandedSheetHeight = (maxHeight - 85.dp).coerceAtLeast(300.dp)
+        // Cap bottom sheets expansion to 148.dp from top to leave space below the search bar and avoid status bar overlap
+        val maxExpandedSheetHeight = (maxHeight - 148.dp).coerceAtLeast(300.dp)
 
         // Real-time bottom panel offset: active for BusStop/Metro/Cercanias/Valenbisi/Metrobus/Address detail sheet OR NearbyStopsBottomSheet
         val isBusStopDetailActive = (selectedItem is SelectedMapItem.BusStop && selectedItinerary == null && selectionMode == MapSelectionMode.NORMAL)
@@ -304,6 +306,7 @@ fun MapScreen(
             selectedMapItem = selectedItem,
             selectedBusLineFilters = selectedBusLineFilters,
             selectedMetrobusShapes = selectedMetrobusShapes,
+            selectedDirectionFilter = selectedDirectionFilter,
             bottomPanelOffsetPx = animatedBottomOffsetPx,
             onSelectItem = { item ->
                 if (selectedItinerary == null) {
@@ -387,8 +390,8 @@ fun MapScreen(
         )
 
         val isAtUserLocation = userLocation != null && cameraTarget.distanceToAsDouble(userLocation) < 15.0
-        // Central focal crosshair indicator when no individual item is selected and not centered on user location
-        if (selectedItem == null && !isAtUserLocation) {
+        // Central focal crosshair indicator when no individual item is selected, not centered on user, and NOT in route/itinerary preview
+        if (selectedItem == null && !isAtUserLocation && selectedItinerary == null) {
             val density = LocalDensity.current
             val crosshairOffsetY = with(density) { (animatedBottomOffsetPx / 2f).toDp() }
             Box(

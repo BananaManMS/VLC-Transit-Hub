@@ -352,6 +352,7 @@ fun ManageCardsDialog(
             metroViewModel.updateCardsOrder(cardList.map { it.cardNumber })
             onDismiss()
         },
+        containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White,
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -365,7 +366,8 @@ fun ManageCardsDialog(
                 Text(
                     text = if (appLanguage == AppLanguage.CA) "Organitzar targetes" else "Organizar tarjetas",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
+                    fontSize = 18.sp,
+                    color = if (isDarkMode) Color.White else Color.Black
                 )
             }
         },
@@ -381,51 +383,55 @@ fun ManageCardsDialog(
                     else
                         "Manten presionado y arrastra el icono '=' para reordenar:",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                    modifier = Modifier.padding(bottom = 16.dp)
                 )
 
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp), // Continuous list row styling
                     modifier = Modifier.heightIn(max = 380.dp)
                 ) {
                     itemsIndexed(cardList, key = { _, c -> c.cardNumber }) { index, card ->
                         val isBeingDragged = draggingIndex == index
 
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isBeingDragged) {
-                                    if (isDarkMode) Color(0xFF3C3F54) else MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    if (isDarkMode) Color(0xFF2B2E3D) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                }
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = if (isBeingDragged) 8.dp else 1.dp),
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .zIndex(if (isBeingDragged) 10f else 0f)
                                 .graphicsLayer {
                                     if (isBeingDragged) {
                                         translationY = dragOffsetY
-                                        scaleX = 1.03f
-                                        scaleY = 1.03f
+                                        scaleX = 1.02f
+                                        scaleY = 1.02f
                                     }
                                 }
+                                .background(
+                                    color = if (isBeingDragged) {
+                                        if (isDarkMode) Color(0xFF1E293B) else Color(0xFFEFF6FF)
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                    shape = RoundedCornerShape(8.dp)
+                                )
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .padding(horizontal = 4.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 // Drag handle icon
                                 Icon(
                                     imageVector = Icons.Default.DragHandle,
                                     contentDescription = "Arrastrar y reordenar",
-                                    tint = if (isBeingDragged) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = if (isBeingDragged) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        if (isDarkMode) Color(0xFF64748B) else Color(0xFF94A3B8)
+                                    },
                                     modifier = Modifier
                                         .padding(end = 12.dp)
+                                        .size(24.dp)
                                         .pointerInput(cardList) {
                                             detectDragGestures(
                                                 onDragStart = {
@@ -465,35 +471,60 @@ fun ManageCardsDialog(
 
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = card.assignedName,
+                                        text = card.assignedName.ifBlank { card.title },
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
+                                        color = if (isDarkMode) Color.White else Color.Black,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "${card.title} • ${card.remainingValue}",
+                                        text = if (card.assignedName.isNotBlank()) "${card.title} • ${card.remainingValue}" else card.remainingValue,
                                         fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
 
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    modifier = Modifier.padding(start = 8.dp)
                                 ) {
-                                    // Home Visibility Switch
+
+                                    Text(
+                                        text = if (appLanguage == AppLanguage.CA) "A l'Inici" else "En Inicio",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                    )
                                     Switch(
                                         checked = card.showOnHome,
                                         onCheckedChange = { isChecked ->
                                             cardList[index] = card.copy(showOnHome = isChecked)
                                             metroViewModel.updateCardHomeVisibility(card.cardNumber, isChecked)
                                         },
-                                        modifier = Modifier.testTag("manage_home_switch_${card.cardNumber}")
+                                        modifier = Modifier
+                                            .testTag("manage_home_switch_${card.cardNumber}")
+                                            .graphicsLayer(scaleX = 0.85f, scaleY = 0.85f)
                                     )
                                 }
+                            }
+
+                            // iOS-style fine horizontal divider under the item (unless it's being dragged or the last item)
+                            if (!isBeingDragged && index < cardList.size - 1) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(1.dp)
+                                        .background(
+                                            if (isDarkMode) Color(0xFF334155).copy(alpha = 0.4f) else Color(0xFFE2E8F0).copy(alpha = 0.6f)
+                                        )
+                                        .padding(start = 36.dp) // Offsets to align perfectly with the title text
+                                )
                             }
                         }
                     }
@@ -509,7 +540,8 @@ fun ManageCardsDialog(
             ) {
                 Text(
                     text = if (appLanguage == AppLanguage.CA) "Fet" else "Listo",
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }

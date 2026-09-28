@@ -268,7 +268,7 @@ fun CercaniasStationSelectionDialog(
                                     
                                     // Cercanias Line Badges
                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        val linesList = station.lines.split(",").filter { it.isNotBlank() }
+                                        val linesList = station.lines.filter { it.isNotBlank() }
                                         linesList.forEach { line ->
                                             val colorHex = when (line) {
                                                 "C1" -> "#00A3E0"
@@ -624,7 +624,7 @@ fun CercaniasQuickStationPickerDialog(
 
                                     // Line Badges
                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        val linesList = station.lines.split(",").filter { it.isNotBlank() }
+                                        val linesList = station.lines.filter { it.isNotBlank() }
                                         linesList.forEach { line ->
                                             val colorHex = when (line) {
                                                 "C1" -> "#00A3E0"

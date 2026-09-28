@@ -181,24 +181,10 @@ fun MetroStationHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 station.lines.forEach { lineId ->
-                    val line = ValenciaMetroData.getLine(lineId)
-                    val bgColor = try {
-                        Color(android.graphics.Color.parseColor(line?.colorHex ?: "#1E88E5"))
-                    } catch (e: Exception) {
-                        Color(0xFF1E88E5)
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = bgColor
-                    ) {
-                        Text(
-                            text = lineId,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                        )
-                    }
+                    com.example.ui.metro.MetroLineBadge(
+                        lineId = lineId,
+                        size = 22.dp
+                    )
                 }
             }
         }

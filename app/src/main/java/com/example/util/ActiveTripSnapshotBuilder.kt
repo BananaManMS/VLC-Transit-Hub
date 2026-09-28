@@ -90,15 +90,18 @@ object ActiveTripSnapshotBuilder {
 
         // 4. Imminent debark evaluation
         val remainingStops = progressInfo.remainingStopsCount
-        val arrivalMins = TripUIStateFormatter.getDynamicVehicleArrivalMinutes(realTimeStatus) ?: progressInfo.lastSeenArrivalMins
-        val arrivalSecs = realTimeStatus?.vehicleSecondsRemaining
+        val arrivalMins = realTimeStatus?.vehicleArrivalMinutes ?: progressInfo.lastSeenArrivalMins
         val distToTarget = progressInfo.distanceToTargetMeters
+        val progressFraction = progressInfo.progressWithinLeg
 
-        val isImminentDebark = isBoarded && currentLeg != null && (
-                (remainingStops != null && remainingStops == 1 && TripUIStateFormatter.isNearPenultimateStopOrTime(currentLeg, arrivalMins ?: 99, distToTarget, progressInfo.progressWithinLeg)) ||
-                (arrivalSecs != null && arrivalSecs <= 120) ||
-                (arrivalMins != null && arrivalMins <= 2) ||
-                (distToTarget != null && distToTarget <= 250.0)
+        // Prevent debark alert right at boarding or when user hasn't departed origin station yet
+        val hasDepartedOrigin = progressFraction >= 0.20f
+
+        val isImminentDebark = isBoarded && hasDepartedOrigin && (
+                (progressFraction >= 0.70f) ||
+                (distToTarget != null && distToTarget <= 250.0) ||
+                (remainingStops != null && remainingStops == 1 && currentLeg?.intermediateStops?.isNotEmpty() == true && progressFraction >= 0.35f) ||
+                (arrivalMins != null && arrivalMins <= 2 && progressFraction >= 0.30f)
         )
 
         return UnifiedActiveTripSnapshot(

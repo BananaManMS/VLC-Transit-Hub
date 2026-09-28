@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,7 +65,7 @@ fun RouteStationRow(
     isFirst: Boolean = false,
     isLast: Boolean = false,
     showZoneBadge: Boolean = false,
-    isDarkMode: Boolean = false,
+    isDarkMode: Boolean = MaterialTheme.colorScheme.surface.luminance() < 0.5f,
     estimatedArrivalFormatted: String? = null
 ) {
     val fullStation = remember(allNetworkStations, stationInfo.id, stationInfo.name) {

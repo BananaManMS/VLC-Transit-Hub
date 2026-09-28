@@ -36,7 +36,7 @@ class ActiveTripRepository(
      */
     fun getActiveTripFlow(): Flow<ActiveTripState?> {
         return activeTripDao.getActiveTripFlow().map { entity ->
-            if (entity == null) {
+            if (entity == null || entity.status == ActiveTripEntity.STATUS_CANCELLED) {
                 null
             } else {
                 mapEntityToState(entity)
@@ -49,6 +49,7 @@ class ActiveTripRepository(
      */
     suspend fun getActiveTrip(): ActiveTripState? {
         val entity = activeTripDao.getActiveTrip() ?: return null
+        if (entity.status == ActiveTripEntity.STATUS_CANCELLED) return null
         return mapEntityToState(entity)
     }
 
@@ -64,12 +65,12 @@ class ActiveTripRepository(
 
         val entity = ActiveTripEntity(
             tripId = "ACTIVE_TRIP",
+            originName = originName,
             destinationName = destinationName,
             status = ActiveTripEntity.STATUS_ACTIVE,
-            startTime = System.currentTimeMillis(),
-            currentStepIndex = 0,
-            totalSteps = itinerary.legs.size,
-            rawJsonData = routeJson
+            startTimestamp = System.currentTimeMillis(),
+            currentLegIndex = 0,
+            routeDataJson = routeJson
         )
         activeTripDao.insertTrip(entity)
     }
@@ -80,7 +81,7 @@ class ActiveTripRepository(
         val expirationThreshold = entity.startTime + 7_200_000L
 
         if (now > expirationThreshold) {
-            activeTripDao.updateTripStatus("ACTIVE_TRIP", ActiveTripEntity.STATUS_CANCELLED)
+            activeTripDao.deleteActiveTrip()
             return true
         }
         return false
@@ -88,7 +89,7 @@ class ActiveTripRepository(
 
     suspend fun advanceLegIndex(newIndex: Int) {
         val entity = activeTripDao.getActiveTrip() ?: return
-        val updated = entity.copy(currentStepIndex = newIndex)
+        val updated = entity.copy(currentLegIndex = newIndex)
         activeTripDao.insertTrip(updated)
     }
 
@@ -96,14 +97,13 @@ class ActiveTripRepository(
         val entity = activeTripDao.getActiveTrip() ?: return
         val routeJson = gson.toJson(newItinerary)
         val updatedEntity = entity.copy(
-            rawJsonData = routeJson,
-            totalSteps = newItinerary.legs.size
+            routeDataJson = routeJson
         )
         activeTripDao.insertTrip(updatedEntity)
     }
 
     suspend fun cancelActiveTrip() {
-        activeTripDao.updateTripStatus("ACTIVE_TRIP", ActiveTripEntity.STATUS_CANCELLED)
+        activeTripDao.deleteActiveTrip()
     }
 
     suspend fun markTripCompleted() {
@@ -111,14 +111,14 @@ class ActiveTripRepository(
     }
 
     suspend fun completeActiveTrip() {
-        cancelActiveTrip()
+        activeTripDao.deleteActiveTrip()
     }
 
     private fun mapEntityToState(entity: ActiveTripEntity): ActiveTripState? {
         return try {
             val itinerary = gson.fromJson(entity.rawJsonData, PlannedItinerary::class.java)
             ActiveTripState(
-                originName = "Origen",
+                originName = entity.originName.ifBlank { "Origen" },
                 destinationName = entity.destinationName,
                 itinerary = itinerary,
                 status = entity.status,
@@ -127,12 +127,9 @@ class ActiveTripRepository(
                 lastUpdatedTimestamp = System.currentTimeMillis()
             )
         } catch (e: Exception) {
+            android.util.Log.e("ActiveTripRepository", "Error deserializing active trip: ${e.message}", e)
             null
         }
-    }
-
-    private fun parseArrivalTimeToMillis(timeStr: String): Long {
-        return com.example.util.TripTimeParser.parseTimeToMillis(timeStr) ?: (System.currentTimeMillis() + 7_200_000L)
     }
 
     private class GeoPointAdapter : JsonSerializer<GeoPoint>, JsonDeserializer<GeoPoint> {
@@ -141,15 +138,33 @@ class ActiveTripRepository(
             if (src != null) {
                 obj.addProperty("lat", src.latitude)
                 obj.addProperty("lon", src.longitude)
+                obj.addProperty("latitude", src.latitude)
+                obj.addProperty("longitude", src.longitude)
             }
             return obj
         }
 
         override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext?): GeoPoint {
-            val obj = json?.asJsonObject ?: return GeoPoint(0.0, 0.0)
-            val lat = obj.get("lat")?.asDouble ?: 0.0
-            val lon = obj.get("lon")?.asDouble ?: 0.0
-            return GeoPoint(lat, lon)
+            if (json == null || json.isJsonNull) return GeoPoint(0.0, 0.0)
+            if (json.isJsonObject) {
+                val obj = json.asJsonObject
+                val lat = obj.get("lat")?.asDouble
+                    ?: obj.get("latitude")?.asDouble
+                    ?: 0.0
+                val lon = obj.get("lon")?.asDouble
+                    ?: obj.get("lng")?.asDouble
+                    ?: obj.get("longitude")?.asDouble
+                    ?: 0.0
+                return GeoPoint(lat, lon)
+            } else if (json.isJsonArray) {
+                val arr = json.asJsonArray
+                if (arr.size() >= 2) {
+                    val lat = arr[0].asDouble
+                    val lon = arr[1].asDouble
+                    return GeoPoint(lat, lon)
+                }
+            }
+            return GeoPoint(0.0, 0.0)
         }
     }
 }

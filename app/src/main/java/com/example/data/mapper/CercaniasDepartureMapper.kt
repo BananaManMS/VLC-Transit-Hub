@@ -26,8 +26,12 @@ object CercaniasDepartureMapper {
             .replace("nord", "nord")
         
         return when {
-            normalized.contains("nord") || normalized.contains("valencia nord") || normalized.contains("estacio del nord") -> "valencia nord"
+            normalized.contains("nord") || normalized.contains("valencia nord") || normalized.contains("estacio del nord") || normalized.contains("norte") -> "valencia nord"
+            normalized.contains("sant isidre") || normalized.contains("st. isidre") -> "valencia st. isidre"
+            normalized.contains("cabanyal") -> "cabanyal"
+            normalized.contains("font de sant lluis") || normalized.contains("sant lluis") || normalized.contains("f. s. lluis") -> "valencia f. s. lluis"
             normalized.contains("vinaros") -> "vinaros"
+            normalized.contains("cullera") -> "cullera"
             normalized.contains("benicarlo") || normalized.contains("peniscola") -> "benicarlo"
             normalized.contains("castello") -> "castello de la plana"
             normalized.contains("xativa") -> "xativa"
@@ -36,24 +40,52 @@ object CercaniasDepartureMapper {
             normalized.contains("gandia") -> "gandia"
             normalized.contains("siete aguas") || normalized.contains("venta mina") -> "venta mina-siete aguas"
             normalized.contains("utiel") -> "utiel"
-            normalized.contains("bunol") || normalized.contains("bua") || normalized.contains("buñ") || (normalized.contains("bu") && normalized.contains("ol")) -> "bunol"
+            normalized.contains("bunol") || normalized.contains("bua") || normalized.contains("buñ") || normalized.contains("bunyol") || (normalized.contains("bu") && normalized.contains("ol")) -> "bunol"
             normalized.contains("caudiel") -> "caudiel"
-            normalized.contains("alcudia") -> "l'alcudia"
+            normalized.contains("alcudia") || normalized.contains("crespins") -> "l'alcudia de crespins"
             else -> normalized
         }
     }
 
     /**
+     * Devuelve el nombre canónico y normalizado para mostrar de una estación o destino.
+     */
+    fun formatStationDisplayName(name: String): String {
+        if (name.isBlank()) return ""
+        val lower = name.lowercase(Locale.ROOT).trim()
+        return when {
+            lower.contains("nord") || lower.contains("estacio del nord") || lower.contains("norte") -> "València Nord"
+            lower.contains("sant isidre") || lower.contains("st. isidre") -> "València St. Isidre"
+            lower.contains("cabanyal") -> "Cabanyal"
+            lower.contains("font de sant lluis") || lower.contains("sant lluis") || lower.contains("f. s. lluis") || lower.contains("lluís") -> "València F. S. Lluís"
+            lower.contains("alcudia") || lower.contains("alcúdia") || lower.contains("crespins") -> "L'Alcúdia de Crespins"
+            lower.contains("bunol") || lower.contains("buã") || lower.contains("buñ") || lower.contains("bunyol") -> "Buñol"
+            lower.contains("puc") || lower.contains("puç") || lower.contains("puã") || lower.contains("pua") -> "Puçol"
+            lower.contains("platja") || lower.contains("grau") -> "Platja i Grau de Gandia"
+            else -> name
+        }
+    }
+
+    /**
      * Comprueba si la estación consultada coincide con el destino final del trayecto (llegada término).
+     * Si la estación consultada es igual a la estación de destino, se considera una llegada término
+     * y debe descartarse de la lista de salidas.
      */
     fun isTerminalArrival(currentStationName: String, destinationName: String): Boolean {
         val normCurrent = normalizeStationName(currentStationName)
         val normDest = normalizeStationName(destinationName)
         
-        // Allow trains arriving at València Nord, as they are not terminal arrivals for the user
-        if (normCurrent == "valencia nord") return false
+        if (normCurrent.isBlank() || normDest.isBlank()) return false
         
-        return normCurrent.isNotEmpty() && normCurrent == normDest
+        // Prevent false positives between Gandia and Platja de Gandia
+        if ((normCurrent.contains("platja") && !normDest.contains("platja")) ||
+            (!normCurrent.contains("platja") && normDest.contains("platja"))) {
+            return false
+        }
+        
+        return normCurrent == normDest ||
+               (normCurrent.contains(normDest) && normDest.length >= 4) ||
+               (normDest.contains(normCurrent) && normCurrent.length >= 4)
     }
 
     /**
@@ -86,19 +118,27 @@ object CercaniasDepartureMapper {
      */
     fun sortDeparturesChronologically(departures: List<CercaniasDeparture>): List<CercaniasDeparture> {
         return departures
-            .filter { it.minutesRemaining <= 1440 }
+            .filter { it.minutesRemaining >= -1 && (it.minutesRemaining <= 1440 || it.isIndeterminateDelay) }
             .distinctBy { Triple(it.departureTime, it.routeId, it.destination) }
             .sortedWith(
                 compareBy<CercaniasDeparture> {
-                    when {
-                        it.isCanceled -> 3
-                        it.isStoppedAt -> 0
-                        it.isIncomingAt -> 1
-                        else -> 2
-                    }
+                    // Canceled trains placed after active ones
+                    if (it.isCanceled) 1 else 0
                 }
-                    .thenBy { it.minutesRemaining }
+                    .thenBy {
+                        // Strict chronological ordering by minutes remaining
+                        if (it.isIndeterminateDelay) 999 else it.minutesRemaining.coerceAtLeast(0)
+                    }
                     .thenBy { it.departureTime }
+                    .thenBy {
+                        // Tiebreaker only when departure minutes and time are identical
+                        when {
+                            it.isStoppedAt -> 0
+                            it.isIncomingAt -> 1
+                            it.isLive -> 2
+                            else -> 3
+                        }
+                    }
             )
     }
 }

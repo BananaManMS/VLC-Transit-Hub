@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -43,7 +45,7 @@ import com.example.R
 /**
  * Discreet persistent banner at the bottom of the dashboard that appears
  * only when network connectivity is lost, informing the user that information
- * is loaded from cache/offline. Can be dismissed by the user.
+ * is loaded from cache/offline. Provides a close button ('X') to dismiss it.
  */
 @Composable
 fun OfflineBanner(
@@ -51,11 +53,12 @@ fun OfflineBanner(
     appLanguage: AppLanguage,
     isDarkMode: Boolean,
     bottomPadding: Dp = 0.dp,
-    onDismiss: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDismiss: (() -> Unit)? = null
 ) {
     var isDismissed by remember { mutableStateOf(false) }
 
+    // When connection is restored, reset dismissal so future disconnects warn the user again
     LaunchedEffect(isOnline) {
         if (isOnline) {
             isDismissed = false
@@ -71,6 +74,7 @@ fun OfflineBanner(
             .padding(start = 16.dp, end = 16.dp, bottom = bottomPadding + 8.dp)
     ) {
         val containerColor = if (isDarkMode) Color(0xFF23272F) else Color(0xFFF8FAFC)
+        val borderColor = if (isDarkMode) Color(0xFF3B4252) else Color(0xFFCBD5E1)
         val textPrimary = if (isDarkMode) Color(0xFFF1F5F9) else Color(0xFF1E293B)
         val textSecondary = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
         val iconTint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
@@ -79,18 +83,18 @@ fun OfflineBanner(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
+                .shadow(elevation = 2.dp, shape = RoundedCornerShape(12.dp))
                 .testTag("offline_status_banner"),
             shape = RoundedCornerShape(12.dp),
             color = containerColor,
-            tonalElevation = 2.dp,
-            shadowElevation = 3.dp
+            border = BorderStroke(1.dp, borderColor)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -133,18 +137,17 @@ fun OfflineBanner(
                         onDismiss?.invoke()
                     },
                     modifier = Modifier
-                        .size(28.dp)
-                        .testTag("offline_banner_close_button")
+                        .size(36.dp)
+                        .testTag("offline_banner_dismiss_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = if (appLanguage == AppLanguage.CA) "Tancar" else "Cerrar",
+                        contentDescription = if (appLanguage == AppLanguage.CA) "Tancar avís sense connexió" else "Cerrar aviso sin conexión",
                         tint = textSecondary,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
         }
     }
 }
-

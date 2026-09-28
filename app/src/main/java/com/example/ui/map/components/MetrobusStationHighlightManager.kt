@@ -109,7 +109,9 @@ object MetrobusStationHighlightManager {
     fun addMetrobusPolylinesToMap(
         mapView: MapView,
         selectedMetrobusShapes: Map<String, List<GeoPoint>>,
-        currentZoom: Double
+        currentZoom: Double,
+        stopLocation: GeoPoint? = null,
+        selectedDirection: String? = null
     ) {
         if (selectedMetrobusShapes.isEmpty()) {
             cachedKey = ""
@@ -117,17 +119,36 @@ object MetrobusStationHighlightManager {
             return
         }
 
-        val shapesKey = selectedMetrobusShapes.keys.sorted().joinToString(",") + "_" +
-                selectedMetrobusShapes.values.sumOf { it.size }
+        // Filter shapes to isolate the active direction matching the stop or requested direction
+        val filteredShapes = when {
+            !selectedDirection.isNullOrBlank() -> {
+                val match = selectedMetrobusShapes.filterKeys { it.endsWith("_$selectedDirection") || it.contains(selectedDirection) }
+                if (match.isNotEmpty()) match else selectedMetrobusShapes
+            }
+            stopLocation != null -> {
+                BusRouteDirectionManager.findMatchingMetrobusDirectionForStop(stopLocation, selectedMetrobusShapes)
+            }
+            else -> selectedMetrobusShapes
+        }
+
+        val zoomCategory = when {
+            currentZoom < 14.0 -> "FAR"
+            currentZoom < 15.5 -> "MEDIUM"
+            else -> "CLOSE"
+        }
+
+        val stopLocPart = if (stopLocation != null) "_${stopLocation.latitude}_${stopLocation.longitude}" else ""
+        val shapesKey = filteredShapes.keys.sorted().joinToString(",") + "_" +
+                filteredShapes.values.sumOf { it.size } + "_$zoomCategory" + stopLocPart
 
         if (shapesKey != cachedKey || cachedPolylines.isEmpty()) {
             cachedKey = shapesKey
-            val uniqueLines = selectedMetrobusShapes.keys.map { it.substringBefore("_") }.toSet()
+            val uniqueLines = filteredShapes.keys.map { it.substringBefore("_") }.toSet()
             val showArrows = uniqueLines.size == 1
             val orangeColorInt = Color.parseColor("#F97316")
 
             val newPolylines = mutableListOf<Polyline>()
-            selectedMetrobusShapes.forEach { (_, points) ->
+            filteredShapes.forEach { (_, points) ->
                 if (points.isEmpty()) return@forEach
                 val polyline = Polyline(mapView).apply {
                     setPoints(points)
@@ -135,14 +156,32 @@ object MetrobusStationHighlightManager {
                     outlinePaint.isAntiAlias = true
                     outlinePaint.strokeCap = Paint.Cap.ROUND
                     outlinePaint.strokeJoin = Paint.Join.ROUND
-                    outlinePaint.strokeWidth = 8.5f
                     infoWindow = null
                     setOnClickListener { _, _, _ -> true }
 
-                    if (showArrows) {
-                        val arrowPath = createStyledChevronPath(length = 18f, halfWidth = 11f, indent = 6.5f)
-                        val arrowStrokeWidth = 2.8f
-                        val recurrenceMeters = 250.0
+                    val strokeW = if (showArrows) {
+                        when {
+                            currentZoom < 14.0 -> 6.5f
+                            currentZoom < 15.5 -> 7.5f
+                            currentZoom < 17.0 -> 9.0f
+                            else -> 10.0f
+                        }
+                    } else {
+                        6.5f
+                    }
+                    outlinePaint.strokeWidth = strokeW
+
+                    if (showArrows && currentZoom >= 14.0) {
+                        val arrowPath = when {
+                            currentZoom < 15.5 -> createStyledChevronPath(14f, 8f, 5f)
+                            currentZoom < 17.0 -> createStyledChevronPath(17f, 10f, 6f)
+                            else -> createStyledChevronPath(20f, 12f, 7.5f)
+                        }
+                        val arrowStrokeWidth = when {
+                            currentZoom < 15.5 -> 2.2f
+                            currentZoom < 17.0 -> 2.6f
+                            else -> 3.0f
+                        }
 
                         val fillPaint = Paint().apply {
                             color = Color.WHITE
@@ -158,7 +197,8 @@ object MetrobusStationHighlightManager {
                             isAntiAlias = true
                         }
 
-                        val lister = MilestoneMeterDistanceLister(recurrenceMeters)
+                        // Fixed 500 meters recurrence across all zoom levels
+                        val lister = MilestoneMeterDistanceLister(500.0)
                         val fillDisplayer = MilestonePathDisplayer(0.0, true, arrowPath, fillPaint)
                         val borderDisplayer = MilestonePathDisplayer(0.0, true, arrowPath, borderPaint)
 
@@ -176,7 +216,7 @@ object MetrobusStationHighlightManager {
         cachedPolylines.forEach { mapView.overlays.add(it) }
     }
 
-    private fun createStyledChevronPath(length: Float = 18f, halfWidth: Float = 11f, indent: Float = 6.5f): Path {
+    private fun createStyledChevronPath(length: Float, halfWidth: Float, indent: Float): Path {
         return Path().apply {
             moveTo(length * 0.5f, 0f)              // Tip (front)
             lineTo(-length * 0.5f, -halfWidth)     // Top rear wing
@@ -187,6 +227,14 @@ object MetrobusStationHighlightManager {
     }
 
     fun clearCache() {
+        cachedKey = ""
+        cachedPolylines = emptyList()
+    }
+
+    fun clearPolylines(mapView: MapView) {
+        if (cachedPolylines.isNotEmpty()) {
+            mapView.overlays.removeAll(cachedPolylines)
+        }
         cachedKey = ""
         cachedPolylines = emptyList()
     }

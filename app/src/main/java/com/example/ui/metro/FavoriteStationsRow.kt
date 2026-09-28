@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.NotAccessible
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -32,7 +31,6 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.dashboard.AppTexts
 import com.example.ui.dashboard.Translation
 import com.example.ui.theme.appCardBorder
-import com.example.util.StationAccessibilityHelper
 
 @Composable
 fun FavoriteStationsRow(
@@ -46,14 +44,15 @@ fun FavoriteStationsRow(
     onSearchClick: () -> Unit
 ) {
     val textColor = if (isDarkMode) Color.White else MaterialTheme.colorScheme.onSurface
-    val accessibilityIncidents by metroViewModel.accessibilityIncidents.collectAsState()
-    val displayStations = remember(favoriteStations, selectedStationId) {
+    val displayStations = androidx.compose.runtime.remember(favoriteStations, selectedStationId) {
         if (selectedStationId.isNotEmpty() && !favoriteStations.contains(selectedStationId)) {
             listOf(selectedStationId) + favoriteStations
         } else {
             favoriteStations
         }
     }
+
+    val accessibilityIncidents by metroViewModel.accessibilityIncidents.collectAsState()
 
     LazyRow(
         modifier = Modifier
@@ -139,12 +138,6 @@ fun FavoriteStationsRow(
                     )
                     val expressiveShape = RoundedCornerShape(animatedCornerRadius)
 
-                    val hasAccessibilityIssue = remember(station.id, station.name, accessibilityIncidents) {
-                        accessibilityIncidents.any { incident ->
-                            StationAccessibilityHelper.isMetroStationAffected(station.id, station.name, incident)
-                        }
-                    }
-
                     Card(
                         modifier = Modifier
                             .widthIn(min = 120.dp, max = 160.dp)
@@ -167,29 +160,23 @@ fun FavoriteStationsRow(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = station.name,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else textColor,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    if (hasAccessibilityIssue) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.NotAccessible,
-                                            contentDescription = "No accesible",
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
+                                Text(
+                                    text = station.name,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else textColor,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                val accInfo = remember(station.id, station.name, accessibilityIncidents) {
+                                    com.example.ui.components.computeMetroStationAccessibility(station.id, station.name, accessibilityIncidents)
                                 }
+                                com.example.ui.components.StationAccessibilityBadge(
+                                    accessibilityInfo = accInfo,
+                                    isDarkMode = isDarkMode,
+                                    iconSize = 13.dp
+                                )
                                 val distanceText = metroViewModel.getStationDistanceText(station)
                                 if (distanceText != null) {
                                     Text(
@@ -207,22 +194,22 @@ fun FavoriteStationsRow(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 station.lines.forEach { lineId ->
-                                    val lineObj = ValenciaMetroData.lines.find { it.id == lineId }
-                                    val colorHex = lineObj?.colorHex ?: "#7F8C8D"
+                                    val cleanLine = lineId.replace("L", "", ignoreCase = true).trim()
+                                    val lineColor = com.example.util.LineColorResolver.getMetroLineColor("L$cleanLine")
                                     Box(
                                         modifier = Modifier
-                                            .height(14.dp)
-                                            .widthIn(min = 16.dp)
-                                            .clip(RoundedCornerShape(7.dp))
-                                            .background(Color(android.graphics.Color.parseColor(colorHex)))
+                                            .height(18.dp)
+                                            .widthIn(min = 18.dp)
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(lineColor)
                                             .padding(horizontal = 4.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = lineId,
+                                            text = cleanLine,
                                             color = Color.White,
                                             fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 9.sp,
+                                            fontSize = 10.sp,
                                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                             style = androidx.compose.ui.text.TextStyle(
                                                 platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)

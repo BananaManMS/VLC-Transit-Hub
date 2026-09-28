@@ -214,7 +214,7 @@ fun NearbyTransitCard(
                                 }
                             }
                             is NearbyTransitItem.Cercanias -> {
-                                val lines = item.station.lines.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                                val lines = item.station.lines.map { it.trim() }.filter { it.isNotEmpty() }
                                 lines.forEach { lineId ->
                                     val colorHex = LineColorResolver.getCercaniasLineColorHex(lineId)
                                     Surface(

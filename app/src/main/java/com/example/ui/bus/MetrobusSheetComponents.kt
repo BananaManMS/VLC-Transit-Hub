@@ -86,7 +86,7 @@ fun MetrobusSheetHeader(
                         modifier = Modifier.padding(top = 2.dp)
                     )
                     Text(
-                        text = "Parada ${stop.idParada}${if (stop.distanceText.isNotEmpty()) " • ${stop.distanceText}" else ""}",
+                        text = "Parada ${stop.idParada}${if (!stop.distanceText.isNullOrEmpty()) " • ${stop.distanceText}" else ""}",
                         style = MaterialTheme.typography.bodySmall,
                         color = sheetSubtextColor
                     )

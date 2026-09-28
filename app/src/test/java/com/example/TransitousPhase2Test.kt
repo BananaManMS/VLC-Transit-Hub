@@ -113,7 +113,9 @@ class TransitousPhase2Test {
             fromLat = 39.4699,
             fromLon = -0.3763,
             toLat = 39.4880,
-            toLon = -0.3570
+            toLon = -0.3570,
+            time = "16:00:00",
+            date = "2026-08-14"
         )
 
         assertTrue(result.isSuccess)

@@ -449,10 +449,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    private val searchEngine by lazy {
+    private val searchEngine: com.example.data.repository.UnifiedSearchEngine by lazy {
         com.example.data.repository.UnifiedSearchEngine(
+            context = getApplication(),
             database = database,
-            geocodingRepository = com.example.data.repository.GeocodingRepository(application, database)
+            geocodingRepository = com.example.data.repository.GeocodingRepository(getApplication(), database)
         )
     }
 
@@ -553,6 +554,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             } catch (e: Exception) {
                 Log.w("DashboardViewModel", "Background weather or location fetch failed or timed out: ${e.message}")
             }
+
+            // Periodic 24h/weekly data synchronization against GitHub (only if onboarding is already completed)
+            if (!_shouldShowOnboarding.value) {
+                try {
+                    com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(getApplication())
+                    com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(getApplication())
+                    com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(getApplication())
+                } catch (e: Exception) {
+                    Log.w("DashboardViewModel", "Background transit sync failed: ${e.message}")
+                }
+            }
         }
 
         startClock()
@@ -618,9 +630,28 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun completeOnboarding() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.savePreference("has_completed_onboarding", "true")
             _shouldShowOnboarding.value = false
+            try {
+                com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(getApplication())
+                com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(getApplication())
+                com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(getApplication())
+            } catch (e: Exception) {
+                Log.w("DashboardViewModel", "Deferred transit sync failed: ${e.message}")
+            }
+            val loc = _lastLocation.value
+            if (loc != null) {
+                val favBus = favoriteBusStopsSet.value.toList()
+                val favMb = try { repository.getPreferenceSync("favorite_metrobus_stops", "").split(",").filter { it.isNotBlank() } } catch (_: Exception) { emptyList() }
+                computeNearbyStops(
+                    userCoords = loc,
+                    favoriteBusStops = favBus,
+                    favoriteMetrobusStops = favMb,
+                    showEmtNearby = true,
+                    showMetrobusNearby = true
+                )
+            }
         }
     }
 

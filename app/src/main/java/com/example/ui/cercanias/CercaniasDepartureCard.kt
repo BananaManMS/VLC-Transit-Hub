@@ -37,7 +37,10 @@ fun CercaniasDepartureCard(
     appLanguage: AppLanguage,
     onClick: () -> Unit
 ) {
-    val routeColor = when(departure.routeId) {
+    val normalizedRoute = remember(departure.routeId) {
+        departure.routeId.uppercase().replace("-", "").trim()
+    }
+    val routeColor = when (normalizedRoute) {
         "C1" -> Color(0xFF00A3E0)
         "C2" -> Color(0xFFFF6A00)
         "C3" -> Color(0xFF7A287B)
@@ -89,10 +92,12 @@ fun CercaniasDepartureCard(
         centerContent = {
             Column {
                 val destinationText = remember(departure.destination) {
-                    departure.destination
-                        .replace("dirección", "", ignoreCase = true)
-                        .replace("direccion", "", ignoreCase = true)
-                        .trim()
+                    com.example.data.mapper.CercaniasDepartureMapper.formatStationDisplayName(
+                        departure.destination
+                            .replace("dirección", "", ignoreCase = true)
+                            .replace("direccion", "", ignoreCase = true)
+                            .trim()
+                    )
                 }
                 Text(
                     text = destinationText,
@@ -145,37 +150,35 @@ fun CercaniasDepartureCard(
             }
         },
         endContent = {
-            val isNow = departure.minutesRemaining <= 0
+            val isNow = departure.minutesRemaining in -1..1 || (departure.isStoppedAt && departure.minutesRemaining <= 1)
             val exceeds60 = departure.minutesRemaining > 60
-
-            val isStopped = departure.isStoppedAt
-            val stoppedAlternatingText = if (isStopped) StoppedTrainAlternatingText(appLanguage) else ""
 
             val bigTextStr = if (departure.isCanceled) {
                 if (appLanguage == AppLanguage.CA) "CANCEL·LAT" else "CANCELADO"
-            } else if (isStopped) {
-                stoppedAlternatingText
+            } else if (isNow) {
+                if (appLanguage == AppLanguage.CA) "Immediat" else "Inmediato"
             } else if (departure.isRecoveredStopped) {
                 if (appLanguage == AppLanguage.CA) "Aturat" else "Detenido"
+            } else if (departure.isTomorrow) {
+                departure.departureTime
             } else if (exceeds60) {
                 departure.departureTime
             } else {
-                if (isNow) (if (appLanguage == AppLanguage.CA) "Immediat" else "Inmediato") else "${departure.minutesRemaining} min"
+                "${departure.minutesRemaining} min"
             }
 
             val bigTextColor = when {
                 departure.isCanceled || departure.isSkippedAtStop -> Color(0xFFB91C1C)
-                isStopped -> Color(0xFFF97316)
                 departure.isRecoveredStopped -> Color(0xFFF97316)
                 departure.isLive -> {
                     val delay = departure.delayMinutes
                     when {
-                        delay < 0 -> if (isDarkMode) Color.White else Color.Black
-                        delay in 0..3 -> Color(0xFF2ECC71)
+                        delay <= 3 -> Color(0xFF2ECC71)
                         delay in 4..5 -> Color(0xFFF97316)
                         else -> Color(0xFFE53935)
                     }
                 }
+                departure.isStoppedAt -> Color(0xFF2ECC71)
                 else -> if (isDarkMode) Color.White else Color.Black
             }
 
@@ -213,23 +216,4 @@ fun CercaniasDepartureCard(
             }
         }
     )
-}
-
-@Composable
-private fun StoppedTrainAlternatingText(appLanguage: AppLanguage): String {
-    val infiniteTransition = rememberInfiniteTransition(label = "stopped_pulse")
-    val textSwitchPhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "text_switch"
-    )
-    return if (textSwitchPhase < 1.0f) {
-        if (appLanguage == AppLanguage.CA) "Aturat" else "Parado"
-    } else {
-        if (appLanguage == AppLanguage.CA) "Immediat" else "Inmediato"
-    }
 }

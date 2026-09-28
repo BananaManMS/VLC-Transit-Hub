@@ -68,6 +68,7 @@ class ActiveTripTrackingService : Service() {
     // Strict per-leg idempotency for the BOARDED transit event
     private val lastBoardedLegIndex = AtomicInteger(-1)
     private var hasAlertedFinalArrival: Boolean = false
+    private var hasAlertedBoardingConfirmation: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -85,6 +86,7 @@ class ActiveTripTrackingService : Service() {
                 sensorFusionEngine.reset()
                 tripNotificationManager.resetAlerts()
                 hasAlertedFinalArrival = false
+                hasAlertedBoardingConfirmation = false
                 geofenceGpsController.startTrip()
                 startForegroundTracking()
             }
@@ -110,6 +112,14 @@ class ActiveTripTrackingService : Service() {
                 if (legIndex >= 0) {
                     handleManualBoarding(legIndex)
                 }
+            }
+            ACTION_REJECT_BOARDING -> {
+                val legIndex = intent.getIntExtra(EXTRA_LEG_INDEX, -1)
+                android.util.Log.i(TAG, "User rejected boarding on leg $legIndex, clearing grace period and recalculating")
+                tripNotificationManager.dismissBoardingConfirmationNotification()
+                tripReconciler.clearGracePeriod()
+                hasAlertedBoardingConfirmation = false
+                UnifiedActiveTripStateTracker.triggerImmediateReconcile()
             }
             ACTION_FORCE_RECONCILE -> {
                 UnifiedActiveTripStateTracker.triggerImmediateReconcile()
@@ -234,7 +244,8 @@ class ActiveTripTrackingService : Service() {
                     }
             }
 
-            // 4. 4-second ticker for dead-reckoning progress estimation when underground or GPS fix is weak
+            // 4. 4-second ticker for dead-reckoning progress estimation when underground or GPS fix is weak,
+            // and checking the 2-minute departed vehicle grace period
             launch {
                 while (coroutineContext.isActive) {
                     val trip = currentActiveTrip
@@ -256,6 +267,29 @@ class ActiveTripTrackingService : Service() {
                                 lastLocationTimeMillis = loc?.time ?: System.currentTimeMillis()
                             )
                             updateSnapshotAndNotification(trip)
+
+                            // Grace period monitoring for departed/disappeared transit vehicle
+                            if (tripReconciler.isGracePeriodActive()) {
+                                val graceStartMs = tripReconciler.getGracePeriodStartTimeMs()
+                                if (graceStartMs != null) {
+                                    val elapsedSec = (System.currentTimeMillis() - graceStartMs) / 1000L
+                                    val vehicleName = tripReconciler.getGracePeriodVehicleName() ?: currentLeg?.routeShortName ?: "Transporte"
+
+                                    if (elapsedSec >= 60 && !hasAlertedBoardingConfirmation) {
+                                        android.util.Log.i(TAG, "Grace period: 1 minute passed, prompting user for boarding confirmation: $vehicleName")
+                                        hasAlertedBoardingConfirmation = true
+                                        tripNotificationManager.showBoardingConfirmationNotification(vehicleName, trip.currentLegIndex)
+                                    }
+
+                                    if (elapsedSec >= 120) {
+                                        android.util.Log.i(TAG, "Grace period: 2 minutes expired without confirmation or motion. Rollover/Recalculate now!")
+                                        tripNotificationManager.dismissBoardingConfirmationNotification()
+                                        tripReconciler.clearGracePeriod()
+                                        hasAlertedBoardingConfirmation = false
+                                        UnifiedActiveTripStateTracker.triggerImmediateReconcile()
+                                    }
+                                }
+                            }
                         }
                     }
                     delay(4000L)
@@ -283,6 +317,12 @@ class ActiveTripTrackingService : Service() {
                 val trip = currentActiveTrip ?: return@collectLatest
                 val legs = trip.itinerary.legs
                 val currentLeg = legs.getOrNull(trip.currentLegIndex)
+
+                // If grace period is active and we capture movement (speed > 1.8 m/s), auto-board!
+                if (tripReconciler.isGracePeriodActive() && location.hasSpeed() && location.speed > 1.8f) {
+                    android.util.Log.i(TAG, "Grace period active & movement captured: speed is ${location.speed} m/s (> 1.8 m/s). Auto-boarding!")
+                    handleManualBoarding(trip.currentLegIndex)
+                }
 
                 // Feed Sensor Fusion Engine with latest GPS, kinematic and real-time feed data
                 sensorFusionEngine.evaluate(
@@ -344,6 +384,9 @@ class ActiveTripTrackingService : Service() {
             val trip = currentActiveTrip ?: return@launch
             val leg = trip.itinerary.legs.getOrNull(legIndex) ?: return@launch
 
+            tripNotificationManager.dismissBoardingConfirmationNotification()
+            hasAlertedBoardingConfirmation = false
+
             TripBoardingDispatcher.dispatchBoardingActionsConcurrently(
                 context = applicationContext,
                 scope = serviceScope,
@@ -378,7 +421,7 @@ class ActiveTripTrackingService : Service() {
     }
 
     private fun updateSnapshotAndNotification(trip: ActiveTripState, distanceToTarget: Double? = null) {
-        if (trackingJob == null || !serviceScope.isActive) return
+        if (!serviceScope.isActive) return
         reevaluateLocationInterval()
 
         val progressInfo = ActiveTripProgressTracker.progressState.value
@@ -427,6 +470,7 @@ class ActiveTripTrackingService : Service() {
         const val ACTION_STOP = "com.example.service.action.STOP_TRACKING"
         const val ACTION_SHOW_RECALCULATE_DIALOG = "com.example.service.action.SHOW_RECALCULATE_DIALOG"
         const val ACTION_MANUAL_BOARDING = "com.example.service.action.MANUAL_BOARDING"
+        const val ACTION_REJECT_BOARDING = "com.example.service.action.REJECT_BOARDING"
         const val ACTION_FORCE_RECONCILE = "com.example.service.action.FORCE_RECONCILE"
         const val ACTION_GEOFENCE_TRANSITION = "com.example.service.action.GEOFENCE_TRANSITION"
         const val EXTRA_LEG_INDEX = "extra_leg_index"

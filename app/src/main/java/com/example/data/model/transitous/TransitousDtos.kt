@@ -56,7 +56,15 @@ data class TransitousPlanDto(
 
 data class TransitousResponseDto(
     val plan: TransitousPlanDto? = null,
-    val itineraries: List<TransitousItineraryDto>? = plan?.itineraries,
+    val itineraries: List<TransitousItineraryDto>? = null,
     val message: String? = null,
     val error: String? = null
-)
+) {
+    val effectiveItineraries: List<TransitousItineraryDto>
+        get() = itineraries ?: plan?.itineraries ?: emptyList()
+}
+
+typealias TransitousPlanResponse = TransitousResponseDto
+typealias TransitousPlaceDto = TransitousStopDto
+
+

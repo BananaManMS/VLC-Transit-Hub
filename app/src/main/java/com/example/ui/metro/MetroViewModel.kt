@@ -242,12 +242,12 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
                     database.stationDao().deleteAllStations()
                     database.stationDao().insertAll(defaultStations.map { station ->
                         StationEntity(
-                            id = station.id,
+                            id = station.id.toIntOrNull() ?: 0,
                             name = station.name,
                             lines = station.lines.joinToString(","),
                             zone = station.zone,
-                            lat = station.latitude,
-                            lon = station.longitude
+                            latitude = station.latitude,
+                            longitude = station.longitude
                         )
                     })
                     repository.savePreference("metro_stations_json_version", "8")

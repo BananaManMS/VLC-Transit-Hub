@@ -165,8 +165,8 @@ class HybridRoutingRepository(
                 maxWalkDist = 3500   // 3.5 km max walk distance limit
             )
 
-            val rawItineraries = response.itineraries
-            if (rawItineraries.isNullOrEmpty()) {
+            val rawItineraries = response.effectiveItineraries
+            if (rawItineraries.isEmpty()) {
                 Log.w(TAG, "Transitous returned no itineraries: ${response.message ?: response.error}")
                 return@withContext Result.success(emptyList())
             }

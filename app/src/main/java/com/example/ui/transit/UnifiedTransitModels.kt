@@ -86,7 +86,7 @@ fun MetrobusStop.toUnifiedStop(alias: String? = null, isFavorite: Boolean = fals
         id = idParada,
         name = denominacion.trim(),
         alias = alias,
-        distanceText = distanceText,
+        distanceText = distanceText ?: "",
         availableLines = cleanLines,
         operator = TransitOperator.METROBUS,
         isFavorite = isFavorite,

@@ -168,35 +168,24 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     init {
         loadPreferences()
         loadMetroNetworkStations()
+        fetchValenbisiStations()
         viewModelScope.launch(Dispatchers.IO) {
-            com.example.data.repository.emt.EmtDataSyncManager(application).syncEmtData()
-            com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(application.applicationContext)
+            val isOnboardingCompleted = repository.getPreference("has_completed_onboarding", "false") == "true"
+            if (isOnboardingCompleted) {
+                com.example.data.repository.emt.EmtDataSyncManager(application).syncEmtData()
+                com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(application.applicationContext)
+            }
         }
     }
 
     private fun loadMetroNetworkStations() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val dbStations = database.stationDao().getAllStations()
-                if (dbStations.isNotEmpty()) {
-                    _allNetworkStations.value = dbStations.map { entity ->
-                        MetroStation(
-                            id = entity.id.toString(),
-                            name = entity.name,
-                            lines = entity.lines.split(",").filter { it.isNotEmpty() },
-                            latitude = entity.latitude ?: 39.4697,
-                            longitude = entity.longitude ?: -0.3734,
-                            description = entity.zone,
-                            zone = entity.zone
-                        )
-                    }.distinctBy { it.id }
+                val repoStations = com.example.data.repository.MetroRepository(getApplication()).loadMetroStations()
+                if (repoStations.isNotEmpty()) {
+                    _allNetworkStations.value = repoStations.distinctBy { it.id }
                 } else {
-                    val defaultStations = com.example.data.repository.MetroRepository(getApplication()).loadMetroStations()
-                    if (defaultStations.isNotEmpty()) {
-                        _allNetworkStations.value = defaultStations.distinctBy { it.id }
-                    } else {
-                        _allNetworkStations.value = com.example.data.model.ValenciaMetroData.mainMetroStations
-                    }
+                    _allNetworkStations.value = com.example.data.model.ValenciaMetroData.mainMetroStations
                 }
             } catch (e: Exception) {
                 Log.e("BusViewModel", "Error loading metro network stations", e)
@@ -586,17 +575,33 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
 
                 val list: List<EmtBusStop> = when (source) {
                     BusFilterSource.FAVORITES_BUS -> {
-                        val filterIds = if (query.isEmpty()) favs else null
-                        processEmtStops(
-                            baseStops = baseActiveStops,
-                            query = query,
-                            aliases = aliases,
-                            refLat = refLat,
-                            refLon = refLon,
-                            maxDistanceMeters = null,
-                            filterIds = filterIds,
-                            sortByDistance = true
-                        )
+                        if (query.isEmpty()) {
+                            if (favs.isEmpty()) {
+                                emptyList()
+                            } else {
+                                processEmtStops(
+                                    baseStops = baseActiveStops,
+                                    query = "",
+                                    aliases = aliases,
+                                    refLat = refLat,
+                                    refLon = refLon,
+                                    maxDistanceMeters = null,
+                                    filterIds = favs,
+                                    sortByDistance = false
+                                )
+                            }
+                        } else {
+                            processEmtStops(
+                                baseStops = baseActiveStops,
+                                query = query,
+                                aliases = aliases,
+                                refLat = refLat,
+                                refLon = refLon,
+                                maxDistanceMeters = null,
+                                filterIds = if (favs.isNotEmpty()) favs else null,
+                                sortByDistance = true
+                            )
+                        }
                     }
                     BusFilterSource.GPS_USER -> {
                         processEmtStops(
@@ -605,16 +610,16 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                             aliases = aliases,
                             refLat = refLat,
                             refLon = refLon,
-                            maxDistanceMeters = if (loc != null) 2000.0 else null,
+                            maxDistanceMeters = if (loc != null && query.isEmpty()) 500.0 else null,
                             filterIds = null,
                             sortByDistance = true
                         )
                     }
                     BusFilterSource.METRO_STATION -> {
                         val stationId = _selectedMetroStationIdForBus.value ?: "15"
-                        val station = _allNetworkStations.value.find { it.id == stationId }
-                            ?: com.example.data.model.ValenciaMetroData.mainMetroStations.find { it.id == stationId }
-                        val (targetLat, targetLon) = if (station != null) {
+                        val allStations = _allNetworkStations.value.ifEmpty { com.example.data.repository.MetroRepository(getApplication()).loadMetroStations() }
+                        val station = allStations.find { it.id == stationId }
+                        val (targetLat, targetLon) = if (station != null && station.latitude != 0.0) {
                             Pair(station.latitude, station.longitude)
                         } else {
                             BusMapper.getCoordinatesForStation(getApplication(), stationId)
@@ -626,7 +631,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                             aliases = aliases,
                             refLat = targetLat,
                             refLon = targetLon,
-                            maxDistanceMeters = 2000.0,
+                            maxDistanceMeters = if (query.isEmpty()) 500.0 else 1500.0,
                             filterIds = null,
                             sortByDistance = true
                         )
@@ -785,10 +790,8 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             _metrobusStopsLoading.value = true
             try {
-                val success = metrobusRepository.syncStops(forceRefresh = true)
-                if (success) {
-                    Log.d("Metrobus", "Metrobús database refreshed successfully.")
-                }
+                metrobusRepository.syncStops(forceRefresh = true)
+                Log.d("Metrobus", "Metrobús database refreshed successfully.")
             } catch (e: Exception) {
                 Log.e("Metrobus", "Error refreshing Metrobus database", e)
             } finally {
@@ -886,16 +889,31 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
 
                 val filtered: List<MetrobusStop> = when (source) {
                     BusFilterSource.FAVORITES_BUS -> {
-                        val filterIds = if (query.isEmpty()) favs.toSet() else null
-                        processMetrobusStops(
-                            dbStops = baseActiveStops,
-                            query = query,
-                            aliases = aliases,
-                            refLat = refLat,
-                            refLon = refLon,
-                            maxDistanceMeters = null,
-                            filterIds = filterIds
-                        )
+                        if (query.isEmpty()) {
+                            if (favs.isEmpty()) {
+                                emptyList()
+                            } else {
+                                processMetrobusStops(
+                                    dbStops = baseActiveStops,
+                                    query = "",
+                                    aliases = aliases,
+                                    refLat = refLat,
+                                    refLon = refLon,
+                                    maxDistanceMeters = null,
+                                    filterIds = favs.toSet()
+                                )
+                            }
+                        } else {
+                            processMetrobusStops(
+                                dbStops = baseActiveStops,
+                                query = query,
+                                aliases = aliases,
+                                refLat = refLat,
+                                refLon = refLon,
+                                maxDistanceMeters = null,
+                                filterIds = if (favs.isNotEmpty()) favs.toSet() else null
+                            )
+                        }
                     }
                     BusFilterSource.GPS_USER -> {
                         processMetrobusStops(
@@ -910,9 +928,9 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     BusFilterSource.METRO_STATION -> {
                         val stationId = _selectedMetroStationIdForBus.value ?: "15"
-                        val station = _allNetworkStations.value.find { it.id == stationId }
-                            ?: com.example.data.model.ValenciaMetroData.mainMetroStations.find { it.id == stationId }
-                        val (targetLat, targetLon) = if (station != null) {
+                        val allStations = _allNetworkStations.value.ifEmpty { com.example.data.repository.MetroRepository(getApplication()).loadMetroStations() }
+                        val station = allStations.find { it.id == stationId }
+                        val (targetLat, targetLon) = if (station != null && station.latitude != 0.0) {
                             Pair(station.latitude, station.longitude)
                         } else {
                             BusMapper.getCoordinatesForStation(getApplication(), stationId)
@@ -924,7 +942,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                             aliases = aliases,
                             refLat = targetLat,
                             refLon = targetLon,
-                            maxDistanceMeters = if (query.isEmpty()) 2000.0 else null,
+                            maxDistanceMeters = if (query.isEmpty()) 2000.0 else 5000.0,
                             filterIds = null
                         )
                     }

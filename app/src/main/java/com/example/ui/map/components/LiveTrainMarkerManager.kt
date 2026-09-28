@@ -91,7 +91,7 @@ object LiveTrainMarkerManager {
                     val stopIdDigits = railLeg.fromStopId?.filter { it.isDigit() }
 
                     // Find single matching train for this leg
-                    val matchingVehicle = findMatchingTrain(livePositions, tripUpdates, cercaniasLine, stopIdDigits)
+                    val matchingVehicle = findMatchingTrain(livePositions, tripUpdates, cercaniasLine, stopIdDigits, railLeg)
 
                     if (matchingVehicle != null && matchingVehicle.latitude != null && matchingVehicle.longitude != null) {
                         val rawLat = matchingVehicle.latitude
@@ -128,35 +128,50 @@ object LiveTrainMarkerManager {
         livePositions: Map<String, LiveVehicleInfo>,
         tripUpdates: Map<String, com.example.data.repository.renfe.GtfsRtTripUpdate>,
         targetLine: String,
-        targetStopDigits: String?
+        targetStopDigits: String?,
+        railLeg: PlannedLeg? = null
     ): LiveVehicleInfo? {
         val cleanLine = targetLine.replace("-", "").uppercase()
 
-        // 1. Match vehicle by line in routeId or tripId
+        // 1. Direct match with trip updates containing target stop or line
+        if (!targetStopDigits.isNullOrBlank()) {
+            val matchingUpdate = tripUpdates.values.firstOrNull { update ->
+                val lineMatches = cleanLine.isNotBlank() && (update.routeId.contains(cleanLine, ignoreCase = true) || update.tripId.contains(cleanLine, ignoreCase = true))
+                val stopMatches = update.stopDelays.containsKey(targetStopDigits) || update.stopEstimatedTimes.containsKey(targetStopDigits) || update.stopPlatforms.containsKey(targetStopDigits)
+                lineMatches && stopMatches
+            }
+            if (matchingUpdate != null) {
+                val veh = livePositions[matchingUpdate.tripId] ?: livePositions[matchingUpdate.vehicleId]
+                if (veh != null) return veh
+            }
+        }
+
+        // 2. Filter vehicles belonging to the target line
         val lineVehicles = livePositions.values.filter { veh ->
             val routeClean = veh.routeId.replace("-", "").uppercase()
             val tripClean = veh.tripId.replace("-", "").uppercase()
             (cleanLine.isNotBlank() && (routeClean.contains(cleanLine) || tripClean.contains(cleanLine)))
         }
 
-        if (lineVehicles.isNotEmpty()) {
-            // Pick the vehicle nearest or active for this trip
-            return lineVehicles.first()
+        if (lineVehicles.isEmpty()) return null
+
+        // 3. If railLeg is available, pick the vehicle closest to the fromStop or moving towards the destination
+        if (railLeg != null && railLeg.fromLat != 0.0) {
+            val fromP = GeoPoint(railLeg.fromLat, railLeg.fromLon)
+            val toP = GeoPoint(railLeg.toLat, railLeg.toLon)
+
+            val bestCandidate = lineVehicles.minByOrNull { veh ->
+                if (veh.latitude != null && veh.longitude != null) {
+                    val vehP = GeoPoint(veh.latitude, veh.longitude)
+                    val distFromOrigin = distanceMeters(vehP, fromP)
+                    val distFromDest = distanceMeters(vehP, toP)
+                    distFromOrigin + (distFromDest * 0.5)
+                } else Double.MAX_VALUE
+            }
+            if (bestCandidate != null) return bestCandidate
         }
 
-        // 2. Fallback: match by tripUpdates containing target stop or line
-        val matchingUpdate = tripUpdates.values.firstOrNull { update ->
-            val tripId = update.tripId
-            val lineMatches = cleanLine.isNotBlank() && tripId.contains(cleanLine, ignoreCase = true)
-            val stopMatches = !targetStopDigits.isNullOrBlank() && (update.stopDelays.containsKey(targetStopDigits) || update.stopEstimatedTimes.containsKey(targetStopDigits))
-            lineMatches || stopMatches
-        }
-
-        if (matchingUpdate != null) {
-            return livePositions[matchingUpdate.tripId]
-        }
-
-        return null
+        return lineVehicles.firstOrNull()
     }
 
     /**

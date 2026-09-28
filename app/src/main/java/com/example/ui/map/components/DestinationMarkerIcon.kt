@@ -563,15 +563,22 @@ private fun createTransferMarkerDrawable(context: Context, colorHex: String, lab
     return BitmapDrawable(context.resources, bitmap)
 }
 
+private val stopDotIconCache = LruCache<String, Bitmap>(128)
+private val transferLabelIconCache = LruCache<String, Bitmap>(64)
+
 internal fun createStopDotWithTextIcon(context: Context, stopName: String, zoom: Double, isDarkMode: Boolean): Bitmap {
+    val showText = zoom >= 14.5
+    val cacheKey = "${stopName}_${showText}_$isDarkMode"
+    val cached = stopDotIconCache.get(cacheKey)
+    if (cached != null && !cached.isRecycled) {
+        return cached
+    }
+
     val density = context.resources.displayMetrics.density
     
     // Dot configuration
     val dotRadius = 4f * density
     val borderSize = 1.2f * density
-    
-    // Determine whether to show text based on zoom
-    val showText = zoom >= 14.5
     
     val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 10f * density
@@ -641,10 +648,17 @@ internal fun createStopDotWithTextIcon(context: Context, stopName: String, zoom:
         canvas.drawText(stopName, textOffset, textBaseline, textPaint)
     }
     
+    stopDotIconCache.put(cacheKey, bitmap)
     return bitmap
 }
 
 internal fun createTransferLabelIcon(context: Context, labelText: String, zoom: Double, isDarkMode: Boolean): Bitmap {
+    val cacheKey = "${labelText}_$isDarkMode"
+    val cached = transferLabelIconCache.get(cacheKey)
+    if (cached != null && !cached.isRecycled) {
+        return cached
+    }
+
     val density = context.resources.displayMetrics.density
     
     // Dot configuration (slightly larger than regular stop dot)
@@ -710,6 +724,7 @@ internal fun createTransferLabelIcon(context: Context, labelText: String, zoom: 
     canvas.drawText(labelText, textOffset, textBaseline, haloPaint)
     canvas.drawText(labelText, textOffset, textBaseline, textPaint)
     
+    transferLabelIconCache.put(cacheKey, bitmap)
     return bitmap
 }
 

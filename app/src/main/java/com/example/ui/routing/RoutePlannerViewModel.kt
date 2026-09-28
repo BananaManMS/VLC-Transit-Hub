@@ -62,7 +62,7 @@ class RoutePlannerViewModel @JvmOverloads constructor(
 
     private val database = AppDatabase.getDatabase(application)
     private val dashboardRepository = DashboardRepository(application, database)
-    private val unifiedSearchEngine = UnifiedSearchEngine(database, geocodingRepository)
+    private val unifiedSearchEngine = UnifiedSearchEngine(application.applicationContext, database, geocodingRepository)
     private val gson = Gson()
 
     private val _origin = MutableStateFlow<PlannerLocation?>(null)

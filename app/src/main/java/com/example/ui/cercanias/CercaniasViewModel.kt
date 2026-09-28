@@ -190,11 +190,14 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
             val savedLang = repository.getPreference("app_language", "CA")
             _appLanguage.value = try { AppLanguage.valueOf(savedLang) } catch (e: Exception) { AppLanguage.CA }
 
-            renfeRepository.initDatabaseFromAssetsIfNeeded()
-            renfeRepository.syncScheduleFromRemoteIfNeeded()
+            val isOnboardingCompleted = repository.getPreference("has_completed_onboarding", "false") == "true"
+            if (isOnboardingCompleted) {
+                renfeRepository.initDatabaseFromAssetsIfNeeded()
+                renfeRepository.syncScheduleFromRemoteIfNeeded()
+            }
 
             val savedCercaniasFavs = repository.getPreference("favorite_cercanias_stations", "")
-            if (savedCercaniasFavs.isNotBlank()) {
+            if (savedCercaniasFavs.isNotBlank() && isOnboardingCompleted) {
                 val favIds = savedCercaniasFavs.split(",").filter { it.isNotBlank() }.toSet()
                 val all = renfeRepository.getAllStations()
                 if (all.any { it.stop_id in favIds && !it.isFavorite }) {
@@ -256,7 +259,11 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
 
                         val currentSelected = _selectedCercaniasDeparture.value
                         if (currentSelected != null) {
-                            val updated = filteredAndSorted.find { it.tripId == currentSelected.tripId && it.routeId == currentSelected.routeId }
+                            val updated = filteredAndSorted.find {
+                                it.tripId == currentSelected.tripId ||
+                                (it.departureTime == currentSelected.departureTime && it.routeId == currentSelected.routeId) ||
+                                (it.allTripIds.isNotEmpty() && currentSelected.allTripIds.isNotEmpty() && it.allTripIds.any { id -> currentSelected.allTripIds.contains(id) })
+                            }
                             if (updated != null) {
                                 _selectedCercaniasDeparture.value = updated
                             }
@@ -277,13 +284,9 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                 }
                 
-                // Adaptive polling delay based on closest departure
+                // Polling delay: guaranteed refresh every 30s (20s if departure is imminent)
                 val minMins = _cercaniasDepartures.value.minOfOrNull { it.minutesRemaining } ?: 999
-                val nextDelayMs = when {
-                    minMins < 3 -> 20000L   // <3 min -> 20s
-                    minMins <= 10 -> 30000L // 3 to 10 min -> 30s
-                    else -> 60000L          // >10 min -> 60s
-                }
+                val nextDelayMs = if (minMins < 3) 20000L else 30000L
                 delay(nextDelayMs)
             }
         }
@@ -320,12 +323,14 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         if (isUserAction) {
             hasUserManuallySelectedStation = true
         }
-        if (_cercaniasSelectedStationId.value == stationId) return
+        val isSameStation = _cercaniasSelectedStationId.value == stationId
         _cercaniasSelectedStationId.value = stationId
-        _cercaniasDepartures.value = emptyList()
-        _cercaniasLoading.value = true
-        _cercaniasError.value = null
-        fetchCercaniasDepartures()
+        if (!isSameStation || _cercaniasDepartures.value.isEmpty()) {
+            _cercaniasDepartures.value = emptyList()
+            _cercaniasLoading.value = true
+            _cercaniasError.value = null
+            fetchCercaniasDepartures()
+        }
     }
 
     fun selectCercaniasDepartureDetails(departure: CercaniasDeparture) {
@@ -387,7 +392,18 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                 station.copy(isFavorite = stations.contains(station.stop_id))
             }
             renfeRepository.updateAllStations(updated)
+            _allCercaniasStations.value = renfeRepository.getAllStations()
         }
+    }
+
+    fun toggleFavoriteCercaniasStation(stationId: String) {
+        val currentFavs = _cercaniasFavoriteStations.value.map { it.stop_id.ifBlank { it.id } }.toMutableList()
+        if (currentFavs.contains(stationId)) {
+            currentFavs.remove(stationId)
+        } else {
+            currentFavs.add(stationId)
+        }
+        updateCercaniasFavoriteStations(currentFavs)
     }
 
 

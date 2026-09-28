@@ -62,9 +62,7 @@ object CercaniasStationHighlightManager {
         }
 
         val station = selectedMapItem.station
-        val rawLines = station.lineas.ifEmpty {
-            station.lines.split(",").map { it.trim() }
-        }
+        val rawLines = station.lineas.ifEmpty { station.lines }
 
         val activeRefs = rawLines
             .map { normalizeLineRef(it) }
@@ -103,7 +101,7 @@ object CercaniasStationHighlightManager {
             return ACTIVE_ALPHA_MARKER
         }
 
-        val stationLines = (station.lineas.ifEmpty { station.lines.split(",").map { it.trim() } })
+        val stationLines = station.lineas.ifEmpty { station.lines }
             .map { normalizeLineRef(it) }
             .filter { it.isNotEmpty() }
 

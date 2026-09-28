@@ -1,10 +1,12 @@
 package com.example.ui.metro
+import com.example.data.model.MetroScheduledDeparture
 import com.example.ui.components.MetroDepartureSkeletonCard
 import com.example.ui.components.SkeletonCardItem
 import com.example.ui.components.TransitPullRefreshIndicator
+import com.example.ui.components.StationAccessibilityBadge
+import com.example.ui.components.computeMetroStationAccessibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,16 +25,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Accessible
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.NotAccessible
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
-import com.example.util.StationAccessibilityHelper
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
@@ -126,6 +125,7 @@ fun ProximosTrenesScreen(
     val lineStationsMap by metroViewModel.lineStationsState.collectAsState()
     val activeIncidents by metroViewModel.activeIncidents.collectAsState()
     val stationAforoBloqueado by metroViewModel.stationAforoBloqueado.collectAsState()
+    val accessibilityIncidents by metroViewModel.accessibilityIncidents.collectAsState()
 
     val sheetState = rememberModalBottomSheetState()
     val metroScheduleViewModel: MetroScheduleViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
@@ -199,17 +199,38 @@ fun ProximosTrenesScreen(
     val stationDisplayName = selectedStation?.name ?: "Selecciona una estación"
     val isStationInfoExpanded by metroViewModel.isStationInfoExpanded.collectAsState()
 
-    val accessibilityIncidents by metroViewModel.accessibilityIncidents.collectAsState()
-    val matchingAccessibilityAlerts = remember(selectedStation, accessibilityIncidents) {
-        if (selectedStation == null) emptyList()
-        else {
-            accessibilityIncidents.filter { incident ->
-                StationAccessibilityHelper.isMetroStationAffected(selectedStation.id, selectedStation.name, incident)
-            }
+    val isSingleLineStation = remember(selectedStation) {
+        selectedStation != null && selectedStation.lines.size == 1
+    }
+
+    val onScheduledDepartureClick: (MetroScheduledDeparture) -> Unit = remember(appLanguage) {
+        { scheduledItem ->
+            val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
+            val currentMinOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+            val diffMin = (scheduledItem.timeMinutes - currentMinOfDay).coerceAtLeast(0)
+            val cleanLine = scheduledItem.line.replace("L", "", ignoreCase = true).trim()
+            val lineHex = com.example.util.LineColorResolver.getMetroLineColorHex("L$cleanLine")
+            val realTimeDep = RealTimeDeparture(
+                lineId = "L$cleanLine",
+                destination = scheduledItem.destinationName,
+                minutesRemaining = diffMin,
+                secondsRemaining = diffMin * 60,
+                colorHex = lineHex,
+                estimatedTime = scheduledItem.timeFormatted,
+                status = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
+                track = null,
+                capacidad = null,
+                aforoBloqueado = null,
+                vehicleId = null,
+                trainServiceId = scheduledItem.trainServiceId,
+                originStationName = scheduledItem.originName,
+                originWebId = scheduledItem.originWebId,
+                destinationWebId = scheduledItem.destinationWebId,
+                id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}"
+            )
+            metroViewModel.selectDepartureDetails(realTimeDep)
         }
     }
-    val hasAccessibilityIssue = matchingAccessibilityAlerts.isNotEmpty()
-    var showAccessibilityDialog by remember { mutableStateOf(false) }
 
     // Agrupamos las salidas en tiempo real por línea y dirección (cada línea+dirección en un mismo cuadro)
     val lineDepartureGroups = remember(
@@ -309,7 +330,8 @@ fun ProximosTrenesScreen(
             ) {
                 Row(
                     modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = stationDisplayName,
@@ -318,30 +340,14 @@ fun ProximosTrenesScreen(
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.testTag("proximas_salidas_header_text")
                     )
-                    if (selectedStation != null) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        IconButton(
-                            onClick = {
-                                if (hasAccessibilityIssue) {
-                                    showAccessibilityDialog = true
-                                }
-                            },
-                            modifier = Modifier
-                                .size(32.dp)
-                                .testTag("metro_accessibility_icon_btn")
-                        ) {
-                            Icon(
-                                imageVector = if (hasAccessibilityIssue) Icons.Default.NotAccessible else Icons.Default.Accessible,
-                                contentDescription = if (hasAccessibilityIssue) {
-                                    if (appLanguage == AppLanguage.CA) "Incidència d'accessibilitat" else "Incidencia de accesibilidad"
-                                } else {
-                                    if (appLanguage == AppLanguage.CA) "Estació accessible" else "Estación accesible"
-                                },
-                                tint = if (hasAccessibilityIssue) Color(0xFFE53935) else (if (isDarkMode) Color(0xFF4CAF50) else Color(0xFF2E7D32)),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                    val accInfo = remember(selectedStationId, stationDisplayName, accessibilityIncidents) {
+                        computeMetroStationAccessibility(selectedStationId, stationDisplayName, accessibilityIncidents)
                     }
+                    StationAccessibilityBadge(
+                        accessibilityInfo = accInfo,
+                        appLanguage = appLanguage,
+                        isDarkMode = isDarkMode
+                    )
                 }
                 IconButton(
                     onClick = {
@@ -357,22 +363,10 @@ fun ProximosTrenesScreen(
                     Icon(
                         imageVector = Icons.Default.Info,
                         contentDescription = "Información de la estación",
-                        tint = if (isDarkMode) Color.White.copy(alpha = 0.7f) else Color(0xFF64748B),
+                        tint = if (isStationInfoExpanded) MaterialTheme.colorScheme.primary else (if (isDarkMode) Color.White.copy(alpha = 0.7f) else Color(0xFF64748B)),
                         modifier = Modifier.size(18.dp)
                     )
                 }
-            }
-
-            if (showAccessibilityDialog && hasAccessibilityIssue) {
-                val rawAlerts = matchingAccessibilityAlerts.map {
-                    it.descripcionEs.ifBlank { it.descripcionCa }.ifBlank { it.tituloEs }
-                }
-                com.example.ui.components.AccessibilityAlertsDialog(
-                    stationName = stationDisplayName,
-                    rawAlerts = rawAlerts,
-                    appLanguage = appLanguage,
-                    onDismiss = { showAccessibilityDialog = false }
-                )
             }
 
             if (!isOnline) {
@@ -454,7 +448,8 @@ fun ProximosTrenesScreen(
                     ) {
                         SelectedStationInfoCard(
                             isStationInfoExpanded = isStationInfoExpanded,
-                            selectedStation = selectedStation
+                            selectedStation = selectedStation,
+                            isDarkMode = isDarkMode
                         )
 
                         val currentAforo = stationAforoBloqueado
@@ -534,7 +529,7 @@ fun ProximosTrenesScreen(
                                             onClick = {
                                                 val stId = selectedStation?.id ?: selectedStationId
                                                 val stName = selectedStation?.name ?: "Estación"
-                                                metroScheduleViewModel.showScheduledDepartures(stId, stName)
+                                                metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
                                             },
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -567,61 +562,36 @@ fun ProximosTrenesScreen(
                                 selectedStation = selectedStation,
                                 onRetry = { metroViewModel.fetchRealTimeDepartures(selectedStationId) },
                                 onShowScheduled = { stId, stName ->
-                                    metroScheduleViewModel.showScheduledDepartures(stId, stName)
-                                }
-                            )
-
-                            // Estirar hacia arriba / Ver siguientes trenes programados
-                            MetroStretchPullUpFooter(
-                                scheduledDepartures = deduplicatedScheduledDepartures,
-                                isLoading = isLoadingInlineTheoretical,
-                                isLoaded = isInlineTheoreticalLoaded,
-                                appLanguage = appLanguage,
-                                isDarkMode = isDarkMode,
-                                stretchState = pullUpStretchState,
-                                availableLines = availableLines,
-                                selectedLineFilter = selectedLineFilter,
-                                onLineFilterSelected = { line ->
-                                    metroScheduleViewModel.setLineFilter(line)
-                                },
-                                onTriggerLoad = {
-                                    val stId = selectedStation?.id ?: selectedStationId
-                                    val stName = selectedStation?.name ?: "Estación"
                                     metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
-                                },
-                                onReset = {
-                                    metroScheduleViewModel.resetInlineTheoreticalDepartures()
-                                },
-                                onDepartureClick = { scheduledItem ->
-                                    val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
-                                    val currentMinOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
-                                    val diffMin = (scheduledItem.timeMinutes - currentMinOfDay).coerceAtLeast(0)
-                                    val cleanLine = scheduledItem.line.replace("L", "", ignoreCase = true).trim()
-                                    val lineHex = com.example.util.LineColorResolver.getMetroLineColorHex("L$cleanLine")
-                                    val realTimeDep = RealTimeDeparture(
-                                        lineId = "L$cleanLine",
-                                        destination = scheduledItem.destinationName,
-                                        minutesRemaining = diffMin,
-                                        secondsRemaining = diffMin * 60,
-                                        colorHex = lineHex,
-                                        estimatedTime = scheduledItem.timeFormatted,
-                                        status = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
-                                        track = null,
-                                        capacidad = null,
-                                        aforoBloqueado = null,
-                                        vehicleId = null,
-                                        trainServiceId = scheduledItem.trainServiceId,
-                                        originStationName = scheduledItem.originName,
-                                        originWebId = scheduledItem.originWebId,
-                                        destinationWebId = scheduledItem.destinationWebId,
-                                        id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}"
-                                    )
-                                    metroViewModel.selectDepartureDetails(realTimeDep)
                                 }
                             )
                         } else {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 lineDepartureGroups.forEach { lineGroup ->
+                                    if (isSingleLineStation) {
+                                        val dirIcon = if (lineGroup.direction == 0) Icons.AutoMirrored.Filled.ArrowBack else Icons.AutoMirrored.Filled.ArrowForward
+                                        val dirTerminus = lineGroup.directionTerminusName ?: lineGroup.primaryDestination
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 4.dp, top = 6.dp, bottom = 6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = dirIcon,
+                                                contentDescription = null,
+                                                tint = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "Dir. $dirTerminus",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+                                            )
+                                        }
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -640,56 +610,31 @@ fun ProximosTrenesScreen(
                                     }
                                 }
                             }
-
-                            // Elastic stretch pull-up footer
-                            MetroStretchPullUpFooter(
-                                scheduledDepartures = deduplicatedScheduledDepartures,
-                                isLoading = isLoadingInlineTheoretical,
-                                isLoaded = isInlineTheoreticalLoaded,
-                                appLanguage = appLanguage,
-                                isDarkMode = isDarkMode,
-                                stretchState = pullUpStretchState,
-                                availableLines = availableLines,
-                                selectedLineFilter = selectedLineFilter,
-                                onLineFilterSelected = { line ->
-                                    metroScheduleViewModel.setLineFilter(line)
-                                },
-                                onTriggerLoad = {
-                                    val stId = selectedStation?.id ?: selectedStationId
-                                    val stName = selectedStation?.name ?: "Estación"
-                                    metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
-                                },
-                                onReset = {
-                                    metroScheduleViewModel.resetInlineTheoreticalDepartures()
-                                },
-                                onDepartureClick = { scheduledItem ->
-                                    val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
-                                    val currentMinOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
-                                    val diffMin = (scheduledItem.timeMinutes - currentMinOfDay).coerceAtLeast(0)
-                                    val cleanLine = scheduledItem.line.replace("L", "", ignoreCase = true).trim()
-                                    val lineHex = com.example.util.LineColorResolver.getMetroLineColorHex("L$cleanLine")
-                                    val realTimeDep = RealTimeDeparture(
-                                        lineId = "L$cleanLine",
-                                        destination = scheduledItem.destinationName,
-                                        minutesRemaining = diffMin,
-                                        secondsRemaining = diffMin * 60,
-                                        colorHex = lineHex,
-                                        estimatedTime = scheduledItem.timeFormatted,
-                                        status = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
-                                        track = null,
-                                        capacidad = null,
-                                        aforoBloqueado = null,
-                                        vehicleId = null,
-                                        trainServiceId = scheduledItem.trainServiceId,
-                                        originStationName = scheduledItem.originName,
-                                        originWebId = scheduledItem.originWebId,
-                                        destinationWebId = scheduledItem.destinationWebId,
-                                        id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}"
-                                    )
-                                    metroViewModel.selectDepartureDetails(realTimeDep)
-                                }
-                            )
                         }
+
+                        // Elastic stretch pull-up footer for theoretical scheduled departures (integrated across all states: offline, empty, and live)
+                        MetroStretchPullUpFooter(
+                            scheduledDepartures = deduplicatedScheduledDepartures,
+                            isLoading = isLoadingInlineTheoretical,
+                            isLoaded = isInlineTheoreticalLoaded,
+                            appLanguage = appLanguage,
+                            isDarkMode = isDarkMode,
+                            stretchState = pullUpStretchState,
+                            availableLines = availableLines,
+                            selectedLineFilter = selectedLineFilter,
+                            onLineFilterSelected = { line ->
+                                metroScheduleViewModel.setLineFilter(line)
+                            },
+                            onTriggerLoad = {
+                                val stId = selectedStation?.id ?: selectedStationId
+                                val stName = selectedStation?.name ?: "Estación"
+                                metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
+                            },
+                            onReset = {
+                                metroScheduleViewModel.resetInlineTheoreticalDepartures()
+                            },
+                            onDepartureClick = onScheduledDepartureClick
+                        )
                     }
                 }
             }
@@ -700,9 +645,9 @@ fun ProximosTrenesScreen(
             stationName = selectedStation?.name ?: "Estación",
             scheduledDepartures = scheduledDepartures,
             isLoading = isLoadingScheduled,
-            onDismiss = { metroScheduleViewModel.dismissScheduledDepartures() },
             appLanguage = appLanguage,
             isDarkMode = isDarkMode,
+            onDismiss = { metroScheduleViewModel.dismissScheduledDepartures() },
             onDepartureClick = { scheduledItem ->
                 metroScheduleViewModel.dismissScheduledDepartures()
                 val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))

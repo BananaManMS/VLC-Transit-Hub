@@ -58,6 +58,7 @@ object MapOverlaysComposer {
         val validMetroStations: List<com.example.data.model.MetroStation> = emptyList(),
         val selectedBusLineFilters: Set<String> = emptySet(),
         val selectedMetrobusShapes: Map<String, List<GeoPoint>> = emptyMap(),
+        val selectedDirectionFilter: String? = null,
         val onSelectItem: ((com.example.ui.map.SelectedMapItem) -> Unit)? = null
     )
 
@@ -69,7 +70,11 @@ object MapOverlaysComposer {
         p.mapEventsOverlay?.let { p.mapView.overlays.add(it) }
 
         val metroHighlight = MetroStationHighlightManager.getHighlightState(p.selectedMapItem)
-        val emtHighlight = EmtStationHighlightManager.getHighlightState(p.selectedMapItem, p.selectedBusLineFilters)
+        val emtHighlight = EmtStationHighlightManager.getHighlightState(
+            selectedMapItem = p.selectedMapItem,
+            isolatedLineFilters = p.selectedBusLineFilters,
+            selectedDirectionFilter = p.selectedDirectionFilter
+        )
         val cercaniasHighlight = CercaniasStationHighlightManager.getHighlightState(p.selectedMapItem, p.selectedBusLineFilters)
         val mbHighlight = MetrobusStationHighlightManager.getHighlightState(p.selectedMapItem, p.selectedBusLineFilters)
 
@@ -126,11 +131,16 @@ object MapOverlaysComposer {
 
         // Add active Metrobús line polylines when a Metrobús stop is selected
         if (p.selectedMapItem is com.example.ui.map.SelectedMapItem.MetrobusStopItem && p.selectedItinerary == null) {
+            val stopLoc = GeoPoint(p.selectedMapItem.stop.lat, p.selectedMapItem.stop.lon)
             MetrobusStationHighlightManager.addMetrobusPolylinesToMap(
                 mapView = p.mapView,
                 selectedMetrobusShapes = p.selectedMetrobusShapes,
-                currentZoom = p.currentZoom
+                currentZoom = p.currentZoom,
+                stopLocation = stopLoc,
+                selectedDirection = p.selectedDirectionFilter
             )
+        } else {
+            MetrobusStationHighlightManager.clearPolylines(p.mapView)
         }
 
         // In "Ruta Activa" mode (selectedItinerary != null), hide all secondary layers

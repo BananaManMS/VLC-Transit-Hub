@@ -241,6 +241,8 @@ object BusMapper {
         return list
     }
 
+    private val MADRID_ZONE = java.util.TimeZone.getTimeZone("Europe/Madrid")
+
     private fun buildEmtBusTime(
         linea: String,
         destino: String,
@@ -249,19 +251,24 @@ object BusMapper {
     ): EmtBusTime? {
         var minutesClean = minutosRaw.trim()
         val now = System.currentTimeMillis()
+        val lowerClean = minutesClean.lowercase(Locale.ROOT)
+        var explicitSeconds: Int? = null
 
-        if (minutesClean.lowercase(Locale.ROOT).startsWith("pr")) {
+        if (lowerClean.startsWith("pr") || lowerClean.contains("lleg") || lowerClean.contains("immin") || lowerClean == "0") {
             minutesClean = "1"
+            explicitSeconds = 30
         } else if (minutesClean.contains(":")) {
             // It's already an "HH:mm" time! Calculate remaining minutes
             val parts = minutesClean.split(":")
-            val cal = Calendar.getInstance()
+            val cal = Calendar.getInstance(MADRID_ZONE)
             cal.set(Calendar.HOUR_OF_DAY, parts[0].toIntOrNull() ?: 0)
             cal.set(Calendar.MINUTE, parts[1].toIntOrNull() ?: 0)
             cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
             val diffMins = ((cal.timeInMillis - now) / 60000L).toInt()
             if (diffMins in 0..180) {
                 minutesClean = diffMins.coerceAtLeast(1).toString()
+                explicitSeconds = diffMins * 60
             }
         } else {
             val digits = minutesClean.filter { it.isDigit() }
@@ -269,13 +276,15 @@ object BusMapper {
                 // Formatted like HHmm or HHmmss
                 val hh = digits.substring(0, 2).toIntOrNull() ?: 0
                 val mm = digits.substring(2, 4).toIntOrNull() ?: 0
-                val cal = Calendar.getInstance()
+                val cal = Calendar.getInstance(MADRID_ZONE)
                 cal.set(Calendar.HOUR_OF_DAY, hh)
                 cal.set(Calendar.MINUTE, mm)
                 cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
                 val diffMins = ((cal.timeInMillis - now) / 60000L).toInt()
                 if (diffMins in 0..180) {
                     minutesClean = diffMins.coerceAtLeast(1).toString()
+                    explicitSeconds = diffMins * 60
                 } else {
                     minutesClean = "$hh:$mm"
                 }
@@ -288,9 +297,11 @@ object BusMapper {
         if (finalHoraLlegada.isEmpty() && minutesClean.isNotEmpty() && !minutesClean.contains(":")) {
             val mins = minutesClean.toIntOrNull()
             if (mins != null) {
-                val cal = Calendar.getInstance()
+                val cal = Calendar.getInstance(MADRID_ZONE)
                 cal.add(Calendar.MINUTE, mins)
-                val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                val sdf = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
+                    timeZone = MADRID_ZONE
+                }
                 finalHoraLlegada = sdf.format(cal.time)
             }
         } else if (minutesClean.contains(":")) {
@@ -301,7 +312,7 @@ object BusMapper {
         }
 
         val minsInt = minutesClean.toIntOrNull()
-        val secs = if (minsInt != null) minsInt * 60 else -1
+        val secs = explicitSeconds ?: (if (minsInt != null) minsInt * 60 else -1)
 
         return EmtBusTime(
             linea = linea,

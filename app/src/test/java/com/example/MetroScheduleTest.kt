@@ -58,10 +58,10 @@ class MetroScheduleTest {
         // so that trains departing in the current minute that already passed never leak into scheduled list
         val currentMin = 14 * 60 + 55 // 895
         val sampleDepartures = listOf(
-            MetroScheduledDeparture(0, 14 * 60 + 44, "14:44", "3", 10, "Aeroport", 84, "Rafelbunyol", 101),
-            MetroScheduledDeparture(0, 14 * 60 + 54, "14:54", "3", 10, "Aeroport", 84, "Rafelbunyol", 102),
-            MetroScheduledDeparture(0, 14 * 60 + 55, "14:55", "3", 10, "Aeroport", 84, "Rafelbunyol", 103),
-            MetroScheduledDeparture(0, 15 * 60 + 10, "15:10", "3", 10, "Aeroport", 84, "Rafelbunyol", 104)
+            MetroScheduledDeparture(line = "3", destination = "Rafelbunyol", departureTime = "14:44", timeMinutes = 14 * 60 + 44, timeFormatted = "14:44"),
+            MetroScheduledDeparture(line = "3", destination = "Rafelbunyol", departureTime = "14:54", timeMinutes = 14 * 60 + 54, timeFormatted = "14:54"),
+            MetroScheduledDeparture(line = "3", destination = "Rafelbunyol", departureTime = "14:55", timeMinutes = 14 * 60 + 55, timeFormatted = "14:55"),
+            MetroScheduledDeparture(line = "3", destination = "Rafelbunyol", departureTime = "15:10", timeMinutes = 15 * 60 + 10, timeFormatted = "15:10")
         )
 
         val deduplicated = com.example.ui.metro.MetroScheduleDeduplicator.deduplicate(
@@ -115,16 +115,16 @@ class MetroScheduleTest {
 
         val scheduledDepartures = listOf(
             // L3 Rafelbunyol:
-            MetroScheduledDeparture(0, 12 * 60 + 30, "12:30", "3", 10, "Aeroport", 84, "Rafelbunyol", 101), // Departed -> EXCLUDE
-            MetroScheduledDeparture(0, 12 * 60 + 35, "12:35", "3", 10, "Aeroport", 84, "Rafelbunyol", 102), // In live panel -> EXCLUDE
-            MetroScheduledDeparture(0, 12 * 60 + 48, "12:48", "3", 10, "Aeroport", 84, "Rafelbunyol", 103), // In live panel -> EXCLUDE
-            MetroScheduledDeparture(0, 13 * 60 + 0, "13:00", "3", 10, "Aeroport", 84, "Rafelbunyol", 104),  // Next upcoming -> INCLUDE
+            MetroScheduledDeparture(line = "3", destination = "Rafelbunyol", departureTime = "12:30", timeMinutes = 12 * 60 + 30, timeFormatted = "12:30"), // Departed -> EXCLUDE
+            MetroScheduledDeparture(line = "3", destination = "Rafelbunyol", departureTime = "12:35", timeMinutes = 12 * 60 + 35, timeFormatted = "12:35"), // In live panel -> EXCLUDE
+            MetroScheduledDeparture(line = "3", destination = "Rafelbunyol", departureTime = "12:48", timeMinutes = 12 * 60 + 48, timeFormatted = "12:48"), // In live panel -> EXCLUDE
+            MetroScheduledDeparture(line = "3", destination = "Rafelbunyol", departureTime = "13:00", timeMinutes = 13 * 60 + 0, timeFormatted = "13:00"),  // Next upcoming -> INCLUDE
             // L5 Marítim:
-            MetroScheduledDeparture(0, 12 * 60 + 38, "12:38", "5", 10, "Aeroport", 120, "Marítim", 105),    // In live panel -> EXCLUDE
-            MetroScheduledDeparture(0, 12 * 60 + 50, "12:50", "5", 10, "Aeroport", 120, "Marítim", 106),    // Next upcoming -> INCLUDE
+            MetroScheduledDeparture(line = "5", destination = "Marítim", departureTime = "12:38", timeMinutes = 12 * 60 + 38, timeFormatted = "12:38"),    // In live panel -> EXCLUDE
+            MetroScheduledDeparture(line = "5", destination = "Marítim", departureTime = "12:50", timeMinutes = 12 * 60 + 50, timeFormatted = "12:50"),    // Next upcoming -> INCLUDE
             // L9 Riba-roja (No live trains right now):
-            MetroScheduledDeparture(0, 12 * 60 + 30, "12:30", "9", 84, "Rafelbunyol", 130, "Riba-roja", 107), // Departed -> EXCLUDE
-            MetroScheduledDeparture(0, 12 * 60 + 45, "12:45", "9", 84, "Rafelbunyol", 130, "Riba-roja", 108)  // Next upcoming -> INCLUDE
+            MetroScheduledDeparture(line = "9", destination = "Riba-roja", departureTime = "12:30", timeMinutes = 12 * 60 + 30, timeFormatted = "12:30"), // Departed -> EXCLUDE
+            MetroScheduledDeparture(line = "9", destination = "Riba-roja", departureTime = "12:45", timeMinutes = 12 * 60 + 45, timeFormatted = "12:45")  // Next upcoming -> INCLUDE
         )
 
         val deduplicated = com.example.ui.metro.MetroScheduleDeduplicator.deduplicate(
@@ -145,10 +145,10 @@ class MetroScheduleTest {
     fun testLineFilterInDeduplication() {
         val currentMin = 12 * 60
         val sampleDepartures = listOf(
-            MetroScheduledDeparture(0, 12 * 60 + 10, "12:10", "3", 10, "Aeroport", 84, "Rafelbunyol", 101),
-            MetroScheduledDeparture(0, 12 * 60 + 15, "12:15", "5", 120, "Marítim", 10, "Aeroport", 102),
-            MetroScheduledDeparture(0, 12 * 60 + 20, "12:20", "3", 10, "Aeroport", 84, "Rafelbunyol", 103),
-            MetroScheduledDeparture(0, 12 * 60 + 25, "12:25", "9", 84, "Rafelbunyol", 130, "Riba-roja", 104)
+            MetroScheduledDeparture(line = "3", destination = "Aeroport", departureTime = "12:10", timeMinutes = 12 * 60 + 10, timeFormatted = "12:10"),
+            MetroScheduledDeparture(line = "5", destination = "Marítim", departureTime = "12:15", timeMinutes = 12 * 60 + 15, timeFormatted = "12:15"),
+            MetroScheduledDeparture(line = "3", destination = "Aeroport", departureTime = "12:20", timeMinutes = 12 * 60 + 20, timeFormatted = "12:20"),
+            MetroScheduledDeparture(line = "9", destination = "Rafelbunyol", departureTime = "12:25", timeMinutes = 12 * 60 + 25, timeFormatted = "12:25")
         )
 
         val l3Only = com.example.ui.metro.MetroScheduleDeduplicator.deduplicate(
@@ -166,10 +166,10 @@ class MetroScheduleTest {
     fun testSingleLineStationShowsAllDayDepartures() {
         val currentMin = 10 * 60 // 10:00 (600 min)
         val fullDayDepartures = listOf(
-            MetroScheduledDeparture(0, 10 * 60 + 15, "10:15", "1", 1, "Bétera", 2, "Villanueva", 201),
-            MetroScheduledDeparture(0, 12 * 60 + 0, "12:00", "1", 1, "Bétera", 2, "Villanueva", 202),
-            MetroScheduledDeparture(0, 15 * 60 + 30, "15:30", "1", 1, "Bétera", 2, "Villanueva", 203), // > 3 hours
-            MetroScheduledDeparture(0, 21 * 60 + 45, "21:45", "1", 1, "Bétera", 2, "Villanueva", 204)  // > 11 hours
+            MetroScheduledDeparture(line = "1", destination = "Bétera", departureTime = "10:15", timeMinutes = 10 * 60 + 15, timeFormatted = "10:15"),
+            MetroScheduledDeparture(line = "1", destination = "Bétera", departureTime = "12:00", timeMinutes = 12 * 60 + 0, timeFormatted = "12:00"),
+            MetroScheduledDeparture(line = "1", destination = "Bétera", departureTime = "15:30", timeMinutes = 15 * 60 + 30, timeFormatted = "15:30"),
+            MetroScheduledDeparture(line = "1", destination = "Bétera", departureTime = "21:45", timeMinutes = 21 * 60 + 45, timeFormatted = "21:45")
         )
 
         val deduplicated = com.example.ui.metro.MetroScheduleDeduplicator.deduplicate(

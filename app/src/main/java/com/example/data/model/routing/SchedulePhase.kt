@@ -6,9 +6,7 @@ package com.example.data.model.routing
  * and telemetry actively verified in real-time.
  */
 enum class SchedulePhase {
-    /** Timetable is theoretical or scheduled; system is waiting to acquire live radar/telemetry */
+    THEORETICAL,
     THEORETICAL_AWAITING_RADAR,
-
-    /** Active live telemetry acquired (vehicleId, live delay, or GPS trip update locked) */
     LIVE_ACQUIRED
 }

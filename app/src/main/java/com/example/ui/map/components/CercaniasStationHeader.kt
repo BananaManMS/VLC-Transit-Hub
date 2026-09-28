@@ -177,7 +177,7 @@ fun CercaniasStationHeader(
         Spacer(modifier = Modifier.height(10.dp))
 
         // Line Badges Row with filtering
-        val lineList = station.lines.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val lineList = station.lines.map { it.trim() }.filter { it.isNotEmpty() }
         if (lineList.isNotEmpty()) {
             val isAllSelected = selectedLineFilters.isEmpty()
             val showAllChip = lineList.size > 1

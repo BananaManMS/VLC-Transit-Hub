@@ -65,8 +65,6 @@ import com.example.data.model.ValenciaMetroData
 import com.example.ui.components.SkeletonCardItem
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.theme.appCardBorder
-import com.example.util.AccessibilityNoticeFormatter.cleanAccessibilityNoticeText
-import com.example.util.AccessibilityNoticeFormatter.deduplicateAccessibilityIncidents
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -155,7 +153,7 @@ fun AvisosTab(
 
     data class GroupedStation(val name: String, val id: String?)
 
-    val groupedIncidents: Map<GroupedStation, List<AccessibilityIncident>> = remember(accessibilityIncidents, allNetworkStations) {
+    val groupedIncidents = remember(accessibilityIncidents, allNetworkStations) {
         val map = mutableMapOf<GroupedStation, MutableList<AccessibilityIncident>>()
         for (incident in accessibilityIncidents) {
             val rawName = incident.estacionNombre?.trim()
@@ -171,18 +169,7 @@ fun AvisosTab(
             }
             map.getOrPut(key) { mutableListOf() }.add(incident)
         }
-        val resultMap = mutableMapOf<GroupedStation, List<AccessibilityIncident>>()
-        for ((station, list) in map) {
-            val deduped = deduplicateAccessibilityIncidents(list, station.name)
-            if (deduped.isNotEmpty()) {
-                resultMap[station] = deduped
-            }
-        }
-        resultMap
-    }
-
-    val totalUniqueAccessibilityIncidents: Int = remember(groupedIncidents) {
-        groupedIncidents.values.sumOf { it.size }
+        map
     }
 
     LazyColumn(
@@ -508,11 +495,11 @@ fun AvisosTab(
                         Spacer(modifier = Modifier.width(10.dp))
                         Surface(
                             shape = CircleShape,
-                            color = if (totalUniqueAccessibilityIncidents > 0) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f),
-                            contentColor = if (totalUniqueAccessibilityIncidents > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+                            color = if (accessibilityIncidents.isNotEmpty()) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f),
+                            contentColor = if (accessibilityIncidents.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
                         ) {
                             Text(
-                                text = totalUniqueAccessibilityIncidents.toString(),
+                                text = accessibilityIncidents.size.toString(),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
@@ -628,17 +615,14 @@ fun AvisosTab(
                                         Spacer(modifier = Modifier.height(6.dp))
                                     }
 
-                                    val rawText = when (appLanguage) {
-                                        AppLanguage.CA -> incident.descripcionCa.ifBlank { incident.descripcionEs.ifBlank { incident.tituloCa.ifBlank { incident.tituloEs } } }
-                                        else -> incident.descripcionEs.ifBlank { incident.tituloEs }
-                                    }
-                                    val cleanText = cleanAccessibilityNoticeText(rawText, station.name)
-                                    if (cleanText.isNotBlank()) {
+                                    val rawTitle = incident.tituloEs.ifBlank { incident.descripcionEs }
+                                    val displayTitle = com.example.ui.components.cleanAccessibilityText(rawTitle, station.name)
+                                    if (displayTitle.isNotBlank()) {
                                         Text(
-                                            text = cleanText,
+                                            text = displayTitle,
                                             fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(bottom = 4.dp)
                                         )
                                     }

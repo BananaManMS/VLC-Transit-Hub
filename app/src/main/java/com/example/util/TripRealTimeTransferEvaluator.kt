@@ -59,16 +59,14 @@ object TripRealTimeTransferEvaluator {
             val margin = transferVehicleMinsFromNow - userMinutesUntilTransferBoarding
 
             val transferModeName = when (nextTransferTransitLeg.mode) {
-                TransitMode.TRAM -> "Tranvía"
-                TransitMode.SUBWAY -> "Metro"
+                TransitMode.SUBWAY, TransitMode.TRAM -> "Metro"
                 TransitMode.RAIL -> "Cercanías"
                 TransitMode.BUS -> "Bus"
                 else -> nextTransferTransitLeg.mode.displayNameEs
             }
 
             val transferModeNameCa = when (nextTransferTransitLeg.mode) {
-                TransitMode.TRAM -> "Tramvia"
-                TransitMode.SUBWAY -> "Metro"
+                TransitMode.SUBWAY, TransitMode.TRAM -> "Metro"
                 TransitMode.RAIL -> "Rodalia"
                 TransitMode.BUS -> "Bus"
                 else -> nextTransferTransitLeg.mode.displayNameCa
@@ -78,20 +76,18 @@ object TripRealTimeTransferEvaluator {
                 TransferEvaluationResult(
                     transferMarginMinutes = margin,
                     isTransferAtRisk = true,
-                    transferWarningEs = "Posible transbordo perdido: Conexión con $transferModeName $transferLineName perdida por ${-margin} min.",
-                    transferWarningCa = "Possible transbordament perdut: Connexió amb $transferModeNameCa $transferLineName perduda per ${-margin} min.",
+                    transferWarningEs = "Posible transbordo perdido: Conexión con $transferModeName $transferLineName perdida por ${kotlin.math.abs(margin)} min.",
+                    transferWarningCa = "Possible transbordament perdut: Connexió amb $transferModeNameCa $transferLineName perduda per ${kotlin.math.abs(margin)} min.",
                     upcomingTransferInfoEs = "Transbordo en riesgo: $transferModeName $transferLineName ($transferVehicleMinsFromNow min)",
                     upcomingTransferInfoCa = "Transbordament en risc: $transferModeNameCa $transferLineName ($transferVehicleMinsFromNow min)",
                     isUpcomingTransferLive = true,
                     upcomingTransferLine = transferLineName,
                     upcomingTransferMinutes = transferVehicleMinsFromNow
                 )
-            } else if (margin in 0..1) {
+            } else if (margin in 0..2) {
                 TransferEvaluationResult(
                     transferMarginMinutes = margin,
-                    isTransferAtRisk = true,
-                    transferWarningEs = "Transbordo muy ajustado: Margen de conexión con $transferModeName $transferLineName de solo $margin min.",
-                    transferWarningCa = "Transbordament molt ajustat: Marge de connexió amb $transferModeNameCa $transferLineName de només $margin min.",
+                    isTransferAtRisk = false,
                     upcomingTransferInfoEs = "Transbordo ajustado: $transferModeName $transferLineName en $transferVehicleMinsFromNow min (en vivo)",
                     upcomingTransferInfoCa = "Transbordament ajustat: $transferModeNameCa $transferLineName en $transferVehicleMinsFromNow min (en viu)",
                     isUpcomingTransferLive = true,
@@ -114,24 +110,23 @@ object TripRealTimeTransferEvaluator {
             val scheduledTime = nextTransferTransitLeg.formattedStartTime
             val scheduledDepMs = TripTimeParser.parseTimeToMillis(nextTransferTransitLeg.startTime) ?: 0L
 
-            val bufferMs = if (!isAlreadyBoarded && delayMinutes < 3) 5 * 60 * 1000L else 3 * 60 * 1000L
+            // 2-minute grace period buffer for first vehicle, 1 minute for transfers
+            val bufferMs = if (!isAlreadyBoarded) 2 * 60 * 1000L else 1 * 60 * 1000L
 
             val transferModeName = when (nextTransferTransitLeg.mode) {
-                TransitMode.TRAM -> "Tranvía"
-                TransitMode.SUBWAY -> "Metro"
+                TransitMode.SUBWAY, TransitMode.TRAM -> "Metro"
                 TransitMode.RAIL -> "Cercanías"
                 TransitMode.BUS -> "Bus"
                 else -> nextTransferTransitLeg.mode.displayNameEs
             }
             val transferModeNameCa = when (nextTransferTransitLeg.mode) {
-                TransitMode.TRAM -> "Tramvia"
-                TransitMode.SUBWAY -> "Metro"
+                TransitMode.SUBWAY, TransitMode.TRAM -> "Metro"
                 TransitMode.RAIL -> "Rodalia"
                 TransitMode.BUS -> "Bus"
                 else -> nextTransferTransitLeg.mode.displayNameCa
             }
 
-            return if (scheduledDepMs > 0 && userTransferArrivalEpochMs > (scheduledDepMs + bufferMs) && userMinutesUntilTransferBoarding <= 5) {
+            return if (scheduledDepMs > 0 && userTransferArrivalEpochMs > (scheduledDepMs + bufferMs)) {
                 val causeEs = if (delayMinutes > 0) "Tu vehículo lleva retraso y" else "Según la hora estimada de llegada,"
                 val causeCa = if (delayMinutes > 0) "El teu transport porta retràs i" else "Segons l'hora estimada d'arribada,"
                 TransferEvaluationResult(

@@ -113,8 +113,15 @@ fun ValenbisiTab(
         .collectAsState(initial = com.example.util.isNetworkAvailable(context))
 
     val metroStationsList = remember(favoriteMetroStations, allMetroStations) {
-        val favs = favoriteMetroStations.mapNotNull { id -> allMetroStations.find { it.id == id } }
-        if (favs.isNotEmpty()) favs else ValenciaMetroData.mainMetroStations
+        val all = if (allMetroStations.isNotEmpty()) allMetroStations else ValenciaMetroData.mainMetroStations
+        val sortedAll = all.sortedBy { it.name }
+        if (favoriteMetroStations.isNotEmpty()) {
+            val favs = favoriteMetroStations.mapNotNull { id -> sortedAll.find { it.id == id } }.sortedBy { it.name }
+            val others = sortedAll.filterNot { station -> favoriteMetroStations.contains(station.id) }
+            favs + others
+        } else {
+            sortedAll
+        }
     }
 
     LaunchedEffect(filterSource, metroStationsList) {
@@ -248,10 +255,21 @@ fun ValenbisiTab(
                     ) {
                         metroStationsList.forEach { mStation ->
                             val isSelected = selectedMetroStationId == mStation.id
+                            val isFav = favoriteMetroStations.contains(mStation.id)
                             BusFilterChip(
                                 selected = isSelected,
                                 onClick = { onSelectMetroStation(mStation.id) },
                                 label = mStation.name,
+                                leadingIcon = if (isFav) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Star,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                } else null,
                                 modifier = Modifier.testTag("valenbisi_metro_chip_${mStation.id}")
                             )
                         }

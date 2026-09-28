@@ -132,6 +132,6 @@ class TransitousPhase1Test {
     fun testNetworkModuleTransitousConfig() {
         assertNotNull(NetworkModule.transitousRetrofit)
         assertNotNull(NetworkModule.transitousApiService)
-        assertEquals("https://api.transitous.org/api/v2/", NetworkModule.transitousRetrofit.baseUrl().toString())
+        assertEquals("https://api.transitous.org/api/v1/", NetworkModule.transitousRetrofit.baseUrl().toString())
     }
 }

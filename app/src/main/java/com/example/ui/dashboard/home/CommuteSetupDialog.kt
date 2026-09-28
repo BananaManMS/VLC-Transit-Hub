@@ -33,20 +33,23 @@ fun CommuteSetupDialog(
     isHome: Boolean,
     appLanguage: AppLanguage,
     currentName: String,
+    currentLat: Double = 0.0,
+    currentLon: Double = 0.0,
     dashboardViewModel: DashboardViewModel,
     onDismiss: () -> Unit,
     onSelectOnMap: () -> Unit,
     onSave: (String, Double, Double) -> Unit
 ) {
-    val isDarkMode = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDarkMode by dashboardViewModel.isDarkMode.collectAsState()
+    val isConfigured = currentName.isNotBlank() && currentLat != 0.0 && currentLon != 0.0
     var name by remember { mutableStateOf(currentName.ifBlank { if (isHome) "Casa" else "Trabajo" }) }
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<com.example.ui.map.MapSearchResult>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
 
-    var lat by remember { mutableDoubleStateOf(39.4697) }
-    var lon by remember { mutableDoubleStateOf(-0.3773) }
-    var hasChosenLocation by remember { mutableStateOf(false) }
+    var lat by remember { mutableDoubleStateOf(if (isConfigured) currentLat else 39.4697) }
+    var lon by remember { mutableDoubleStateOf(if (isConfigured) currentLon else -0.3773) }
+    var hasChosenLocation by remember { mutableStateOf(isConfigured) }
 
     val recentSearches by dashboardViewModel.recentSearches.collectAsState()
     val unifiedTransitFavorites by dashboardViewModel.unifiedTransitFavorites.collectAsState()
@@ -364,18 +367,37 @@ fun CommuteSetupDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = if (isConfigured) Arrangement.SpaceBetween else Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text(if (appLanguage == AppLanguage.CA) "Cancel·lar" else "Cancelar")
+                    if (isConfigured) {
+                        TextButton(
+                            onClick = {
+                                if (isHome) {
+                                    dashboardViewModel.saveHomeLocation(null)
+                                } else {
+                                    dashboardViewModel.saveWorkLocation(null)
+                                }
+                                onDismiss()
+                            },
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text(if (appLanguage == AppLanguage.CA) "Eliminar" else "Eliminar")
+                        }
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = { onSave(name, lat, lon) },
-                        enabled = hasChosenLocation || name.isNotBlank(),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(if (appLanguage == AppLanguage.CA) "Guardar" else "Guardar", fontWeight = FontWeight.Bold)
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = onDismiss) {
+                            Text(if (appLanguage == AppLanguage.CA) "Cancel·lar" else "Cancelar")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { onSave(name, lat, lon) },
+                            enabled = hasChosenLocation || name.isNotBlank(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(if (appLanguage == AppLanguage.CA) "Guardar" else "Guardar", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

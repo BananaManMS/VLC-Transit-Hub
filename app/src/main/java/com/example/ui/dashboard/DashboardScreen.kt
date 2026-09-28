@@ -167,6 +167,10 @@ fun DashboardScreen(
     var showMetroSearchDialog by remember { mutableStateOf(false) }
 
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
     val calendarPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -212,6 +216,15 @@ fun DashboardScreen(
                 viewModel.refreshRealTimeTripStatus()
                 if (LocationUtils.hasLocationPermission(context)) {
                     LocationUtils.requestDeviceLocation(context, handleLocationResult)
+                }
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    val hasNotifPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.POST_NOTIFICATIONS
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (!hasNotifPerm) {
+                        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
                 }
             } else if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
                 isAppInForeground = false

@@ -30,6 +30,19 @@ import java.io.File
  * when a bus stop or specific bus line is selected.
  */
 object EmtMapOverlayLoader {
+    fun isCircularLine(lineCode: String, headsign: String? = null): Boolean {
+        val clean = lineCode.trim().uppercase()
+        if (clean == "C1" || clean == "C2" || clean == "C3" || clean == "C4" || clean == "LC1" || clean == "LC2" || clean == "LC3" || clean == "79" || clean == "80") return true
+        if (clean.startsWith("G")) return true
+        if (headsign != null && headsign.contains("circular", ignoreCase = true)) return true
+        return false
+    }
+
+    fun setShapesForTesting(shapes: Map<String, List<EmtRouteShape>>) {
+        lineToShapesMap = shapes
+        _isLoadedState.value = true
+    }
+
     private const val TAG = "EmtMapOverlayLoader"
 
     const val DEFAULT_EMT_COLOR = "#E52320"
@@ -214,39 +227,59 @@ object EmtMapOverlayLoader {
         return poly
     }
 
+    const val FIXED_ARROW_INTERVAL_METERS = 500.0
+
     private data class MilestoneConfig(
         val strokeWidth: Float,
-        val recurrenceMeters: Double,
         val arrowPath: Path?,
         val arrowStrokeWidth: Float
     )
 
     /**
-     * Anchors directional chevrons in physical meters along the route so that they remain
-     * perfectly pinned to geographic locations on the road without shifting or jumping during zoom/pan gestures.
-     * Chevrons are large, bold, and high-contrast (bright white fill + EMT red border).
+     * Determines directional chevron appearance based on zoom level.
+     * Below zoom 14.0 (city overview), chevrons are omitted to keep the map clean.
+     * At zoom >= 14.0, directional chevrons are anchored at a fixed geographical distance of 500m
+     * along the polyline path so they do not shift or jump when zooming.
      */
     private fun getMilestoneConfig(zoom: Double): MilestoneConfig {
-        return if (zoom < 13.0) {
-            MilestoneConfig(
-                strokeWidth = 7.0f,
-                recurrenceMeters = 0.0,
-                arrowPath = null,
-                arrowStrokeWidth = 0f
-            )
-        } else {
-            MilestoneConfig(
-                strokeWidth = 8.5f,
-                recurrenceMeters = 250.0,
-                arrowPath = createStyledChevronPath(length = 18f, halfWidth = 11f, indent = 6.5f),
-                arrowStrokeWidth = 2.8f
-            )
+        return when {
+            zoom < 14.0 -> {
+                MilestoneConfig(
+                    strokeWidth = 6.5f,
+                    arrowPath = null,
+                    arrowStrokeWidth = 0f
+                )
+            }
+            zoom < 15.5 -> {
+                // Zoom medio: chevrons estilizados cada 500m
+                MilestoneConfig(
+                    strokeWidth = 7.5f,
+                    arrowPath = createStyledChevronPath(length = 14f, halfWidth = 8f, indent = 5f),
+                    arrowStrokeWidth = 2.2f
+                )
+            }
+            zoom < 17.0 -> {
+                // Zoom estándar de detalle cada 500m
+                MilestoneConfig(
+                    strokeWidth = 9.0f,
+                    arrowPath = createStyledChevronPath(length = 17f, halfWidth = 10f, indent = 6f),
+                    arrowStrokeWidth = 2.6f
+                )
+            }
+            else -> {
+                // Zoom cercano cada 500m
+                MilestoneConfig(
+                    strokeWidth = 10.0f,
+                    arrowPath = createStyledChevronPath(length = 20f, halfWidth = 12f, indent = 7.5f),
+                    arrowStrokeWidth = 3.0f
+                )
+            }
         }
     }
 
     /**
-     * Constructs a bold, high-contrast aerodynamic chevron pointing along +X (direction of travel).
-     * Has a pure white interior fill and a thick EMT red stroke border for maximum legibility.
+     * Constructs a closed, aerodynamic chevron/dart pointing along +X (direction of travel).
+     * Has a white interior fill and an integrated EMT red stroke for maximum contrast and elegance.
      */
     private fun createStyledChevronPath(length: Float, halfWidth: Float, indent: Float): Path {
         return Path().apply {
@@ -259,168 +292,67 @@ object EmtMapOverlayLoader {
     }
 
     /**
-     * Identifies if a line is circular strictly by:
-     * 1. Line code prefix 'C' (official EMT Valencia circular line designation: C1, C2, C3, and future C4, C5...) or 'G' / 'g'.
-     * 2. Explicit keyword "circular" in headsign or description (excluding street/avenue names).
-     */
-    fun isCircularLine(lineCode: String, headsignOrDesc: String? = null): Boolean {
-        val clean = normalizeLine(lineCode).uppercase()
-        if (clean.startsWith("C") || clean.startsWith("G")) {
-            return true
-        }
-        if (headsignOrDesc != null && headsignOrDesc.contains("circular", ignoreCase = true)) {
-            return true
-        }
-        return false
-    }
-
-    private data class ShapeMatchResult(
-        val shape: EmtRouteShape,
-        val score: Double
-    )
-
-    private fun evaluateShapeForStop(
-        shape: EmtRouteShape,
-        selectedStopId: String?,
-        stopLat: Double,
-        stopLon: Double
-    ): ShapeMatchResult {
-        val points = shape.points
-        if (points.isEmpty()) return ShapeMatchResult(shape, Double.MAX_VALUE)
-
-        var minDistSq = Double.MAX_VALUE
-        val cosLat = Math.cos(Math.toRadians(stopLat))
-
-        // Compute high-precision perpendicular distance to polyline segments
-        if (points.size == 1) {
-            val dLat = (points[0].latitude - stopLat) * 111320.0
-            val dLon = (points[0].longitude - stopLon) * 111320.0 * cosLat
-            minDistSq = dLat * dLat + dLon * dLon
-        } else {
-            for (i in 0 until points.size - 1) {
-                val p1 = points[i]
-                val p2 = points[i + 1]
-
-                val x1 = (p1.longitude - stopLon) * 111320.0 * cosLat
-                val y1 = (p1.latitude - stopLat) * 111320.0
-                val x2 = (p2.longitude - stopLon) * 111320.0 * cosLat
-                val y2 = (p2.latitude - stopLat) * 111320.0
-
-                val dx = x2 - x1
-                val dy = y2 - y1
-                val lenSq = dx * dx + dy * dy
-
-                val segDistSq = if (lenSq <= 0.0001) {
-                    x1 * x1 + y1 * y1
-                } else {
-                    val t = ((-x1 * dx) + (-y1 * dy)) / lenSq
-                    val clampedT = t.coerceIn(0.0, 1.0)
-                    val projX = x1 + clampedT * dx
-                    val projY = y1 + clampedT * dy
-                    projX * projX + projY * projY
-                }
-
-                if (segDistSq < minDistSq) {
-                    minDistSq = segDistSq
-                }
-            }
-        }
-
-        val minDistMeters = Math.sqrt(minDistSq)
-
-        // Parse origin and destination stop IDs from shapeId (format: variant_origin_destination)
-        val parts = shape.shapeId.split("_")
-        val originStop = if (parts.size >= 3) parts[1] else null
-        val destStop = if (parts.size >= 3) parts[2] else null
-
-        val isOriginMatch = selectedStopId != null && originStop == selectedStopId
-        val isDestMatch = selectedStopId != null && destStop == selectedStopId
-
-        var score = minDistMeters
-
-        if (isOriginMatch) {
-            // Priority at terminus/cabecera: prioritize the onward departing service starting here
-            score -= 10000.0
-        } else if (isDestMatch) {
-            // At terminus/cabecera: deprioritize the arriving journey that finishes here
-            score += 10000.0
-        } else if (selectedStopId == null) {
-            // Fallback for coordinate-only selection at terminal endpoints
-            val firstPt = points.first()
-            val lastPt = points.last()
-            val dFirst = Math.hypot((firstPt.latitude - stopLat) * 111320.0, (firstPt.longitude - stopLon) * 111320.0 * cosLat)
-            val dLast = Math.hypot((lastPt.latitude - stopLat) * 111320.0, (lastPt.longitude - stopLon) * 111320.0 * cosLat)
-            if (dFirst < 30.0) {
-                score -= 5000.0
-            } else if (dLast < 30.0) {
-                score += 5000.0
-            }
-        }
-
-        // For all regular intermediate stops (including the final stops before the terminus),
-        // each stop strictly belongs to its active route direction without arbitrary progress penalties.
-        return ShapeMatchResult(shape, score)
-    }
-
-    /**
-     * Prunes variant shapes for a line based on headsigns or selected stop direction.
-     * If a stop position is provided:
-     * - For linear lines: shows only the departing directional shape that serves that stop onward.
-     * - For circular lines: groups the segments of that circular variant to close the loop completely.
+     * Prunes variant shapes for a line based on headsigns, circular loop closing, and stop location.
+     * For circular lines starting with 'C' (e.g. C1, C2, C3), merges and closes the rings
+     * that are split across two timing/regulation destinations.
+     * When stopLocation is provided, isolates the direction serving that specific stop.
      */
     fun pruneShapesForLine(
         shapes: List<EmtRouteShape>,
+        lineRef: String? = null,
         targetHeadsign: String? = null,
-        lineCode: String? = null,
-        selectedStopId: String? = null,
+        stopLocation: GeoPoint? = null,
+        lineCode: String? = lineRef,
         selectedStopLat: Double? = null,
         selectedStopLon: Double? = null
     ): List<EmtRouteShape> {
+        val effectiveLine = lineCode ?: lineRef
+        val effectiveStopLocation = stopLocation ?: if (selectedStopLat != null && selectedStopLon != null) {
+            GeoPoint(selectedStopLat, selectedStopLon)
+        } else null
+
         if (shapes.isEmpty()) return emptyList()
 
+        // 1. If line is circular (starts with C), close and form unified circular rings
+        val processedShapes = if (effectiveLine != null && BusRouteDirectionManager.isCircularLine(effectiveLine)) {
+            BusRouteDirectionManager.closeCircularShapes(effectiveLine, shapes)
+        } else {
+            shapes
+        }
+
         if (!targetHeadsign.isNullOrBlank()) {
-            val matching = shapes.filter {
+            val matching = processedShapes.filter {
                 it.headsign != null && it.headsign.contains(targetHeadsign, ignoreCase = true)
             }
             if (matching.isNotEmpty()) return matching
         }
 
-        // When a stop is selected, filter by the direction of that stop (prioritizing departing journey)
-        if (selectedStopLat != null && selectedStopLon != null && shapes.size > 1) {
-            val bestShape = shapes.map { shape ->
-                evaluateShapeForStop(shape, selectedStopId, selectedStopLat, selectedStopLon)
-            }.minByOrNull { it.score }?.shape
+        // Group shapes by headsign (or fallback to shapeId if headsign is null)
+        val grouped = processedShapes.groupBy { it.headsign ?: it.shapeId }
+        
+        // Pick the shape with the most points for each headsign direction (main ida & main vuelta)
+        val mainShapes = grouped.mapValues { (_, shapeGroup) ->
+            shapeGroup.maxByOrNull { it.points.size } ?: shapeGroup.first()
+        }.values.toList()
 
-            if (bestShape != null) {
-                val isCircular = isCircularLine(lineCode ?: bestShape.lineRef, bestShape.headsign)
-                return if (isCircular) {
-                    // For circular lines: close the full circular loop for this direction.
-                    // EMT shapes in shapes.json use format "<variantId>_<origin>_<dest>".
-                    // The complementary segments of the circular loop share the same variantId prefix.
-                    val variantPrefix = bestShape.shapeId.substringBefore("_")
-                    val matchingVariant = shapes.filter { it.shapeId.substringBefore("_") == variantPrefix }
-                    if (matchingVariant.isNotEmpty()) matchingVariant else listOf(bestShape)
-                } else {
-                    // For linear lines: show ONLY the departing direction matching that stop
-                    listOf(bestShape)
-                }
+        // 4. Direction isolation:
+        // When a specific stop location is known, isolate the EXACT direction
+        // that serves this stop! Do NOT show both directions!
+        if (effectiveStopLocation != null && mainShapes.size > 1) {
+            val isolated = BusRouteDirectionManager.findMatchingShapeForStop(effectiveStopLocation, mainShapes)
+            if (isolated != null) {
+                return listOf(isolated)
             }
         }
 
-        // Group shapes by headsign (or fallback to shapeId if headsign is null)
-        val grouped = shapes.groupBy { it.headsign ?: it.shapeId }
-        
-        // Pick the shape with the most points for each headsign direction (main ida & main vuelta)
-        return grouped.mapValues { (_, shapeGroup) ->
-            shapeGroup.maxByOrNull { it.points.size } ?: shapeGroup.first()
-        }.values.toList()
+        return mainShapes
     }
 
     /**
      * Builds Osmdroid Polyline overlays for the requested lines.
-     * Uses official EMT Red with directional arrows adapted to the current zoom level when showArrows is true.
-     * When showArrows is false (e.g. multiple lines active in "Todas"), polylines are rendered
-     * as clean paths without chevrons to prevent overlapping clutter.
+     * Uses official EMT Red with directional arrows anchored every 500m fixed meters
+     * when showArrows is true and zoom >= 14.0.
+     * Isolates direction according to stopLocation or targetHeadsign.
      */
     fun createPolylinesForLines(
         mapView: MapView,
@@ -428,10 +360,8 @@ object EmtMapOverlayLoader {
         strokeWidth: Float? = null,
         currentZoom: Double = 16.0,
         showArrows: Boolean = lines.size == 1,
-        targetHeadsign: String? = null,
-        selectedStopId: String? = null,
-        selectedStopLat: Double? = null,
-        selectedStopLon: Double? = null
+        stopLocation: GeoPoint? = null,
+        targetHeadsign: String? = null
     ): List<Polyline> {
         if (lines.isEmpty()) return emptyList()
 
@@ -444,14 +374,7 @@ object EmtMapOverlayLoader {
         sortedLines.forEachIndexed { index, rawLine ->
             val cleanLine = normalizeLine(rawLine)
             val rawShapes = lineToShapesMap[cleanLine] ?: return@forEachIndexed
-            val shapes = pruneShapesForLine(
-                shapes = rawShapes,
-                targetHeadsign = targetHeadsign,
-                lineCode = cleanLine,
-                selectedStopId = selectedStopId,
-                selectedStopLat = selectedStopLat,
-                selectedStopLon = selectedStopLon
-            )
+            val shapes = pruneShapesForLine(rawShapes, cleanLine, targetHeadsign, stopLocation)
 
             val colorInt = Color.parseColor(DEFAULT_EMT_COLOR)
 
@@ -467,7 +390,7 @@ object EmtMapOverlayLoader {
                     relatedObject = shape
                     setOnClickListener { _, _, _ -> true }
 
-                    if (showArrows && config.arrowPath != null && config.recurrenceMeters > 0.0) {
+                    if (showArrows && config.arrowPath != null) {
                         // 1. High-contrast white fill inside the chevron
                         val fillPaint = Paint().apply {
                             color = Color.WHITE
@@ -484,7 +407,8 @@ object EmtMapOverlayLoader {
                             isAntiAlias = true
                         }
 
-                        val lister = MilestoneMeterDistanceLister(config.recurrenceMeters)
+                        // Fixed 500 meters recurrence across all zoom levels
+                        val lister = MilestoneMeterDistanceLister(FIXED_ARROW_INTERVAL_METERS)
                         val fillDisplayer = MilestonePathDisplayer(0.0, true, config.arrowPath, fillPaint)
                         val borderDisplayer = MilestonePathDisplayer(0.0, true, config.arrowPath, borderPaint)
 

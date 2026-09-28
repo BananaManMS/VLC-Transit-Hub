@@ -111,7 +111,9 @@ object MetroCardMapper {
     fun getCardCategory(defaultName: String, titleLower: String, classLower: String, cardType: String): String {
         val combined = "$defaultName $titleLower $classLower $cardType".lowercase()
         return when {
+            combined.contains("tuin") && combined.contains("jove") -> "TUIN_JOVE"
             combined.contains("tuin") || combined.contains("tui n") -> "TUIN"
+            combined.contains("suma") && combined.contains("mensual") && combined.contains("jove") -> "SUMA_MENSUAL_JOVE"
             combined.contains("suma mensual") || combined.contains("mensual") -> "SUMA_MENSUAL"
             combined.contains("suma t") || combined.contains("t-1") || combined.contains("t-2") || combined.contains("t-3") -> "SUMA_TSERIES"
             combined.contains("suma") -> "SUMA_SENCILLO"

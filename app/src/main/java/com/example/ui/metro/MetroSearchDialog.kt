@@ -76,7 +76,7 @@ fun MetroSearchDialog(
     onSelectStation: (String) -> Unit,
     onToggleFavorite: (String) -> Unit,
     onDismiss: () -> Unit,
-    metroViewModel: MetroViewModel,
+    metroViewModel: MetroViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     modifier: Modifier = Modifier
 ) {
     val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)

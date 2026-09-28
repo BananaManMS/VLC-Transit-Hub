@@ -20,12 +20,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.MetroScheduledDeparture
+import com.example.ui.dashboard.AppLanguage
 import com.example.util.LineColorResolver
 
 /**
@@ -39,8 +41,8 @@ fun MetroScheduledDeparturesSheet(
     isLoading: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    appLanguage: com.example.ui.dashboard.AppLanguage = com.example.ui.dashboard.AppLanguage.ES,
-    isDarkMode: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
+    appLanguage: AppLanguage = AppLanguage.ES,
+    isDarkMode: Boolean = MaterialTheme.colorScheme.surface.luminance() < 0.5f,
     onDepartureClick: ((MetroScheduledDeparture) -> Unit)? = null
 ) {
     ModalBottomSheet(
@@ -78,7 +80,7 @@ fun MetroScheduledDeparturesSheet(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (appLanguage == com.example.ui.dashboard.AppLanguage.CA) "Horaris programats" else "Horarios programados",
+                        text = if (appLanguage == AppLanguage.CA) "Horaris programats" else "Horarios programados",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -110,7 +112,7 @@ fun MetroScheduledDeparturesSheet(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (appLanguage == com.example.ui.dashboard.AppLanguage.CA) "Horari programat de pas segons FGV." else "Horario programado de paso según FGV.",
+                        text = if (appLanguage == AppLanguage.CA) "Horari programat de pas segons FGV." else "Horario programado de paso según FGV.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -136,7 +138,7 @@ fun MetroScheduledDeparturesSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (appLanguage == com.example.ui.dashboard.AppLanguage.CA) "No hi ha eixides programades per a hui." else "No hay salidas programadas para hoy.",
+                        text = if (appLanguage == AppLanguage.CA) "No hi ha eixides programades per a hui." else "No hay salidas programadas para hoy.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp
                     )
@@ -162,19 +164,6 @@ fun MetroScheduledDeparturesSheet(
             }
         }
     }
-}
-
-@Composable
-fun ScheduledDepartureRow(
-    item: MetroScheduledDeparture,
-    modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null
-) {
-    MetroScheduledDepartureCard(
-        item = item,
-        modifier = modifier,
-        onClick = onClick
-    )
 }
 
 /**

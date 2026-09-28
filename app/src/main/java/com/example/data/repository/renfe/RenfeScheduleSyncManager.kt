@@ -20,10 +20,29 @@ class RenfeScheduleSyncManager(
     private val localScheduleFile: File = File(context.filesDir, "cercanias_valencia_schedule.json")
     private val tempScheduleFile: File = File(context.filesDir, "cercanias_valencia_schedule_temp.json")
 
+    private val stationSchedulesMap = java.util.concurrent.ConcurrentHashMap<String, List<RenfeScheduleItem>>()
+    
     @Volatile
     private var tripDestinationMap: Map<String, String>? = null
     
     private var stationNameMap: Map<String, String>? = null
+
+    fun getHorariosForStation(stationId: String): List<RenfeScheduleItem> {
+        val cleanId = stationId.trim()
+        stationSchedulesMap[cleanId]?.let { return it }
+        try {
+            val jsonString = getScheduleJsonString()
+            if (jsonString.isNotBlank()) {
+                val jsonArray = JSONArray(jsonString)
+                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                    loadAndSaveScheduleJson(jsonArray)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("RenfeScheduleSyncManager", "Error loading station horarios: ${e.message}")
+        }
+        return stationSchedulesMap[cleanId] ?: emptyList()
+    }
 
     private fun isValidScheduleJson(text: String): Boolean {
         val trimmed = text.trim()
@@ -113,8 +132,13 @@ class RenfeScheduleSyncManager(
     private fun getScheduleJsonString(): String {
         return try {
             if (localScheduleFile.exists() && localScheduleFile.length() > 100) {
-                // Trust the local file since we only ever save it after complete validation
-                localScheduleFile.readText()
+                val cached = localScheduleFile.readText()
+                if (cached.contains("Torreblanca del Sol") || cached.contains("Buã") || cached.contains("Civis") || cached.contains("l'Alcudia\"") || cached.contains("València-Estació del Nord") || cached.contains("Valencia-Estacio") || !cached.contains("69011") || !cached.contains("Alcoi")) {
+                    localScheduleFile.delete()
+                    readAssetSchedule()
+                } else {
+                    cached
+                }
             } else {
                 readAssetSchedule()
             }
@@ -233,7 +257,7 @@ class RenfeScheduleSyncManager(
     suspend fun initDatabaseFromAssetsIfNeeded() = withContext(Dispatchers.IO) {
         try {
             val currentAssetsVersion = database.preferenceDao().getPreference("cercanias_assets_version")?.value ?: "0"
-            if (currentAssetsVersion != "13") {
+            if (currentAssetsVersion != "16") {
                 try {
                     if (localScheduleFile.exists()) {
                         localScheduleFile.delete()
@@ -243,7 +267,7 @@ class RenfeScheduleSyncManager(
                     stationDao.deleteAllStations()
                 } catch (e: Exception) {}
                 database.preferenceDao().insertPreference(
-                    com.example.data.database.PreferenceEntity("cercanias_assets_version", "13")
+                    com.example.data.database.PreferenceEntity("cercanias_assets_version", "16")
                 )
             }
         } catch (e: Exception) {
@@ -260,8 +284,20 @@ class RenfeScheduleSyncManager(
             val count = stationDao.getStationCount()
             val existingStations = try { stationDao.getAllStations() } catch (e: Exception) { emptyList() }
             val hasMojibake = existingStations.any { it.nombre.contains("ã") }
+            val hasTorreblanca = existingStations.any { it.nombre.contains("Torreblanca del Sol") }
+            val hasOldAlcudia = existingStations.any { it.nombre.equals("l'Alcudia", ignoreCase = true) }
+            val hasUnnormalizedStations = existingStations.any {
+                it.nombre.contains("Estació del Nord") ||
+                it.nombre.contains("Estacio del Nord") ||
+                it.nombre == "València Sant Isidre" ||
+                it.nombre == "València-Sant Isidre" ||
+                it.nombre == "València Cabanyal" ||
+                it.nombre == "València-Cabanyal" ||
+                it.nombre == "València-La Font de Sant Lluís" ||
+                it.nombre == "Valencia-La Font de Sant Lluis"
+            }
             val hasEmptyHorarios = existingStations.isEmpty() || existingStations.any { it.horarios.isEmpty() }
-            if (count != jsonArray.length() || count == 0 || hasMojibake || hasEmptyHorarios) {
+            if (count != jsonArray.length() || count == 0 || hasMojibake || hasTorreblanca || hasOldAlcudia || hasUnnormalizedStations || hasEmptyHorarios) {
                 loadAndSaveScheduleJson(jsonArray)
                 buildTripDestinationMapFromAssets()
             }
@@ -336,7 +372,8 @@ class RenfeScheduleSyncManager(
                     for (j in 0 until horariosArr.length()) {
                         val hObj = horariosArr.optJSONObject(j) ?: continue
                         val linea = hObj.optString("linea", "")
-                        val destino = hObj.optString("destino", "")
+                        val rawDest = hObj.optString("destino", "")
+                        val destino = formatDestinationName(rawDest).ifBlank { rawDest }
                         val llegada = hObj.optString("llegada", "")
                         val tripIdsArr = hObj.optJSONArray("trip_ids")
                         val tripIds = mutableListOf<String>()
@@ -345,10 +382,11 @@ class RenfeScheduleSyncManager(
                                 tripIds.add(tripIdsArr.getString(k))
                             }
                         }
-                        horarios.add(RenfeScheduleItem(linea, tripIds, llegada))
+                        horarios.add(RenfeScheduleItem(linea = linea, trip_ids = tripIds, tripIds = tripIds, llegada = llegada, destino = destino))
                     }
                 }
                 
+                stationSchedulesMap[stopId] = horarios
                 val isFav = savedFavSet.contains(stopId) || (existingFavorites[stopId] ?: false)
                 stationsToInsert.add(CercaniasStationEntity(stopId, nombre, lat, lon, lineas, horarios, isFav))
             }
@@ -377,7 +415,11 @@ class RenfeScheduleSyncManager(
         val tripMap = mutableMapOf<String, Pair<String, Int>>()
         for (i in 0 until jsonArray.length()) {
             val obj = jsonArray.optJSONObject(i) ?: continue
+            val stopId = obj.optString("stop_id", "")
             val nombre = obj.optString("nombre", "")
+            if (stopId == "54514" || nombre.contains("Torreblanca del Sol", ignoreCase = true)) {
+                continue
+            }
             val horariosArr = obj.optJSONArray("horarios") ?: continue
             for (j in 0 until horariosArr.length()) {
                 val hObj = horariosArr.optJSONObject(j) ?: continue
@@ -421,7 +463,7 @@ class RenfeScheduleSyncManager(
         } else {
             ""
         }
-        if (destName.isNotEmpty()) {
+        if (destName.isNotEmpty() && !destName.equals("Civis", ignoreCase = true)) {
             return destName
         }
         val fallback = when (line) {
@@ -435,21 +477,41 @@ class RenfeScheduleSyncManager(
         return formatDestinationName(fallback)
     }
 
-    private fun formatDestinationName(dest: String): String {
+    internal fun formatDestinationName(rawDest: String): String {
+        var cleaned = rawDest.trim()
+            .replace("(?i)\\bCIVIS\\b".toRegex(), "")
+            .replace("(?i)\\bCIVI\\b".toRegex(), "")
+            .replace("(?i)\\bSEMIDIRECTO\\b".toRegex(), "")
+            .replace("(?i)\\bSEMI DIRECTO\\b".toRegex(), "")
+            .replace("-", " ")
+            .replace("\\s+".toRegex(), " ")
+            .trim()
+
+        if (cleaned.isBlank() || cleaned.equals("Civis", ignoreCase = true)) {
+            return ""
+        }
+
+        val dest = cleaned
         val lower = dest.lowercase(Locale.ROOT)
         return when {
-            dest.equals("Estacio del Nord", ignoreCase = true) || dest.equals("Valencia Nord", ignoreCase = true) || dest.equals("Valencia-Estacio del Nord", ignoreCase = true) -> "València Nord"
-            dest.equals("Valencia-La Font de Sant Lluis", ignoreCase = true) || dest.contains("Font de Sant Lluis", ignoreCase = true) -> "Valencia F. S. Lluís"
-            dest.equals("València Sant Isidre", ignoreCase = true) || dest.equals("Valencia Sant Isidre", ignoreCase = true) -> "València Sant Isidre"
-            dest.contains("Vinaros", ignoreCase = true) || dest.contains("Vinaròs", ignoreCase = true) -> "Vinaròs"
-            dest.contains("Benicarlo", ignoreCase = true) -> "Benicarló-Peníscola"
-            dest.contains("Castello", ignoreCase = true) -> "Castelló de la Plana"
-            dest.equals("Xativa", ignoreCase = true) || dest.equals("Xàtiva", ignoreCase = true) -> "Xàtiva"
-            dest.equals("L'Alcudia", ignoreCase = true) || dest.equals("L'Alcudia de Crespins", ignoreCase = true) -> "L'Alcúdia de Crespins"
-            lower.contains("bunol") || lower.contains("buã") || lower.contains("buñ") || (lower.contains("bu") && lower.contains("ol")) -> "Buñol"
-            lower.contains("puc") || lower.contains("puç") || lower.contains("puã") || lower.contains("pua") || lower.contains("pu") && lower.contains("ol") -> "Puçol"
-            lower.contains("burriana") || lower.contains("alquerias") || lower.contains("niã") || lower.contains("niño") -> "Burriana - Alquerías del Niño Perdido"
-            dest.equals("Platja i Grau de Gandia", ignoreCase = true) -> "Platja de Gandia"
+            dest.equals("Estacio del Nord", ignoreCase = true) || lower.contains("valencia nord") || lower.contains("estacio del nord") || lower.contains("norte") -> "València Nord"
+            lower.contains("sant isidre") || lower.contains("st. isidre") -> "València St. Isidre"
+            lower.contains("cabanyal") -> "Cabanyal"
+            lower.contains("font de sant lluis") || lower.contains("sant lluis") || lower.contains("f. s. lluis") || lower.contains("lluís") -> "València F. S. Lluís"
+            lower.contains("vinaros") || lower.contains("vinaròs") -> "Vinaròs"
+            lower.contains("cullera") -> "Cullera"
+            lower.contains("benicarlo") || lower.contains("benicarló") || lower.contains("peniscola") -> "Benicarló-Peníscola"
+            lower.contains("castello") || lower.contains("castellon") || lower.contains("castelló") -> "Castelló de la Plana"
+            lower.contains("xativa") || lower.contains("xàtiva") -> "Xàtiva"
+            lower.contains("alcudia") || lower.contains("alcúdia") -> "L'Alcúdia de Crespins"
+            lower.contains("bunol") || lower.contains("buã") || lower.contains("buñ") || lower.contains("bunyol") || (lower.contains("bu") && lower.contains("ol")) -> "Buñol"
+            lower.contains("puc") || lower.contains("puç") || lower.contains("puã") || lower.contains("pua") -> "Puçol"
+            lower.contains("burriana") || lower.contains("alquerias") || lower.contains("niño") -> "Burriana - Alquerías del Niño Perdido"
+            lower.contains("platja") || lower.contains("grau") -> "Platja i Grau de Gandia"
+            lower.contains("gandia") -> "Gandia"
+            lower.contains("moixent") || lower.contains("mogente") -> "Moixent"
+            lower.contains("utiel") -> "Utiel"
+            lower.contains("caudiel") -> "Caudiel"
             else -> dest
         }
     }

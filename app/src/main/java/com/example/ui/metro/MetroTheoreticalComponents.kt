@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -34,7 +35,7 @@ fun MetroScheduledDepartureCard(
     item: MetroScheduledDeparture,
     modifier: Modifier = Modifier,
     appLanguage: AppLanguage = AppLanguage.ES,
-    isDarkMode: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
+    isDarkMode: Boolean = MaterialTheme.colorScheme.surface.luminance() < 0.5f,
     onClick: (() -> Unit)? = null
 ) {
     val badgeColor = remember(item.line) {
@@ -47,8 +48,7 @@ fun MetroScheduledDepartureCard(
         badgeColor.copy(alpha = 0.08f)
     }
 
-    val cardTextColor = MaterialTheme.colorScheme.onSurface
-    val timeTextColor = if (isDarkMode) Color.White else Color(0xFF1E293B)
+    val cardTextColor = if (isDarkMode) Color(0xFFF8FAFC) else MaterialTheme.colorScheme.onSurface
 
     Card(
         modifier = modifier
@@ -103,7 +103,7 @@ fun MetroScheduledDepartureCard(
                     text = item.timeFormatted,
                     fontWeight = FontWeight.ExtraBold,
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.5.sp),
-                    color = timeTextColor,
+                    color = if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A),
                     textAlign = TextAlign.End
                 )
                 Spacer(modifier = Modifier.height(2.dp))
@@ -114,14 +114,14 @@ fun MetroScheduledDepartureCard(
                     Icon(
                         imageVector = Icons.Default.Schedule,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (isDarkMode) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(11.dp)
                     )
                     Text(
                         text = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (isDarkMode) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -137,7 +137,7 @@ fun ScheduledDepartureRow(
     item: MetroScheduledDeparture,
     modifier: Modifier = Modifier,
     appLanguage: AppLanguage = AppLanguage.ES,
-    isDarkMode: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
+    isDarkMode: Boolean = MaterialTheme.colorScheme.surface.luminance() < 0.5f,
     onClick: (() -> Unit)? = null
 ) {
     MetroScheduledDepartureCard(

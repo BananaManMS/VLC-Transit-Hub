@@ -20,7 +20,9 @@ data class AccessibilityIncident(
     val estacionId: Int? = null,
     val estacionNombre: String? = null,
     val lineasAfectadas: String? = null
-)
+) {
+    val name: String get() = tituloEs
+}
 
 data class AforoBloqueado(
     val desde: String? = null,
@@ -58,8 +60,8 @@ data class RealTimeDeparture(
     val lineId: String,
     val destination: String,
     val minutesRemaining: Int,
-    val secondsRemaining: Int,
-    val colorHex: String,
+    val secondsRemaining: Int = minutesRemaining * 60,
+    val colorHex: String = "#EE1D23",
     val estimatedTime: String? = null,
     val status: String? = null,
     val track: String? = null,

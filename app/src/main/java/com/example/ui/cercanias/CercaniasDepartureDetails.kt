@@ -76,10 +76,12 @@ fun CercaniasDepartureDetails(
     
     val routeText = if (departure.routeId.matches(Regex("C\\d"))) "C-${departure.routeId.substring(1)}" else departure.routeId
     val destinationText = remember(departure.destination) {
-        departure.destination
-            .replace("dirección", "", ignoreCase = true)
-            .replace("direccion", "", ignoreCase = true)
-            .trim()
+        com.example.data.mapper.CercaniasDepartureMapper.formatStationDisplayName(
+            departure.destination
+                .replace("dirección", "", ignoreCase = true)
+                .replace("direccion", "", ignoreCase = true)
+                .trim()
+        )
     }
 
     val originInfo = remember(originStationId, originStationName, departure.routeId) {
@@ -123,167 +125,15 @@ fun CercaniasDepartureDetails(
             )
         }
 
-        // --- FIRST CARD: HORAS Y RETRASO ---
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = cardBg)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (appLanguage == AppLanguage.CA) "Hora programada:" else "Hora programada:",
-                        fontSize = 15.sp,
-                        color = subtextColor
-                    )
-                    Text(
-                        text = departure.departureTime.ifBlank { "--:--" },
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = textColor
-                    )
-                }
-
-                if (departure.isLive || departure.isCanceled) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Hora estimada:" else "Hora estimada:",
-                            fontSize = 15.sp,
-                            color = subtextColor
-                        )
-                        val estTimeStr = if (departure.estimatedTime.isNotBlank()) departure.estimatedTime else departure.departureTime
-                        val delay = departure.delayMinutes
-                        val estColor = when {
-                            departure.isCanceled -> Color(0xFFB91C1C)
-                            delay < 0 -> Color(0xFF0284C7)
-                            delay in 0..3 -> Color(0xFF2ECC71)
-                            delay in 4..5 -> Color(0xFFF97316)
-                            else -> Color(0xFFE53935)
-                        }
-                        Text(
-                            text = if (departure.isCanceled) (if (appLanguage == AppLanguage.CA) "CANCEL·LAT" else "CANCELADO") else estTimeStr.ifBlank { "--:--" },
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = estColor
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Retard en temps real:" else "Retraso en tiempo real:",
-                            fontSize = 15.sp,
-                            color = subtextColor
-                        )
-
-                        val delay = departure.delayMinutes
-                        val (delayText, delayColor) = when {
-                            departure.isCanceled -> Pair(if (appLanguage == AppLanguage.CA) "CANCEL·LAT" else "CANCELADO", Color(0xFFB91C1C))
-                            departure.isSkippedAtStop -> Pair(if (appLanguage == AppLanguage.CA) "Sense servei" else "Sin servicio", Color(0xFFB91C1C))
-                            delay < 0 -> Pair("$delay min", Color(0xFF0284C7))
-                            delay in 0..3 -> Pair(if (delay == 0) (if (appLanguage == AppLanguage.CA) "En hora" else "En hora") else "+$delay min", Color(0xFF2ECC71))
-                            delay in 4..5 -> Pair("+$delay min", Color(0xFFF97316))
-                            else -> Pair("+$delay min", Color(0xFFE53935))
-                        }
-
-                        Text(
-                            text = delayText,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = delayColor
-                        )
-                    }
-                }
-            }
-        }
+        // --- OPTION A COMPACT STATUS HEADER (Hora, Vía, Estado y Ubicación integrados) ---
+        CercaniasDepartureStatusHeader(
+            departure = departure,
+            isDarkMode = isDarkMode,
+            appLanguage = appLanguage,
+            destinationText = destinationText
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
-
-        // --- SECOND CARD: UBICACIÓN DEL TREN (SOLO TRENES EN VIVO) ---
-        if (departure.isLive && !departure.isCanceled) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = cardBg)
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = Color(0xFF0284C7),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    val rawLoc = departure.locationText.ifBlank { "En trayecto hacia $destinationText" }
-                    val locText = if (appLanguage == AppLanguage.CA) {
-                        when {
-                            rawLoc == "No ha iniciado el trayecto" -> "No ha iniciat el trajecte"
-                            rawLoc.startsWith("En trayecto hacia ") -> {
-                                val dest = rawLoc.substringAfter("En trayecto hacia ")
-                                "En trajecte cap a $dest"
-                            }
-                            rawLoc.startsWith("Llegando a ") -> {
-                                val stationName = rawLoc.substringAfter("Llegando a ")
-                                "Arribant a $stationName"
-                            }
-                            rawLoc.startsWith("Parado en ") -> {
-                                val stationName = rawLoc.substringAfter("Parado en ")
-                                "Aturat a $stationName"
-                            }
-                            rawLoc.startsWith("Última info: ") -> {
-                                val sub = rawLoc.substringAfter("Última info: ")
-                                val translatedSub = when {
-                                    sub.startsWith("En trayecto hacia ") -> "En trajecte cap a " + sub.substringAfter("En trayecto hacia ")
-                                    sub.startsWith("Llegando a ") -> "Arribant a " + sub.substringAfter("Llegando a ")
-                                    sub.startsWith("Parado en ") -> "Aturat a " + sub.substringAfter("Parado en ")
-                                    else -> sub
-                                }
-                                "Última info: $translatedSub"
-                            }
-                            rawLoc.startsWith("Última info (hace ") -> {
-                                val minutesPart = rawLoc.substringAfter("Última info (hace ").substringBefore("):").trim()
-                                val sub = rawLoc.substringAfter("): ").trim()
-                                val translatedSub = when {
-                                    sub.startsWith("En trayecto hacia ") -> "En trajecte cap a " + sub.substringAfter("En trayecto hacia ")
-                                    sub.startsWith("Llegando a ") -> "Arribant a " + sub.substringAfter("Llegando a ")
-                                    sub.startsWith("Parado en ") -> "Aturat a " + sub.substringAfter("Parado en ")
-                                    else -> sub
-                                }
-                                val minutesVal = minutesPart.removeSuffix(" min").trim()
-                                "Última info (fa $minutesVal min): $translatedSub"
-                            }
-                            else -> rawLoc
-                        }
-                    } else {
-                        rawLoc
-                    }
-                    Text(
-                        text = if (appLanguage == AppLanguage.CA) "Ubicació: $locText" else "Ubicación: $locText",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = textColor
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-        }
 
         // --- THIRD CARD: INCIDENCIAS (SOLO SI HAY INCIDENCIAS ACTIVAS) ---
         val hasIncidences = departure.isCanceled || departure.isSkippedAtStop || affectedAlerts.isNotEmpty()

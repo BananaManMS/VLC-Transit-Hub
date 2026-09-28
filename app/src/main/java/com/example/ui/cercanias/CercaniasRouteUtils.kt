@@ -120,8 +120,12 @@ object CercaniasRouteUtils {
 
                             val exactK = tid
                             val baseK = getBaseTripKey(exactK)
+                            val trainNo = extractTrainNumber(exactK)
 
-                            for (key in listOf(exactK, baseK)) {
+                            val keys = mutableListOf(exactK, baseK)
+                            if (!trainNo.isNullOrBlank()) keys.add(trainNo)
+
+                            for (key in keys) {
                                 val subMap = tempTripMap.getOrPut(key) { mutableMapOf() }
                                 if (stopId.isNotEmpty()) {
                                     subMap[stopId] = formattedTime
@@ -153,8 +157,12 @@ object CercaniasRouteUtils {
         if (tripId.isBlank()) return null
         val exactK = tripId.trim()
         val baseK = getBaseTripKey(exactK)
+        val trainNo = extractTrainNumber(exactK)
 
-        val subMap = tripScheduleMap[exactK] ?: tripScheduleMap[baseK] ?: return null
+        val subMap = tripScheduleMap[exactK]
+            ?: tripScheduleMap[baseK]
+            ?: (if (trainNo != null) tripScheduleMap[trainNo] else null)
+            ?: return null
 
         if (stationId.isNotBlank() && subMap.containsKey(stationId)) {
             return subMap[stationId]
@@ -218,7 +226,10 @@ object CercaniasRouteUtils {
             .replace("platja i grau de gandia", "platja de gandia")
             .replace("direccion", "")
             .replace("direccio", "")
-            .replace("civis", "")
+            .replace("bunyol", "buñol")
+            .replace("l'alcudia de crespins", "alcudia")
+            .replace("alcudia de crespins", "alcudia")
+            .replace("l'alcudia", "alcudia")
             .replace("-", " ")
             .replace("/", " ")
             .replace("\\s+".toRegex(), " ")
@@ -233,6 +244,11 @@ object CercaniasRouteUtils {
         
         // Prevent "albal" from matching "albalat" (e.g. Estivella-Albalat dels Tarongers)
         if ((n1 == "albal" && n2.contains("albalat")) || (n2 == "albal" && n1.contains("albalat"))) {
+            return false
+        }
+
+        // Prevent "gandia" from falsely matching "platja de gandia"
+        if ((n1.contains("platja") && !n2.contains("platja")) || (!n1.contains("platja") && n2.contains("platja"))) {
             return false
         }
         
@@ -306,5 +322,15 @@ object CercaniasRouteUtils {
         return if (originStationName.isNotBlank()) {
             CercaniasLineStationInfo(id = originStationId, name = originStationName)
         } else null
+    }
+
+    fun extractTrainNumber(input: String?): String? {
+        if (input.isNullOrBlank()) return null
+        val m1 = Regex("""[A-Za-z_](\d{4,5})(?=[A-Za-z]|$)""").find(input)
+        if (m1 != null) return m1.groupValues[1]
+        val m2 = Regex("""\b\d{4,5}\b""").find(input)
+        if (m2 != null) return m2.value
+        val m3 = Regex("""\d{5}""").find(input)
+        return m3?.value
     }
 }

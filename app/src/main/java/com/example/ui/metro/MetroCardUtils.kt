@@ -10,12 +10,14 @@ enum class CardCategory(
     val label: String,
     val orderIndex: Int
 ) {
-    SUMA_SENCILLO("SUMA Sencillo", 1),
+    SUMA_SENCILLO("SUMA 10", 1),
     SUMA_MENSUAL("SUMA Mensual", 2),
-    SUMA_TSERIES("SUMA T-Series", 3),
-    TUIN("TuIN", 4),
-    MOBILIS("Móbilis", 5),
-    OTHER("Otros", 6)
+    SUMA_MENSUAL_JOVE("SUMA Mensual Jove", 3),
+    SUMA_TSERIES("SUMA T-Series", 4),
+    TUIN("TuiN", 5),
+    TUIN_JOVE("TuiN Jove", 6),
+    MOBILIS("Móbilis", 7),
+    OTHER("Otros", 8)
 }
 
 fun getCardColors(category: CardCategory, isFaded: Boolean, isDarkMode: Boolean): Triple<Color, Color, Color> {
@@ -35,7 +37,7 @@ fun getCardColors(category: CardCategory, isFaded: Boolean, isDarkMode: Boolean)
                 }
             }
         }
-        CardCategory.SUMA_MENSUAL -> {
+        CardCategory.SUMA_MENSUAL, CardCategory.SUMA_MENSUAL_JOVE -> {
             if (isFaded) {
                 if (isDarkMode) {
                     Triple(Color(0xFF1B2E1F), Color(0xFFA5D6A7), Color(0xFFA5D6A7).copy(alpha = 0.15f))
@@ -65,7 +67,7 @@ fun getCardColors(category: CardCategory, isFaded: Boolean, isDarkMode: Boolean)
                 }
             }
         }
-        CardCategory.TUIN -> {
+        CardCategory.TUIN, CardCategory.TUIN_JOVE -> {
             if (isFaded) {
                 if (isDarkMode) {
                     Triple(Color(0xFF3E200F), Color(0xFFFFCC80), Color(0xFFFFCC80).copy(alpha = 0.15f))

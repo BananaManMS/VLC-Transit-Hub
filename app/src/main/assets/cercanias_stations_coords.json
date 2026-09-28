@@ -754,5 +754,82 @@
     "stop_lat": 38.9902436,
     "stop_lon": -0.1624339,
     "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69001",
+    "stop_name": "Genovés",
+    "stop_lat": 38.98773,
+    "stop_lon": -0.47988,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69002",
+    "stop_name": "Benigànim",
+    "stop_lat": 38.938499,
+    "stop_lon": -0.453424,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69003",
+    "stop_name": "La Pobla del Duc",
+    "stop_lat": 38.907606,
+    "stop_lon": -0.453386,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69004",
+    "stop_name": "Montaberner",
+    "stop_lat": 38.884135,
+    "stop_lon": -0.491619,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69005",
+    "stop_name": "Bufalí",
+    "stop_lat": 38.867405,
+    "stop_lon": -0.510478,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69006",
+    "stop_name": "Albaida",
+    "stop_lat": 38.845645,
+    "stop_lon": -0.518129,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69007",
+    "stop_name": "Agullent",
+    "stop_lat": 38.830569,
+    "stop_lon": -0.551183,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69008",
+    "stop_name": "Ontinyent",
+    "stop_lat": 38.809692,
+    "stop_lon": -0.602457,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69009",
+    "stop_name": "Agres",
+    "stop_lat": 38.796829,
+    "stop_lon": -0.521744,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69010",
+    "stop_name": "Cocentaina",
+    "stop_lat": 38.740618,
+    "stop_lon": -0.446789,
+    "wheelchair_boarding": 2
+  },
+  {
+    "stop_id": "69011",
+    "stop_name": "Alcoi",
+    "stop_lat": 38.709349,
+    "stop_lon": -0.470247,
+    "wheelchair_boarding": 2
   }
 ]

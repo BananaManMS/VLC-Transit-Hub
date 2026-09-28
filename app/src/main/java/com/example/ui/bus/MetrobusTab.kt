@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -75,14 +76,16 @@ fun MetrobusTab(
     onEditAliasClick: (MetrobusStop) -> Unit,
     activeTripBottomPadding: Dp
 ) {
-    val metroStationsList = if (favoriteMetroStations.isNotEmpty()) {
-        val favs = favoriteMetroStations.mapNotNull { id ->
-            allMetroStations.find { it.id == id }
-                ?: ValenciaMetroData.mainMetroStations.find { it.id == id }
+    val metroStationsList = remember(favoriteMetroStations, allMetroStations) {
+        val all = if (allMetroStations.isNotEmpty()) allMetroStations else ValenciaMetroData.mainMetroStations
+        val sortedAll = all.sortedBy { it.name }
+        if (favoriteMetroStations.isNotEmpty()) {
+            val favs = favoriteMetroStations.mapNotNull { id -> sortedAll.find { it.id == id } }.sortedBy { it.name }
+            val others = sortedAll.filterNot { station -> favoriteMetroStations.contains(station.id) }
+            favs + others
+        } else {
+            sortedAll
         }
-        if (favs.isNotEmpty()) favs else ValenciaMetroData.mainMetroStations
-    } else {
-        ValenciaMetroData.mainMetroStations
     }
 
     Column(
@@ -160,10 +163,21 @@ fun MetrobusTab(
                     ) {
                         metroStationsList.forEach { station ->
                             val isSelected = selectedMetroStationId == station.id
+                            val isFav = favoriteMetroStations.contains(station.id)
                             BusFilterChip(
                                 selected = isSelected,
                                 onClick = { onSelectMetroStation(station.id) },
                                 label = station.name,
+                                leadingIcon = if (isFav) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Star,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                } else null,
                                 modifier = Modifier.testTag("metrobus_station_chip_${station.id}")
                             )
                         }
@@ -323,7 +337,7 @@ fun MetrobusStopCard(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Parada ${stop.idParada}${if (stop.distanceText.isNotEmpty()) " • ${stop.distanceText}" else ""}",
+                        text = "Parada ${stop.idParada}${if (!stop.distanceText.isNullOrEmpty()) " • ${stop.distanceText}" else ""}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = cardTextSecondaryColor
                     )

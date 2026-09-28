@@ -505,7 +505,7 @@ fun SearchResultRow(
                     }
                 }
                 is MapSearchResult.Cercanias -> {
-                    val lines = result.station.lines.split(",")
+                    val lines = result.station.lines
                         .map { it.trim() }
                         .filter { it.isNotEmpty() }
                     lines.take(3).forEach { line ->

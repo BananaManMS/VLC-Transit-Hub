@@ -182,21 +182,30 @@ object RealTimeTransitRepository {
             emtArrivalsCache[cleanStop] = Pair(now, liveList)
         }
 
-        if (!includeScheduled) {
-            if (liveList.isNotEmpty()) {
-                return@withContext liveList
+        if (liveList.isEmpty()) {
+            val cached = emtArrivalsCache[cleanStop]?.second
+            if (!cached.isNullOrEmpty()) {
+                return@withContext cached
             }
-            return@withContext emtArrivalsCache[cleanStop]?.second ?: emptyList()
+            val scheduledList = com.example.data.repository.emt.EmtScheduledRepository.fetchScheduledDepartures(
+                stopId = cleanStop,
+                stopName = stopName,
+                limitPerLine = limitPerLine,
+                context = appContext
+            )
+            return@withContext scheduledList
+        }
+
+        if (!includeScheduled) {
+            return@withContext liveList
         }
 
         val scheduledList = com.example.data.repository.emt.EmtScheduledRepository.fetchScheduledDepartures(
             stopId = cleanStop,
             stopName = stopName,
-            limitPerLine = limitPerLine
+            limitPerLine = limitPerLine,
+            context = appContext
         )
-        if (liveList.isEmpty()) {
-            return@withContext scheduledList
-        }
 
         val combined = liveList.toMutableList()
         val maxLiveSecByLine = liveList.groupBy { "${it.linea}__${it.destino}" }

@@ -1,7 +1,6 @@
 package com.example.ui.routing.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
@@ -99,7 +98,7 @@ fun BoardingTimelineRow(item: TimelineItem.Boarding) {
     val rowAlpha = if (item.isPast) 0.35f else 1.0f
     val hasShift = !item.scheduledTime.isNullOrBlank() && item.scheduledTime != item.time
     val isDelayed = (item.delayMins != null && item.delayMins > 0) || (hasShift && item.time > (item.scheduledTime ?: ""))
-    val isDark = isSystemInDarkTheme() || MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val timeColor = when {
         item.isLive && isDelayed -> if (isDark) Color(0xFFFFB74D) else Color(0xFFE65100)
         item.isLive -> if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
@@ -279,7 +278,7 @@ fun TransitRideTimelineRow(
 
                 if (relevantAlert != null) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    val isDark = isSystemInDarkTheme() || MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = if (isDark) Color(0xFF3E2C1E) else Color(0xFFFFF3E0),
@@ -472,7 +471,7 @@ fun TransferTimelineRow(
             }
 
             if (item.isRisk) {
-                val isDark = isSystemInDarkTheme() || MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                 Spacer(modifier = Modifier.height(8.dp))
                 Surface(
                     shape = RoundedCornerShape(12.dp),
@@ -504,15 +503,10 @@ fun TransferTimelineRow(
                             val lineLabel = item.outgoingLine ?: ""
                             val destLabel = item.destination ?: ""
                             val lineDisp = if (lineLabel.startsWith("L") || lineLabel.isBlank()) lineLabel else "L$lineLabel"
-                            val statusLabel = if (item.isLive) {
-                                if (appLanguage == AppLanguage.ES) "(En vivo)" else "(En viu)"
-                            } else {
-                                if (appLanguage == AppLanguage.ES) "(Horario programado)" else "(Horari programat)"
-                            }
                             val nextText = if (appLanguage == AppLanguage.ES) {
-                                "Siguiente $lineDisp a $destLabel: ${item.nextScheduledDepartureTime} $statusLabel"
+                                "Siguiente $lineDisp a $destLabel: ${item.nextScheduledDepartureTime} (Horario programado)"
                             } else {
-                                "Següent $lineDisp a $destLabel: ${item.nextScheduledDepartureTime} $statusLabel"
+                                "Següent $lineDisp a $destLabel: ${item.nextScheduledDepartureTime} (Horari programat)"
                             }
 
                             Text(
@@ -582,7 +576,7 @@ fun AlightingTimelineRow(item: TimelineItem.Alighting) {
     val rowAlpha = if (item.isPast) 0.35f else 1.0f
     val hasShift = !item.scheduledTime.isNullOrBlank() && item.scheduledTime != item.time
     val isDelayed = (item.delayMins != null && item.delayMins > 0) || (hasShift && item.time > (item.scheduledTime ?: ""))
-    val isDark = isSystemInDarkTheme() || MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val timeColor = when {
         item.isLive && isDelayed -> if (isDark) Color(0xFFFFB74D) else Color(0xFFE65100)
         item.isLive -> if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
@@ -696,7 +690,7 @@ fun DestinationTimelineRow(item: TimelineItem.Destination) {
     val rowAlpha = if (item.isPast) 0.35f else 1.0f
     val hasShift = !item.scheduledTime.isNullOrBlank() && item.scheduledTime != item.time
     val isDelayed = (item.delayMins != null && item.delayMins > 0) || (hasShift && item.time > (item.scheduledTime ?: ""))
-    val isDark = isSystemInDarkTheme() || MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val timeColor = when {
         item.isLive && isDelayed -> if (isDark) Color(0xFFFFB74D) else Color(0xFFE65100)
         item.isLive -> if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)

@@ -58,12 +58,73 @@ object MetroMapOverlayLoader {
     private var cachedUseHighRes: Boolean? = null
     private var cachedMetroPolylines: List<Polyline> = emptyList()
 
+    @Volatile
+    private var isLoading: Boolean = false
+
+    private val _isLoadedState = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isLoadedState: kotlinx.coroutines.flow.StateFlow<Boolean> = _isLoadedState
+
+    val isLoaded: Boolean
+        get() = _isLoadedState.value
+
+    private val pendingCallbacks = mutableListOf<() -> Unit>()
+
+    @Synchronized
+    fun ensureLoaded(context: Context, scope: CoroutineScope? = null, onComplete: (() -> Unit)? = null) {
+        if (isLoaded) {
+            onComplete?.invoke()
+            return
+        }
+
+        if (onComplete != null) {
+            pendingCallbacks.add(onComplete)
+        }
+
+        if (isLoading) return
+        isLoading = true
+
+        val coroutineScope = scope ?: CoroutineScope(Dispatchers.IO)
+        coroutineScope.launch {
+            try {
+                val sets = withContext(Dispatchers.IO) {
+                    parseGeoJsonAndGeneratePolylines(context)
+                }
+                val callbacksToRun = synchronized(MetroMapOverlayLoader) {
+                    polylineSets = sets
+                    _isLoadedState.value = true
+                    isLoading = false
+                    cachedMapViewRef = null // Invalidate cache so new polylines generate
+                    val callbacks = pendingCallbacks.toList()
+                    pendingCallbacks.clear()
+                    callbacks
+                }
+                Log.d(TAG, "Successfully loaded precomputed polyline sets (High-Res and Low-Res for Far/Medium/Close)")
+                withContext(Dispatchers.Main) {
+                    callbacksToRun.forEach { it.invoke() }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load metro lines GeoJSON", e)
+                synchronized(MetroMapOverlayLoader) {
+                    isLoading = false
+                    pendingCallbacks.clear()
+                }
+            }
+        }
+    }
+
     @Synchronized
     fun getLoadedPolylines(mapView: org.osmdroid.views.MapView? = null): List<Polyline> {
         if (mapView != null) {
+            if (!isLoaded && !isLoading) {
+                ensureLoaded(mapView.context)
+            }
             checkAndRebuildPolylineCache(mapView)
         }
         return cachedMetroPolylines
+    }
+
+    fun loadMetroLines(context: Context, scope: CoroutineScope, onComplete: (() -> Unit)? = null) {
+        ensureLoaded(context, scope, onComplete)
     }
 
     @Synchronized
@@ -128,21 +189,6 @@ object MetroMapOverlayLoader {
             zoom < 13.5 -> ZoomCategory.FAR
             zoom < 16.0 -> ZoomCategory.MEDIUM
             else -> ZoomCategory.CLOSE
-        }
-    }
-
-    fun loadMetroLines(context: Context, scope: CoroutineScope, onComplete: (() -> Unit)? = null) {
-        scope.launch {
-            try {
-                val sets = withContext(Dispatchers.IO) {
-                    parseGeoJsonAndGeneratePolylines(context)
-                }
-                polylineSets = sets
-                Log.d(TAG, "Successfully loaded precomputed polyline sets (High-Res and Low-Res for Far/Medium/Close)")
-                onComplete?.invoke()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load metro lines GeoJSON", e)
-            }
         }
     }
 

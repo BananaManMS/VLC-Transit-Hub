@@ -1,7 +1,6 @@
 package com.example.ui.routing.components
 
 import android.location.Location
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,7 +49,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.routing.ItineraryViability
 import com.example.data.model.routing.PlannedItinerary
-import com.example.data.model.routing.SchedulePhase
 import com.example.data.model.routing.TransitMode
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.routing.PlannerLocation
@@ -74,7 +72,7 @@ fun RouteDetailBottomSheet(
     appLanguage: AppLanguage = AppLanguage.CA,
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
 ) {
-    val isDark = isDarkMode || isSystemInDarkTheme()
+    val isDark = isDarkMode
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -137,8 +135,7 @@ fun RouteDetailBottomSheet(
             Spacer(modifier = Modifier.height(4.dp))
 
             // Duration & Times Title
-            val isItineraryLive = itinerary.legs.any { it.isRealTimeVerified && it.schedulePhase == SchedulePhase.LIVE_ACQUIRED } ||
-                    (realTimeStatus?.isLive == true && realTimeStatus.schedulePhase == SchedulePhase.LIVE_ACQUIRED)
+            val isItineraryLive = itinerary.legs.any { it.isRealTimeVerified } || realTimeStatus?.isLive == true
             val isTripDelayed = (realTimeStatus?.delayMinutes ?: 0) > 0 || (itinerary.recommendedStartTime.isNotEmpty() && itinerary.recommendedStartTime != itinerary.formattedDepartureTime)
             val tripTimeColor = when {
                 isItineraryLive && isTripDelayed -> if (isDark) Color(0xFFFFB74D) else Color(0xFFE65100)
@@ -197,8 +194,8 @@ fun RouteDetailBottomSheet(
             if (itinerary.viabilityNotice != null || itinerary.activeAlerts.isNotEmpty() || liveNotice != null || (itinerary.recommendedStartTime.isNotEmpty() && itinerary.recommendedStartTime != itinerary.formattedDepartureTime)) {
                 val isNoticeScheduled = liveNotice != null && (liveNotice.contains("Programado") || liveNotice.contains("Programat") || realTimeStatus?.isUpcomingTransferLive == false)
                 val isLiveGps = !isNoticeScheduled && (
-                    (liveNotice != null && realTimeStatus?.isUpcomingTransferLive == true && realTimeStatus.transferSchedulePhase == SchedulePhase.LIVE_ACQUIRED) ||
-                    (liveNotice == null && (itinerary.viability == ItineraryViability.VIABLE_ON_TIME || itinerary.legs.any { it.isRealTimeVerified && it.schedulePhase == SchedulePhase.LIVE_ACQUIRED } || (realTimeStatus?.isLive == true && realTimeStatus.schedulePhase == SchedulePhase.LIVE_ACQUIRED)))
+                    (liveNotice != null && realTimeStatus?.isUpcomingTransferLive == true) ||
+                    (liveNotice == null && (itinerary.viability == ItineraryViability.VIABLE_ON_TIME || itinerary.legs.any { it.isRealTimeVerified } || realTimeStatus?.isLive == true))
                 )
                 val (bannerBg, bannerIconColor, bannerIcon) = when {
                     itinerary.viability == ItineraryViability.SERVICE_ALERT || realTimeStatus?.isTransferAtRisk == true -> Triple(

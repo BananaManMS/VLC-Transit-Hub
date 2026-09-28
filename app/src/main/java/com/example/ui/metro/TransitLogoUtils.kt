@@ -56,15 +56,15 @@ object TransitLogoUtils {
     fun getMetroLineColor(lineId: String, fallbackColorHex: String? = null): Color {
         val clean = lineId.trim().uppercase().removePrefix("L").removePrefix("LÍNEA ").removePrefix("LINEA ")
         return when (clean) {
-            "1" -> Color(0xFFE6B036) // L1 Amarillo oro
-            "2" -> Color(0xFFB83A76) // L2 Magenta / Rosa
-            "3" -> Color(0xFFC21D2D) // L3 Rojo
-            "4" -> Color(0xFF0B4684) // L4 Azul oscuro tranvía
-            "5" -> Color(0xFF018458) // L5 Verde
-            "6" -> Color(0xFF8063A0) // L6 Morado tranvía
-            "7" -> Color(0xFFDB8418) // L7 Naranja
-            "8" -> Color(0xFF40B2CB) // L8 Azul cian tranvía
-            "9" -> Color(0xFFAD7D4F) // L9 Marrón
+            "1" -> Color(0xFFE1A92A) // L1 Amarillo oro
+            "2" -> Color(0xFFB3257D) // L2 Magenta / Rosa
+            "3" -> Color(0xFFC41833) // L3 Rojo
+            "4" -> Color(0xFF1E4B90) // L4 Azul oscuro tranvía
+            "5" -> Color(0xFF068E63) // L5 Verde
+            "6" -> Color(0xFF7657AA) // L6 Morado tranvía
+            "7" -> Color(0xFFDA7A18) // L7 Naranja
+            "8" -> Color(0xFF52BACC) // L8 Azul cian tranvía
+            "9" -> Color(0xFFA16E42) // L9 Marrón
             "10" -> Color(0xFFB3CB6D) // L10 Verde lima tranvía
             else -> {
                 if (!fallbackColorHex.isNullOrBlank()) {

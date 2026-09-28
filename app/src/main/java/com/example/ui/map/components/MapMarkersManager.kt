@@ -152,6 +152,7 @@ object MapMarkersManager {
         selectedMapItem: SelectedMapItem? = currentSelectedMapItem,
         selectedBusLineFilters: Set<String> = emptySet(),
         selectedMetrobusShapes: Map<String, List<GeoPoint>> = emptyMap(),
+        selectedDirectionFilter: String? = null,
         onSelectItem: (SelectedMapItem) -> Unit,
         onMapClick: () -> Unit,
         onShowDisambiguationMenu: ((List<SelectedMapItem>) -> Unit)? = null,
@@ -164,7 +165,8 @@ object MapMarkersManager {
                         context, mapView, cameraZoom, busStops, metrobusStops, metroStations, cercaniasStations,
                         valenbisiStations, customFavorites, homeLocation, workLocation, mapFilter,
                         userLocation, destinationLocation, destinationTitle, isDarkMode, busStopAliases,
-                        appLanguage, selectedItinerary, selectedMapItem, selectedBusLineFilters, selectedMetrobusShapes, onSelectItem, onMapClick, onShowDisambiguationMenu, onMapLongClick
+                        appLanguage, selectedItinerary, selectedMapItem, selectedBusLineFilters, selectedMetrobusShapes,
+                        selectedDirectionFilter, onSelectItem, onMapClick, onShowDisambiguationMenu, onMapLongClick
                     )
                 }
             }
@@ -470,7 +472,7 @@ object MapMarkersManager {
         val activeMetrobusCount = metrobusRenderResult.activeMarkerCount
         val activeMetrobusClusterCount = metrobusRenderResult.activeClusterCount
 
-        val isOnlyValenbisi = !mapFilter.showBus && !mapFilter.showMetro && !mapFilter.showCercanias && !mapFilter.isFavorites
+        val isOnlyValenbisi = mapFilter.showValenbisi && !mapFilter.showBus && !mapFilter.showMetrobus && !mapFilter.showMetro && !mapFilter.showCercanias && !mapFilter.isFavorites
         val valenbisiRenderResult = ValenbisiMarkersRenderer.renderValenbisi(
             context = context,
             mapView = mapView,
@@ -541,6 +543,7 @@ object MapMarkersManager {
             validMetroStations = validMetroStations,
             selectedBusLineFilters = selectedBusLineFilters,
             selectedMetrobusShapes = selectedMetrobusShapes,
+            selectedDirectionFilter = selectedDirectionFilter,
             onSelectItem = onSelectItem
         )
         lastZoomedItineraryId = MapOverlaysComposer.composeOverlays(composeParams)

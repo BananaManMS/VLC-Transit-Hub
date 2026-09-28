@@ -99,11 +99,11 @@ fun DashboardHomeTab(
     val homeLocationState by dashboardViewModel.homeLocation.collectAsState()
     val workLocationState by dashboardViewModel.workLocation.collectAsState()
 
-    val homeName = homeLocationState?.title?.ifBlank { homeLocationState?.subtitle } ?: ""
+    val homeName = homeLocationState?.subtitle?.ifBlank { homeLocationState?.title } ?: ""
     val homeLat = homeLocationState?.latitude ?: 0.0
     val homeLon = homeLocationState?.longitude ?: 0.0
 
-    val workName = workLocationState?.title?.ifBlank { workLocationState?.subtitle } ?: ""
+    val workName = workLocationState?.subtitle?.ifBlank { workLocationState?.title } ?: ""
     val workLat = workLocationState?.latitude ?: 0.0
     val workLon = workLocationState?.longitude ?: 0.0
 
@@ -535,6 +535,8 @@ fun DashboardHomeTab(
             isHome = isHome,
             appLanguage = appLanguage,
             currentName = if (isHome) homeName else workName,
+            currentLat = if (isHome) homeLat else workLat,
+            currentLon = if (isHome) homeLon else workLon,
             dashboardViewModel = dashboardViewModel,
             onDismiss = { showCommuteDialogFor = null },
             onSelectOnMap = {

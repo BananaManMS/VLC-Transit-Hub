@@ -245,12 +245,14 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     // Selected Map Item & Destination
     val selectedMapItem: StateFlow<SelectedMapItem?> = selectionHandler.selectedMapItem
     val selectedBusLineFilters: StateFlow<Set<String>> = selectionHandler.selectedBusLineFilters
+    val selectedDirectionFilter: StateFlow<String?> = selectionHandler.selectedDirectionFilter
     val destinationLocation: StateFlow<GeoPoint?> = selectionHandler.destinationLocation
     val destinationTitle: StateFlow<String?> = selectionHandler.destinationTitle
     fun setDestination(geoPoint: GeoPoint, title: String) = selectionHandler.setDestination(geoPoint, title)
     fun clearDestination() = selectionHandler.clearDestination()
     fun selectItem(item: SelectedMapItem?, centerCamera: Boolean = true) = selectionHandler.selectItem(item, centerCamera)
     fun setBusLineFilters(filters: Set<String>) = selectionHandler.setBusLineFilters(filters)
+    fun setSelectedDirectionFilter(direction: String?) = selectionHandler.setSelectedDirectionFilter(direction)
     fun onMapLongClick(geoPoint: GeoPoint) = selectionHandler.onMapLongClick(geoPoint)
 
     // Location & Camera Delegations
@@ -373,7 +375,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     ) { stops, favs, filter ->
         if (filter.isFavorites) {
             stops.filter { it.id_parada in favs }
-        } else if (filter.showBus) {
+        } else if (filter.showBus || filter.showMetrobus) {
             stops
         } else {
             emptyList()
@@ -471,7 +473,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     val debouncedCameraTarget: StateFlow<GeoPoint> = cameraTarget
-        .debounce(450L)
+        .debounce(200L)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MapConfig.VALENCIA_CENTER)
 
     val nearbyValenbisiStations: StateFlow<List<ValenbisiStation>> = combine(
@@ -571,11 +573,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                             dbLines
                         }
                     }
-                    dataLoader.fetchMetrobusShapes(
-                        lineCodes = lineCodes,
-                        stopLat = item.stop.lat,
-                        stopLon = item.stop.lon
-                    )
+                    dataLoader.fetchMetrobusShapes(lineCodes)
                 } else {
                     dataLoader.selectedMetrobusShapes.value = emptyMap()
                 }

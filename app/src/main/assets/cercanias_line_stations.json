@@ -2,7 +2,7 @@
   "C1": [
     {
       "id": "65000",
-      "name": "València-Estació del Nord"
+      "name": "València Nord"
     },
     {
       "id": "64203",
@@ -60,7 +60,7 @@
   "C2": [
     {
       "id": "65000",
-      "name": "València-Estació del Nord"
+      "name": "València Nord"
     },
     {
       "id": "64203",
@@ -125,20 +125,64 @@
     {
       "id": "64003",
       "name": "Moixent"
+    },
+    {
+      "id": "69001",
+      "name": "Genovés"
+    },
+    {
+      "id": "69002",
+      "name": "Benigànim"
+    },
+    {
+      "id": "69003",
+      "name": "La Pobla del Duc"
+    },
+    {
+      "id": "69004",
+      "name": "Montaberner"
+    },
+    {
+      "id": "69005",
+      "name": "Bufalí"
+    },
+    {
+      "id": "69006",
+      "name": "Albaida"
+    },
+    {
+      "id": "69007",
+      "name": "Agullent"
+    },
+    {
+      "id": "69008",
+      "name": "Ontinyent"
+    },
+    {
+      "id": "69009",
+      "name": "Agres"
+    },
+    {
+      "id": "69010",
+      "name": "Cocentaina"
+    },
+    {
+      "id": "69011",
+      "name": "Alcoi"
     }
   ],
   "C3": [
     {
       "id": "65000",
-      "name": "València-Estació del Nord"
+      "name": "València Nord"
     },
     {
       "id": "65002",
-      "name": "València-La Font de Sant Lluís"
+      "name": "València F. S. Lluís"
     },
     {
       "id": "66212",
-      "name": "València-Sant Isidre"
+      "name": "València St. Isidre"
     },
     {
       "id": "66214",
@@ -192,11 +236,11 @@
   "C5": [
     {
       "id": "65000",
-      "name": "València-Estació del Nord"
+      "name": "València Nord"
     },
     {
       "id": "65003",
-      "name": "València-Cabanyal"
+      "name": "Cabanyal"
     },
     {
       "id": "65008",
@@ -246,15 +290,15 @@
   "C6": [
     {
       "id": "65000",
-      "name": "València-Estació del Nord"
+      "name": "València Nord"
     },
     {
       "id": "65002",
-      "name": "València-La Font de Sant Lluís"
+      "name": "València F. S. Lluís"
     },
     {
       "id": "65003",
-      "name": "València-Cabanyal"
+      "name": "Cabanyal"
     },
     {
       "id": "65001",

@@ -26,8 +26,6 @@ private var pulsePhase = 0f
 
 // Reusable bitmap and drawing structures for live compass icon to eliminate GC churn at 30 FPS
 private const val LIVE_USER_ICON_SIZE = 96
-private val liveUserBitmap = Bitmap.createBitmap(LIVE_USER_ICON_SIZE, LIVE_USER_ICON_SIZE, Bitmap.Config.ARGB_8888)
-private val liveUserCanvas = Canvas(liveUserBitmap)
 
 private val liveGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     color = Color.parseColor("#3322C55E")
@@ -60,7 +58,6 @@ private val liveArrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     color = Color.parseColor("#10B981")
     style = Paint.Style.FILL
 }
-private val liveArrowPath = android.graphics.Path()
 
 private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -203,9 +200,8 @@ internal fun createUserLocationIcon(context: Context): Drawable {
 
 internal fun createUserLiveIcon(context: Context): Drawable {
     val size = LIVE_USER_ICON_SIZE
-    val canvas = liveUserCanvas
-    // Clear previous drawing cleanly
-    canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
 
     val center = size / 2f
     val baseRadius = 16f
@@ -226,18 +222,18 @@ internal fun createUserLiveIcon(context: Context): Drawable {
     canvas.save()
     canvas.rotate(smoothHeading, center, center)
 
-    liveArrowPath.reset()
-    liveArrowPath.moveTo(center, center - outerRadius - 16f)
-    liveArrowPath.lineTo(center - 9f, center - outerRadius + 1f)
-    liveArrowPath.lineTo(center + 9f, center - outerRadius + 1f)
-    liveArrowPath.close()
+    val arrowPath = android.graphics.Path()
+    arrowPath.moveTo(center, center - outerRadius - 16f)
+    arrowPath.lineTo(center - 9f, center - outerRadius + 1f)
+    arrowPath.lineTo(center + 9f, center - outerRadius + 1f)
+    arrowPath.close()
 
-    canvas.drawPath(liveArrowPath, liveArrowStrokePaint)
-    canvas.drawPath(liveArrowPath, liveArrowFillPaint)
+    canvas.drawPath(arrowPath, liveArrowStrokePaint)
+    canvas.drawPath(arrowPath, liveArrowFillPaint)
 
     canvas.restore()
 
-    return BitmapDrawable(context.resources, liveUserBitmap)
+    return BitmapDrawable(context.resources, bitmap)
 }
 
 internal fun startLiveLocationUpdates(context: Context) {

@@ -18,8 +18,13 @@ class ScheduleUpdateWorker(
             val renfeRepository = RenfeRepository(applicationContext, db)
             renfeRepository.syncScheduleFromRemoteIfNeeded()
 
+            com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(applicationContext)
+
             val metroScheduleRepository = com.example.data.repository.MetroScheduleRepository.getInstance(applicationContext)
             metroScheduleRepository.syncScheduleFromRemoteIfNeeded()
+
+            com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(applicationContext)
+            com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(applicationContext)
 
             val metroCardRepository = MetroCardRepository(applicationContext, db)
             metroCardRepository.refreshTransitCardsIfNeeded()

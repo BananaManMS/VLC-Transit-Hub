@@ -175,7 +175,7 @@ fun WeatherCard(
                 val currentHour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
                 val isNight = currentHour >= 21 || currentHour < 6
                  val conditionText = when (data.condition) {
-                    WeatherCondition.SUNNY, WeatherCondition.CLEAR -> if (isNight) {
+                    WeatherCondition.SUNNY -> if (isNight) {
                         if (appLanguage == AppLanguage.CA) "Clar" else "Despejado"
                     } else {
                         if (appLanguage == AppLanguage.CA) "Solejat" else "Soleado"
@@ -413,8 +413,8 @@ fun EventCard(
     }
     val (startTime, endTime) = remember(event.startMillis, event.endMillis) {
         val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val start = formatter.format(Date(event.startMillis))
-        val end = formatter.format(Date(event.endMillis))
+        val start = event.startMillis?.let { formatter.format(Date(it)) } ?: "--:--"
+        val end = event.endMillis?.let { formatter.format(Date(it)) } ?: "--:--"
         start to end
     }
     val dateLabel = remember(event.startMillis) {
@@ -429,15 +429,17 @@ fun EventCard(
         cleanLabel.equals("Mañana", ignoreCase = true)
     }
     val hasTime = remember(event.startMillis, event.endMillis, event.isAllDay) {
-        if (event.isAllDay || event.startMillis == event.endMillis) {
+        val s = event.startMillis
+        val e = event.endMillis
+        if (event.isAllDay || s == null || e == null || s == e) {
             false
         } else {
-            val duration = event.endMillis - event.startMillis
+            val duration = e - s
             if (duration % 86400000L == 0L) {
                 false
             } else {
-                val startCal = java.util.Calendar.getInstance().apply { timeInMillis = event.startMillis }
-                val endCal = java.util.Calendar.getInstance().apply { timeInMillis = event.endMillis }
+                val startCal = java.util.Calendar.getInstance().apply { timeInMillis = s }
+                val endCal = java.util.Calendar.getInstance().apply { timeInMillis = e }
                 val startHour = startCal.get(java.util.Calendar.HOUR_OF_DAY)
                 val startMin = startCal.get(java.util.Calendar.MINUTE)
                 val endHour = endCal.get(java.util.Calendar.HOUR_OF_DAY)
@@ -454,7 +456,7 @@ fun EventCard(
     Card(
         onClick = {
             try {
-                val eventId = event.calendarEventId?.toLongOrNull() ?: event.id.toLongOrNull() ?: 0L
+                val eventId = event.calendarEventId ?: event.id.toLong()
                 val uri = android.content.ContentUris.withAppendedId(android.provider.CalendarContract.Events.CONTENT_URI, eventId)
                 val intent = Intent(Intent.ACTION_VIEW).setData(uri)
                 context.startActivity(intent)
@@ -462,7 +464,7 @@ fun EventCard(
                 try {
                     val builder = android.provider.CalendarContract.CONTENT_URI.buildUpon()
                     builder.appendPath("time")
-                    android.content.ContentUris.appendId(builder, event.startMillis)
+                    event.startMillis?.let { android.content.ContentUris.appendId(builder, it) }
                     val intent = Intent(Intent.ACTION_VIEW).setData(builder.build())
                     context.startActivity(intent)
                 } catch (e2: Exception) {

@@ -1,212 +1,85 @@
 package com.example.util
 
-import java.text.Normalizer
-import java.util.Locale
+import com.example.ui.cercanias.CercaniasAlert
+import com.example.ui.components.cleanAccessibilityText
+import com.example.ui.metro.AccessibilityIncident
 
-/**
- * Utility for matching station names strictly within accessibility alert titles
- * for both Metrovalencia and Renfe Cercanías APIs.
- */
 object StationAccessibilityHelper {
 
-    private val EXCLUDED_PHRASES = listOf(
-        "sillas de ruedas",
-        "silla de ruedas",
-        "sillas de rueda",
-        "silla de rueda"
-    )
-
-    private val DIACRITICS_REGEX = Regex("\\p{InCombiningDiacriticalMarks}+")
-    private val NON_ALPHANUMERIC_REGEX = Regex("[^a-z0-9\\s]")
-    private val MULTIPLE_SPACES_REGEX = Regex("\\s+")
-
-    private fun clean(str: String): String {
-        val unaccented = Normalizer.normalize(str, Normalizer.Form.NFD)
-            .replace(DIACRITICS_REGEX, "")
-        return unaccented.lowercase(Locale.ROOT)
-            .replace(NON_ALPHANUMERIC_REGEX, " ")
-            .replace(MULTIPLE_SPACES_REGEX, " ")
-            .trim()
+    fun cleanAccessibilityAlertText(rawText: String): String {
+        return cleanAccessibilityText(rawText)
     }
 
-    /**
-     * Checks if [stationName] appears in [alertTitle], strictly ignoring descriptions.
-     * Handles accents, case insensitivity, word boundaries, and common Valencian/Spanish synonyms.
-     */
     fun isStationInAlertTitle(stationName: String, alertTitle: String): Boolean {
-        if (stationName.isBlank() || alertTitle.isBlank()) return false
-
-        // 1. Remove excluded phrases like "silla de ruedas" from title so "Silla" station isn't falsely matched
-        var titleToClean = alertTitle.lowercase(Locale.ROOT)
-        for (phrase in EXCLUDED_PHRASES) {
-            titleToClean = titleToClean.replace(phrase, " ")
-        }
-        val normTitle = clean(titleToClean)
-        val normStation = clean(stationName)
-
-        if (normStation.length < 3 || normTitle.isBlank()) return false
-
-        // 2. Direct full-name word-boundary match
-        val fullRegex = Regex("""\b${Regex.escape(normStation)}\b""")
-        if (fullRegex.containsMatchIn(normTitle)) {
-            return true
-        }
-
-        // 3. Bilingual variants (nord <-> norte, jativa <-> xativa)
-        if (normStation.contains("nord")) {
-            val norteVariant = normStation.replace("nord", "norte")
-            if (Regex("""\b${Regex.escape(norteVariant)}\b""").containsMatchIn(normTitle)) {
-                return true
-            }
-        }
-        if (normStation.contains("norte")) {
-            val nordVariant = normStation.replace("norte", "nord")
-            if (Regex("""\b${Regex.escape(nordVariant)}\b""").containsMatchIn(normTitle)) {
-                return true
-            }
-        }
-        if (normStation.contains("xativa")) {
-            val jativaVariant = normStation.replace("xativa", "jativa")
-            if (Regex("""\b${Regex.escape(jativaVariant)}\b""").containsMatchIn(normTitle)) {
-                return true
-            }
-        }
-        if (normStation.contains("jativa")) {
-            val xativaVariant = normStation.replace("jativa", "xativa")
-            if (Regex("""\b${Regex.escape(xativaVariant)}\b""").containsMatchIn(normTitle)) {
-                return true
-            }
-        }
-
-        // 4. Compound station name parts (e.g., "Facultats - Manuel Broseta", "Marítim - Serrería")
-        val parts = stationName.split("-", "/", "(")
-            .map { clean(it) }
-            .filter { it.length >= 4 && !it.contains("estacion") && !it.contains("estacio") }
-
-        for (part in parts) {
-            if (part != normStation && Regex("""\b${Regex.escape(part)}\b""").containsMatchIn(normTitle)) {
-                return true
-            }
-        }
-
-        return false
+        val normName = stationName.normalizeForSearch()
+        val titleNorm = alertTitle.normalizeForSearch()
+        return titleNorm.contains(normName)
     }
 
-    /**
-     * Checks if a Metrovalencia station is affected by a given accessibility incident.
-     * Strictly matches stationId, estacionNombre, or alert title header.
-     * NEVER scans description text, which often mentions platforms or destinations (e.g., "andén destino Aeroport").
-     */
     fun isMetroStationAffected(
         stationId: String,
         stationName: String,
-        incident: com.example.ui.metro.AccessibilityIncident
+        incident: AccessibilityIncident
     ): Boolean {
-        // 1. Direct stationId match (normalizing numeric IDs to strip leading zeros or prefixes)
-        if (incident.estacionId != null) {
-            val incIdClean = incident.estacionId.toString().replace(Regex("[^0-9]"), "").trimStart('0')
-            val targetIdClean = stationId.replace(Regex("[^0-9]"), "").trimStart('0')
-            if (incIdClean.isNotBlank() && incIdClean == targetIdClean) {
-                return true
-            }
-            if (incident.estacionId.toString().trim() == stationId.trim()) {
+        val normName = stationName.normalizeForSearch()
+        val stationIdInt = stationId.toIntOrNull()
+
+        if (stationIdInt != null && incident.estacionId == stationIdInt) return true
+        if (incident.estacionId != null && incident.estacionId.toString() == stationId) return true
+
+        val incEstName = incident.estacionNombre?.trim()
+        if (!incEstName.isNullOrEmpty()) {
+            val normIncName = incEstName.normalizeForSearch()
+            if (normIncName == normName || normIncName.equals(normName, ignoreCase = true)) {
                 return true
             }
         }
 
-        // 2. Direct estacionNombre match (if provided by the API, the alert belongs strictly to that station)
-        val incEstNombre = incident.estacionNombre?.trim()
-        if (!incEstNombre.isNullOrBlank()) {
-            val cleanStation = clean(stationName)
-            val cleanIncEst = clean(incEstNombre)
-            if (cleanStation == cleanIncEst || isStationInAlertTitle(stationName, incEstNombre)) {
+        if (incident.estacionId == null && incEstName.isNullOrBlank()) {
+            val titleNorm = (incident.tituloEs + " " + incident.tituloCa).normalizeForSearch()
+            if (titleNorm.contains("estacio de $normName") || titleNorm.contains("estacion de $normName")) {
                 return true
             }
-            // Explicit station specified by API does not match this station
-            return false
         }
-
-        // 3. Fallback: If no station_id or estacion_nombre was provided, check ONLY the alert title
-        if (isStationInAlertTitle(stationName, incident.tituloEs) || isStationInAlertTitle(stationName, incident.tituloCa)) {
-            return true
-        }
-
         return false
     }
 
-    /**
-     * Checks if a Cercanías station is affected by a given accessibility alert.
-     * Strictly matches stopIds or header titles.
-     * NEVER scans description text.
-     */
     fun isCercaniasStationAffected(
-        stopId: String,
+        stationId: String,
         stationNombre: String,
-        stationDisplayName: String,
-        alert: com.example.ui.cercanias.CercaniasAlert
+        displayName: String,
+        alert: CercaniasAlert
     ): Boolean {
-        // 1. Stop IDs match
+        if (!alert.isAccessibility) return false
+
+        val cleanId = stationId.substringBefore('_').substringBefore('-').trim()
         if (alert.stopIds.isNotEmpty()) {
-            val cleanStopId = stopId.substringBefore('_').substringBefore('-').trim()
-            val cleanStopIdNo60 = cleanStopId.removePrefix("60")
-            if (alert.stopIds.any { sId ->
-                    val cleanS = sId.substringBefore('_').substringBefore('-').trim()
-                    cleanS == cleanStopId || cleanS == cleanStopIdNo60 || cleanS.removePrefix("60") == cleanStopIdNo60
-                }) {
-                return true
+            val matchesStop = alert.stopIds.any { sId ->
+                val cleanSId = sId.substringBefore('_').substringBefore('-').trim()
+                cleanSId.equals(cleanId, ignoreCase = true) || cleanSId.equals(stationId, ignoreCase = true)
             }
-            return false
+            if (matchesStop) return true
         }
 
-        // 2. Fallback: Header / title search only
-        if (isStationInAlertTitle(stationNombre, alert.headerEs) || isStationInAlertTitle(stationDisplayName, alert.headerEs)) {
-            return true
+        val namesToCheck = listOf(stationNombre, displayName).filter { it.isNotBlank() }
+        val fullText = "${alert.headerEs} ${alert.descriptionEs}".lowercase(java.util.Locale.ROOT)
+        val cleanedText = fullText
+            .replace(Regex("(sentido|dirección|direccion|hacia|destí|destino|destinació|destinacion)\\s+[a-záéíóúàèòñç·\\-\\s]+(de vía|de via|en vía|en via|,|\\.)"), " ")
+            .replace(Regex("(sentido|dirección|direccion|hacia|destí|destino|destinació|destinacion)\\s+[a-záéíóúàèòñç·\\-\\s]+"), " ")
+            .normalizeForSearch()
+
+        for (name in namesToCheck) {
+            val normName = name.normalizeForSearch()
+            if (normName.isBlank()) continue
+            if (cleanedText.contains("estacion de $normName") ||
+                cleanedText.contains("estacio de $normName") ||
+                cleanedText.contains("estacion $normName") ||
+                cleanedText.contains("estacio $normName")
+            ) {
+                return true
+            }
         }
 
         return false
     }
-
-    /**
-     * Cleans redundant repetitive prefixes from accessibility alert texts
-     * (e.g., "Afectación de accesibilidad en la estación Jesús: Avería en ascensor..." -> "Avería en ascensor...").
-     */
-    fun cleanAccessibilityAlertText(text: String): String {
-        if (text.isBlank()) return ""
-        val cleaned = text.replace(
-            Regex(
-                """^(?:Afectaci[oó]n?\s+(?:de|d')\s*accessibilitat|Afectaci[oó]n?\s+de\s+accesibilidad|Incid[eè]ncia?\s+(?:de|d')\s*accessibilitat|Incidencia\s+de\s+accesibilidad)(?:\s+(?:en|a)\s+(?:la\s+estaci[oó]n|l'estaci[oó]))?\s*[^:]*:\s*""",
-                RegexOption.IGNORE_CASE
-            ),
-            ""
-        ).trim()
-        return cleaned.ifBlank { text.trim() }
-    }
 }
-
-object AccessibilityNoticeFormatter {
-    fun cleanAccessibilityNoticeText(rawText: String, stationName: String? = null): String {
-        if (rawText.isBlank()) return ""
-        var result = rawText
-        if (!stationName.isNullOrBlank()) {
-            val stationClean = stationName.trim()
-            result = result.replace(Regex("""(?i)\b(?:en|a)\s+(?:la\s+estaci[oó]n|l'estaci[oó])\s+(?:de\s+)?${Regex.escape(stationClean)}\b"""), "")
-        }
-        return StationAccessibilityHelper.cleanAccessibilityAlertText(result)
-    }
-
-    fun deduplicateAccessibilityIncidents(
-        incidents: List<com.example.ui.metro.AccessibilityIncident>,
-        stationName: String? = null
-    ): List<com.example.ui.metro.AccessibilityIncident> {
-        val seen = mutableSetOf<String>()
-        val result = mutableListOf<com.example.ui.metro.AccessibilityIncident>()
-        for (inc in incidents) {
-            val key = cleanAccessibilityNoticeText(inc.descripcionEs.ifBlank { inc.tituloEs }, stationName).lowercase(Locale.ROOT)
-            if (seen.add(key)) {
-                result.add(inc)
-            }
-        }
-        return result
-    }
-}
-

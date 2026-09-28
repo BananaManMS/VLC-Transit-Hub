@@ -33,10 +33,10 @@ object ValenbisiMarkersRenderer {
         var activeValenbisiClusterCount = 0
 
         if (showValenbisi && valenbisiStations.isNotEmpty()) {
-            if (isOnlyValenbisi) {
-                when {
-                    // 1. Zoom < 13.5 -> Group/cluster them
-                    currentZoom < 13.5 -> {
+            when {
+                // 1. Zoom < 13.5: Group/cluster stations if only Valenbisi is selected
+                currentZoom < 13.5 -> {
+                    if (isOnlyValenbisi) {
                         val gridSize = if (currentZoom < 11.0) 0.06 else 0.025
                         val clusters = valenbisiStations.groupBy { station ->
                             val gridX = (station.latitude / gridSize).toInt()
@@ -78,86 +78,43 @@ object ValenbisiMarkersRenderer {
                             }
                         }
                     }
+                }
 
-                    // 2. Zoom in 13.5..15.2 -> Show color dots
-                    currentZoom in 13.5..15.2 -> {
-                        valenbisiStations.forEach { station ->
-                            val marker = if (activeValenbisiCount < recycledValenbisiMarkers.size) {
-                                recycledValenbisiMarkers[activeValenbisiCount]
-                            } else {
-                                Marker(mapView).also {
-                                    recycledValenbisiMarkers.add(it)
-                                }
-                            }
-                            activeValenbisiCount++
-
-                            marker.infoWindow = null
-                            marker.closeInfoWindow()
-                            marker.position = GeoPoint(station.latitude, station.longitude)
-
-                            val dotResult = getValenbisiCompactDotIcon(context, station.available)
-                            marker.icon = dotResult.drawable
-                            marker.setAnchor(dotResult.anchorU, dotResult.anchorV)
-
-                            marker.title = station.name
-                            marker.snippet = "Bicis: ${station.available} • Huecos: ${station.free}"
-                            marker.isEnabled = true
-                            marker.setVisible(true)
-
-                            if (station.available == 0) {
-                                marker.alpha = 0.55f
-                            } else {
-                                marker.alpha = 1.0f
-                            }
-
-                            marker.setOnMarkerClickListener { m, _ ->
-                                onTapHandler(context, mapView, m.position)
+                // 2. Zoom in 13.5..14.8: Show compact bike availability dots
+                currentZoom in 13.5..14.8 -> {
+                    valenbisiStations.forEach { station ->
+                        val marker = if (activeValenbisiCount < recycledValenbisiMarkers.size) {
+                            recycledValenbisiMarkers[activeValenbisiCount]
+                        } else {
+                            Marker(mapView).also {
+                                recycledValenbisiMarkers.add(it)
                             }
                         }
-                    }
+                        activeValenbisiCount++
 
-                    // 3. Zoom >= 15.2 -> Show full detailed pins
-                    else -> {
-                        val showPill = currentZoom >= 14.5
-                        valenbisiStations.forEach { station ->
-                            val marker = if (activeValenbisiCount < recycledValenbisiMarkers.size) {
-                                recycledValenbisiMarkers[activeValenbisiCount]
-                            } else {
-                                Marker(mapView).also {
-                                    recycledValenbisiMarkers.add(it)
-                                }
-                            }
-                            activeValenbisiCount++
+                        marker.infoWindow = null
+                        marker.closeInfoWindow()
+                        marker.position = GeoPoint(station.latitude, station.longitude)
 
-                            marker.infoWindow = null
-                            marker.closeInfoWindow()
-                            marker.position = GeoPoint(station.latitude, station.longitude)
+                        val dotResult = getValenbisiCompactDotIcon(context, station.available)
+                        marker.icon = dotResult.drawable
+                        marker.setAnchor(dotResult.anchorU, dotResult.anchorV)
 
-                            val iconResult = getValenbisiMarkerIcon(context, station.available, station.free, isDarkMode, showPill)
-                            marker.icon = iconResult.drawable
-                            marker.setAnchor(iconResult.anchorU, iconResult.anchorV)
+                        marker.title = station.name
+                        marker.snippet = "Bicis: ${station.available} • Huecos: ${station.free}"
+                        marker.isEnabled = true
+                        marker.setVisible(true)
+                        marker.alpha = if (station.available == 0) 0.55f else 1.0f
 
-                            marker.title = station.name
-                            marker.snippet = "Disponibles: ${station.available} • Huecos: ${station.free}"
-                            marker.isEnabled = true
-                            marker.setVisible(true)
-
-                            if (station.available == 0) {
-                                marker.alpha = 0.55f
-                            } else {
-                                marker.alpha = 1.0f
-                            }
-
-                            marker.setOnMarkerClickListener { m, _ ->
-                                onTapHandler(context, mapView, m.position)
-                            }
+                        marker.setOnMarkerClickListener { m, _ ->
+                            onTapHandler(context, mapView, m.position)
                         }
                     }
                 }
-            } else {
-                // If not "only Valenbisi", hide completely below zoom 15.2
-                if (currentZoom >= 15.2) {
-                    val showPill = currentZoom >= 14.5
+
+                // 3. Zoom >= 14.8: Show full detailed station pins with availability badges
+                else -> {
+                    val showPill = currentZoom >= 15.5
                     valenbisiStations.forEach { station ->
                         val marker = if (activeValenbisiCount < recycledValenbisiMarkers.size) {
                             recycledValenbisiMarkers[activeValenbisiCount]
@@ -180,12 +137,7 @@ object ValenbisiMarkersRenderer {
                         marker.snippet = "Disponibles: ${station.available} • Huecos: ${station.free}"
                         marker.isEnabled = true
                         marker.setVisible(true)
-
-                        if (station.available == 0) {
-                            marker.alpha = 0.55f
-                        } else {
-                            marker.alpha = 1.0f
-                        }
+                        marker.alpha = if (station.available == 0) 0.55f else 1.0f
 
                         marker.setOnMarkerClickListener { m, _ ->
                             onTapHandler(context, mapView, m.position)

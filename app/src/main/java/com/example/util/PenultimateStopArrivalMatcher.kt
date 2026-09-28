@@ -12,7 +12,8 @@ object PenultimateStopArrivalMatcher {
         lastKnownDrift: Int,
         progressFraction: Float
     ): Int? {
-        // Safe evaluation of penultimate stop ETA
-        return null
+        val totalMins = (leg.durationSeconds / 60).toInt()
+        val remaining = (totalMins * (1.0f - progressFraction)).toInt()
+        return (remaining + lastKnownDrift).coerceAtLeast(0)
     }
 }

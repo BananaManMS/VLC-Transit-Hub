@@ -16,6 +16,7 @@ import com.example.util.ActiveTripProgressTracker
 import com.example.util.RealTimeTripStatus
 import com.example.util.TripStepProgressionEngine
 import com.example.util.TripTimeParser
+import com.example.util.TripUIStateFormatter
 import com.example.util.UnifiedActiveTripStateTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -129,16 +130,21 @@ class DashboardActiveTripManager(
                 val destLon = destinationLeg.toLon
                 val destName = trip.destinationName.ifBlank { destinationLeg.toName }
 
-                val nowTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                val nowDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                // Calculate expected arrival at transfer station from current leg status
+                val remainingMinsOnCurrent = TripUIStateFormatter.calculateBoardedRemainingMinutes(currentLeg, realTimeTripStatus.value)
+                val userArrivalAtTransferEpochMs = System.currentTimeMillis() + (remainingMinsOnCurrent * 60_000L)
+                val targetDepEpochMs = userArrivalAtTransferEpochMs + 2 * 60_000L // 2 min platform/transfer walk buffer
+
+                val targetTime = SimpleDateFormat("HH:mm", Locale.US).format(Date(targetDepEpochMs))
+                val targetDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(targetDepEpochMs))
 
                 val result = hybridRoutingRepository.planRoute(
                     fromLat = transferOriginLat,
                     fromLon = transferOriginLon,
                     toLat = destLat,
                     toLon = destLon,
-                    time = nowTime,
-                    date = nowDate,
+                    time = targetTime,
+                    date = targetDate,
                     arriveBy = false,
                     maxTransfers = 2,
                     modes = "WALK,SUBWAY,TRAM,BUS,REGIONAL_RAIL",
@@ -148,52 +154,22 @@ class DashboardActiveTripManager(
 
                 result.fold(
                     onSuccess = { candidateItineraries ->
-                        val currentWalkSecs = legs.drop(currentIdx + 1)
-                            .filter { it.mode == TransitMode.WALK }
-                            .sumOf { it.durationSeconds }
-
-                        val validCandidates = candidateItineraries.filter { candidate ->
-                            val firstTransit = candidate.legs.firstOrNull { it.mode != TransitMode.WALK }
-                            val candidateWalkSecs = candidate.legs.filter { it.mode == TransitMode.WALK }.sumOf { it.durationSeconds }
-                            val candidateWalkMeters = candidate.legs.filter { it.mode == TransitMode.WALK }.sumOf { it.distanceMeters.toInt() }
-
-                            val waitTooLong = if (firstTransit?.startTime != null) {
-                                val depMs = TripTimeParser.parseTimeToMillis(firstTransit.startTime)
-                                if (depMs != null) {
-                                    val waitMins = (depMs - System.currentTimeMillis()) / 60000L
-                                    waitMins > 45
-                                } else false
-                            } else false
-
-                            val excessiveWalk = candidateWalkMeters > 900 || (candidateWalkSecs - currentWalkSecs) > 600
-
-                            !waitTooLong && !excessiveWalk
-                        }
-
-                        if (validCandidates.isEmpty()) {
-                            val nextServiceWaitMins = candidateItineraries.firstOrNull()?.legs?.firstOrNull { it.mode != TransitMode.WALK }?.let { leg ->
-                                val depMs = TripTimeParser.parseTimeToMillis(leg.startTime)
-                                if (depMs != null) ((depMs - System.currentTimeMillis()) / 60000L).coerceAtLeast(1) else null
-                            }
-
-                            val errorMsg = if (nextServiceWaitMins != null) {
-                                "No es posible recalcular un enlace cercano (Siguiente servicio en $nextServiceWaitMins min)."
-                            } else {
-                                "No ha sido posible recalcular el trayecto alternativo."
-                            }
-                            _recalculateError.value = errorMsg
+                        if (candidateItineraries.isEmpty()) {
+                            _recalculateError.value = "No se encontraron conexiones alternativas desde $transferOriginName a las $targetTime."
                         } else {
-                            val bestNew = validCandidates.first()
+                            val bestNew = candidateItineraries.first()
                             val keptLegs = legs.take(currentIdx + 1)
                             val splicedLegs = keptLegs + bestNew.legs
 
                             val newTotalSecs = keptLegs.sumOf { it.durationSeconds } + bestNew.totalDurationSeconds
                             val splicedItinerary = trip.itinerary.copy(
+                                id = "${trip.itinerary.id}_recalc_${System.currentTimeMillis()}",
                                 legs = splicedLegs,
                                 totalDurationSeconds = newTotalSecs,
                                 formattedDuration = "${(newTotalSecs / 60).coerceAtLeast(1)} min",
                                 endTime = bestNew.endTime,
-                                formattedArrivalTime = bestNew.formattedArrivalTime
+                                formattedArrivalTime = bestNew.formattedArrivalTime,
+                                transfersCount = (splicedLegs.count { it.mode != TransitMode.WALK } - 1).coerceAtLeast(0)
                             )
 
                             activeTripRepository.updateItinerary(splicedItinerary)
@@ -219,9 +195,13 @@ class DashboardActiveTripManager(
         destinationName: String
     ) {
         scope.launch {
-            activeTripRepository.startTrip(itinerary, originName, destinationName)
-            ActiveTripTrackingService.start(application)
-            refreshRealTimeTripStatus()
+            try {
+                activeTripRepository.startTrip(itinerary, originName, destinationName)
+                ActiveTripTrackingService.start(application)
+                refreshRealTimeTripStatus()
+            } catch (e: Throwable) {
+                Log.e("DashboardActiveTripMgr", "Error starting active trip: ${e.message}", e)
+            }
         }
     }
 

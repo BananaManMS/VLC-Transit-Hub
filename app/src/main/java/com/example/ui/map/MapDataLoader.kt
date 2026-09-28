@@ -50,7 +50,7 @@ class MapDataLoader(
     private val cercaniasDeparturesLoading: MutableStateFlow<Boolean>
 ) {
 
-    private val metrobusRepository = com.example.data.repository.MetrobusRepository(database, httpClient)
+    private val metrobusRepository = com.example.data.repository.MetrobusRepository(database, httpClient, application.applicationContext)
     private var valenbisiPeriodicJob: Job? = null
     val busTimesLoadingMore = MutableStateFlow(false)
     val metrobusTimesLoadingMore = MutableStateFlow(false)
@@ -117,9 +117,7 @@ class MapDataLoader(
         scope.launch(Dispatchers.IO) {
             // Load Cercanias Stations
             try {
-                if (database.cercaniasStationDao().getStationCount() == 0) {
-                    renfeRepository.initDatabaseFromAssetsIfNeeded()
-                }
+                renfeRepository.initDatabaseFromAssetsIfNeeded()
                 renfeRepository.getAllStationsFlow().collect { stations ->
                     cercaniasStations.value = stations.distinctBy { it.stop_id }
                 }
@@ -130,6 +128,8 @@ class MapDataLoader(
             }
         }
 
+        // Load Valenbisi stations
+        refreshValenbisiStations(force = false)
     }
 
     fun startValenbisiPeriodicRefresh() {
@@ -420,43 +420,19 @@ class MapDataLoader(
             val shapesMap = mutableMapOf<String, List<org.osmdroid.util.GeoPoint>>()
             lineCodes.forEach { lineCode ->
                 try {
-                    val shapeMap = metrobusRepository.fetchLineShape(lineCode)
-                    if (stopLat != null && stopLon != null && shapeMap.size > 1) {
-                        val decodedDirs = shapeMap.mapNotNull { (dir, polylineStr) ->
-                            val points = com.example.util.PolylineDecoder.decode(polylineStr, precision = 6)
-                            if (points.isNotEmpty()) dir to points else null
-                        }
-                        if (decodedDirs.isNotEmpty()) {
-                            val isCircular = com.example.ui.map.components.EmtMapOverlayLoader.isCircularLine(lineCode)
-                            if (isCircular) {
-                                decodedDirs.forEach { (dir, points) ->
-                                    shapesMap["${lineCode}_$dir"] = points
-                                }
-                            } else {
-                                val cosLat = Math.cos(Math.toRadians(stopLat))
-                                val closest = decodedDirs.minByOrNull { (_, points) ->
-                                    points.minOfOrNull { pt ->
-                                        val dLat = (pt.latitude - stopLat) * 111320.0
-                                        val dLon = (pt.longitude - stopLon) * 111320.0 * cosLat
-                                        dLat * dLat + dLon * dLon
-                                    } ?: Double.MAX_VALUE
-                                }
-                                if (closest != null) {
-                                    shapesMap["${lineCode}_${closest.first}"] = closest.second
-                                }
+                    val shapeData = metrobusRepository.fetchLineShape(lineCode)
+                    val polylines = shapeData?.polylinesByDirection ?: emptyMap()
+                    if (polylines.isNotEmpty()) {
+                        polylines.forEach { (dir, coordList) ->
+                            val points = coordList.mapNotNull { pt ->
+                                if (pt.size >= 2) org.osmdroid.util.GeoPoint(pt[0], pt[1]) else null
                             }
-                        }
-                    } else {
-                        shapeMap.forEach { (dir, polylineStr) ->
-                            val points = com.example.util.PolylineDecoder.decode(polylineStr, precision = 6)
                             if (points.isNotEmpty()) {
                                 shapesMap["${lineCode}_$dir"] = points
                             }
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e("MapDataLoader", "Error loading metrobus shape for $lineCode", e)
-                }
+                } catch (_: Exception) {}
             }
             selectedMetrobusShapes.value = shapesMap
         }

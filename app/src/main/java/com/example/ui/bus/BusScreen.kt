@@ -201,11 +201,15 @@ fun EmtBusScreen(
     }
 
     val metroStationsList = remember(favoriteMetroStations, allMetroStations) {
-        val favs = favoriteMetroStations.mapNotNull { id ->
-            allMetroStations.find { it.id == id }
-                ?: com.example.data.model.ValenciaMetroData.mainMetroStations.find { it.id == id }
+        val all = if (allMetroStations.isNotEmpty()) allMetroStations else com.example.data.model.ValenciaMetroData.mainMetroStations
+        val sortedAll = all.sortedBy { it.name }
+        if (favoriteMetroStations.isNotEmpty()) {
+            val favs = favoriteMetroStations.mapNotNull { id -> sortedAll.find { it.id == id } }.sortedBy { it.name }
+            val others = sortedAll.filterNot { station -> favoriteMetroStations.contains(station.id) }
+            favs + others
+        } else {
+            sortedAll
         }
-        if (favs.isNotEmpty()) favs else com.example.data.model.ValenciaMetroData.mainMetroStations
     }
 
     LaunchedEffect(allMetroStations) {
@@ -409,10 +413,21 @@ fun EmtBusScreen(
                                     ) {
                                         metroStationsList.forEach { station ->
                                             val isSelected = selectedMetroStationId == station.id
+                                            val isFav = favoriteMetroStations.contains(station.id)
                                             BusFilterChip(
                                                 selected = isSelected,
                                                 onClick = { busViewModel.selectMetroStationForBus(station.id) },
                                                 label = station.name,
+                                                leadingIcon = if (isFav) {
+                                                    {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Star,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(14.dp),
+                                                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
+                                                } else null,
                                                 modifier = Modifier.testTag("metro_station_chip_${station.id}")
                                             )
                                         }

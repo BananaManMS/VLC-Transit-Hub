@@ -248,7 +248,7 @@ object BusMarkersRenderer {
         isFavoritesMode: Boolean = false,
         currentZoom: Double = 18.0
     ): List<MergedBusStopGroup> {
-        if (!showBus || !showMetrobus || isFavoritesMode || (currentZoom < 13.5 && selectedMapItem == null)) return emptyList()
+        if ((!showBus && !showMetrobus) || isFavoritesMode || (currentZoom < 13.0 && selectedMapItem == null)) return emptyList()
 
         val selectedBusStopId = (selectedMapItem as? SelectedMapItem.BusStop)?.stop?.id_parada
         val selectedMbStopId = (selectedMapItem as? SelectedMapItem.MetrobusStopItem)?.stop?.id_parada

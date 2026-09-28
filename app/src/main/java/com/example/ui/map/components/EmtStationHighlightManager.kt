@@ -3,11 +3,12 @@ package com.example.ui.map.components
 import android.content.Context
 import com.example.data.database.GeoportalStopEntity
 import com.example.ui.map.SelectedMapItem
+import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 
 /**
  * Coordinates EMT Valencia bus line highlighting on the map when a bus stop is selected.
- * Supports isolating individual lines when filtered in the bottom sheet.
+ * Supports isolating individual lines and directions when filtered in the bottom sheet or selected.
  */
 object EmtStationHighlightManager {
 
@@ -18,19 +19,22 @@ object EmtStationHighlightManager {
     data class EmtHighlightState(
         val isHighlighted: Boolean,
         val selectedStopId: String?,
-        val stopLat: Double? = null,
-        val stopLon: Double? = null,
+        val selectedStopLocation: GeoPoint? = null,
         val allStopLines: Set<String>,
-        val isolatedLineFilters: Set<String>
+        val isolatedLineFilters: Set<String>,
+        val selectedDirectionFilter: String? = null,
+        val selectedStopLat: Double? = selectedStopLocation?.latitude,
+        val selectedStopLon: Double? = selectedStopLocation?.longitude,
+        val activeDirectionalShapeIds: Set<String> = emptySet()
     ) {
         companion object {
             val INACTIVE = EmtHighlightState(
                 isHighlighted = false,
                 selectedStopId = null,
-                stopLat = null,
-                stopLon = null,
+                selectedStopLocation = null,
                 allStopLines = emptySet(),
-                isolatedLineFilters = emptySet()
+                isolatedLineFilters = emptySet(),
+                selectedDirectionFilter = null
             )
         }
 
@@ -51,7 +55,8 @@ object EmtStationHighlightManager {
      */
     fun getHighlightState(
         selectedMapItem: SelectedMapItem?,
-        isolatedLineFilters: Set<String> = emptySet()
+        isolatedLineFilters: Set<String> = emptySet(),
+        selectedDirectionFilter: String? = null
     ): EmtHighlightState {
         if (selectedMapItem !is SelectedMapItem.BusStop) {
             return EmtHighlightState.INACTIVE
@@ -59,6 +64,7 @@ object EmtStationHighlightManager {
 
         val stop = selectedMapItem.stop
         val emtModel = selectedMapItem.emtStopModel
+        val stopLocation = GeoPoint(stop.lat, stop.lon)
 
         val lines = mutableSetOf<String>()
 
@@ -82,10 +88,10 @@ object EmtStationHighlightManager {
         return EmtHighlightState(
             isHighlighted = lines.isNotEmpty(),
             selectedStopId = stop.id_parada,
-            stopLat = stop.lat,
-            stopLon = stop.lon,
+            selectedStopLocation = stopLocation,
             allStopLines = lines,
-            isolatedLineFilters = normalizedFilters
+            isolatedLineFilters = normalizedFilters,
+            selectedDirectionFilter = selectedDirectionFilter
         )
     }
 
@@ -134,9 +140,8 @@ object EmtStationHighlightManager {
             lines = highlightState.effectiveLinesToDraw,
             currentZoom = currentZoom,
             showArrows = highlightState.showDirectionalArrows,
-            selectedStopId = highlightState.selectedStopId,
-            selectedStopLat = highlightState.stopLat,
-            selectedStopLon = highlightState.stopLon
+            stopLocation = highlightState.selectedStopLocation,
+            targetHeadsign = highlightState.selectedDirectionFilter
         )
 
         polylines.forEach { mapView.overlays.add(it) }

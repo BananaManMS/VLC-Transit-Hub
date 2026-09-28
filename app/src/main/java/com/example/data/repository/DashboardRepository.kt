@@ -3,81 +3,99 @@ package com.example.data.repository
 import android.content.Context
 import android.content.SharedPreferences
 import com.example.data.database.AppDatabase
+import com.example.data.database.CalendarItemEntity
+import com.example.data.database.PreferenceEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class DashboardRepository(
     private val context: Context,
     private val database: AppDatabase = AppDatabase.getDatabase(context)
 ) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+    private val calendarDao = database.calendarDao()
+    private val preferenceDao = database.preferenceDao()
+    private val sharedPreferences: SharedPreferences =
+        context.getSharedPreferences("dashboard_prefs", Context.MODE_PRIVATE)
 
-    val allCalendarItems: Flow<List<com.example.data.database.CalendarItemEntity>> = database.calendarDao().getAllItemsFlow()
+    @get:JvmName("getCalendarItemsPropertyFlow")
+    val allCalendarItems: Flow<List<CalendarItemEntity>> = calendarDao.getAllItems()
 
-    suspend fun ensureDefaultCalendarItems() {
-        // Ensures default items if empty
-    }
-
-    suspend fun insertCalendarItem(item: com.example.data.database.CalendarItemEntity) {
-        database.calendarDao().insertCalendarItem(item)
-    }
-
-    suspend fun updateCalendarItem(item: com.example.data.database.CalendarItemEntity) {
-        database.calendarDao().updateCalendarItem(item)
-    }
-
-    suspend fun deleteCalendarItem(item: com.example.data.database.CalendarItemEntity) {
-        database.calendarDao().deleteCalendarItem(item.eventId)
-    }
-
-    suspend fun deleteCalendarItem(id: String) {
-        database.calendarDao().deleteCalendarItem(id)
-    }
-
-    suspend fun deletePastEvents(now: Long) {
-        database.calendarDao().deletePastEvents(now)
-    }
-
-    suspend fun loadDashboardData(): String {
-        return "Dashboard Loaded"
-    }
+    fun getAllCalendarItems(): Flow<List<CalendarItemEntity>> = allCalendarItems
 
     fun getPreferenceSync(key: String, defaultValue: String): String {
-        return prefs.getString(key, defaultValue) ?: defaultValue
+        return sharedPreferences.getString(key, defaultValue) ?: defaultValue
     }
 
     suspend fun getPreference(key: String, defaultValue: String): String = withContext(Dispatchers.IO) {
-        getPreferenceSync(key, defaultValue)
-    }
-
-    fun savePreferenceSync(key: String, value: String) {
-        prefs.edit().putString(key, value).apply()
+        preferenceDao.getPreference(key)?.value ?: getPreferenceSync(key, defaultValue)
     }
 
     suspend fun savePreference(key: String, value: String) = withContext(Dispatchers.IO) {
-        savePreferenceSync(key, value)
+        sharedPreferences.edit().putString(key, value).apply()
+        preferenceDao.insertPreference(PreferenceEntity(key, value))
     }
 
-    fun getPreferenceFlow(key: String, defaultValue: String): Flow<String> {
-        return flow {
-            emit(getPreferenceSync(key, defaultValue))
-            val channel = Channel<String>(Channel.CONFLATED)
-            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, k ->
-                if (k == key) {
-                    channel.trySend(getPreferenceSync(key, defaultValue))
-                }
-            }
-            prefs.registerOnSharedPreferenceChangeListener(listener)
-            try {
-                for (value in channel) {
-                    emit(value)
-                }
-            } finally {
-                prefs.unregisterOnSharedPreferenceChangeListener(listener)
+    fun savePreferenceSync(key: String, value: String) {
+        sharedPreferences.edit().putString(key, value).apply()
+    }
+
+    fun getPreferenceFlow(key: String, defaultValue: String): Flow<String> = flow {
+        emit(getPreference(key, defaultValue))
+        val channel = Channel<String>(Channel.CONFLATED)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, k ->
+            if (k == key) {
+                channel.trySend(getPreferenceSync(key, defaultValue))
             }
         }
+        sharedPreferences.registerOnSharedPreferenceChangeListener(listener)
+        try {
+            for (value in channel) {
+                emit(value)
+            }
+        } finally {
+            sharedPreferences.unregisterOnSharedPreferenceChangeListener(listener)
+        }
     }
+
+    suspend fun insertCalendarItem(item: CalendarItemEntity): Long = withContext(Dispatchers.IO) {
+        calendarDao.insertItem(item)
+    }
+
+    suspend fun updateCalendarItem(item: CalendarItemEntity) = withContext(Dispatchers.IO) {
+        calendarDao.updateItem(item)
+    }
+
+    suspend fun deleteCalendarItem(item: CalendarItemEntity) = withContext(Dispatchers.IO) {
+        calendarDao.deleteItem(item)
+    }
+
+    suspend fun deleteCalendarItemById(id: Int) = withContext(Dispatchers.IO) {
+        calendarDao.deleteById(id)
+    }
+
+    suspend fun deletePastEvents(thresholdMillis: Long) = withContext(Dispatchers.IO) {
+        calendarDao.deletePastEvents(thresholdMillis)
+    }
+
+    suspend fun ensureDefaultCalendarItems() = withContext(Dispatchers.IO) {
+        val current = calendarDao.getAllItemsList()
+        if (current.isEmpty()) {
+            val now = System.currentTimeMillis()
+            calendarDao.insertItem(
+                CalendarItemEntity(
+                    title = "Bienvenido a VLC Transit",
+                    description = "Tu panel centralizado de transporte en Valencia",
+                    itemType = "EVENT",
+                    startMillis = now,
+                    endMillis = now + 3600000L,
+                    colorHex = "#2196F3"
+                )
+            )
+        }
+    }
+
+    suspend fun loadDashboardData(): String = "Dashboard Loaded"
 }
