@@ -47,14 +47,14 @@ class MetroCardRepository(
         val card = cardDao.getCardByNumber(cardNumber) ?: return@withContext
         val details = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
         details.put("manually_inactive", isManuallyInactive)
-        cardDao.insertCard(card.copy(detailsJson = details.toString()))
+        cardDao.insertCard(card.copy(isManuallyInactive = isManuallyInactive, detailsJson = details.toString()))
     }
 
     suspend fun updateCardHomeVisibility(cardNumber: String, showOnHome: Boolean) = withContext(Dispatchers.IO) {
         val card = cardDao.getCardByNumber(cardNumber) ?: return@withContext
         val details = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
         details.put("show_on_home", showOnHome)
-        cardDao.insertCard(card.copy(detailsJson = details.toString()))
+        cardDao.insertCard(card.copy(showOnHome = showOnHome, detailsJson = details.toString()))
     }
 
     suspend fun updateCardsOrder(cardNumbersInOrder: List<String>) = withContext(Dispatchers.IO) {
@@ -62,7 +62,7 @@ class MetroCardRepository(
             val card = cardDao.getCardByNumber(num) ?: return@forEachIndexed
             val details = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
             details.put("custom_order", index)
-            cardDao.insertCard(card.copy(detailsJson = details.toString()))
+            cardDao.insertCard(card.copy(customOrder = index, detailsJson = details.toString()))
         }
     }
 
@@ -78,6 +78,14 @@ class MetroCardRepository(
             val cardType = cardJson.optString("clase", cardJson.optString("tipo", "SUMA"))
             val remainingValue = cardJson.optString("saldo", cardJson.optString("saldoFormateado", "0 viajes"))
 
+            val existingCards = cardDao.getAllCards()
+            val nextOrder = if (existingCards.isEmpty()) 0 else (existingCards.maxOfOrNull { it.customOrder } ?: 0) + 1
+
+            val detailsObj = JSONObject(cardJson.toString())
+            detailsObj.put("custom_order", nextOrder)
+            detailsObj.put("show_on_home", true)
+            detailsObj.put("manually_inactive", false)
+
             val entity = TransitCardEntity(
                 cardNumber = cleanCard,
                 assignedName = customName ?: "",
@@ -85,7 +93,10 @@ class MetroCardRepository(
                 cardType = cardType,
                 remainingValue = remainingValue,
                 lastUpdated = System.currentTimeMillis(),
-                detailsJson = cardJson.toString()
+                detailsJson = detailsObj.toString(),
+                customOrder = nextOrder,
+                showOnHome = true,
+                isManuallyInactive = false
             )
             cardDao.insertCard(entity)
             Result.success(Unit)
@@ -103,12 +114,26 @@ class MetroCardRepository(
                 val cardType = cardJson.optString("clase", cardJson.optString("tipo", card.cardType))
                 val remainingValue = cardJson.optString("saldo", cardJson.optString("saldoFormateado", card.remainingValue))
 
+                // Merge network JSON while strictly PRESERVING user preferences
+                val oldDetails = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
+                val mergedDetails = JSONObject(cardJson.toString())
+                val preservedOrder = if (oldDetails.has("custom_order")) oldDetails.optInt("custom_order", card.customOrder) else card.customOrder
+                val preservedHome = if (oldDetails.has("show_on_home")) oldDetails.optBoolean("show_on_home", card.showOnHome) else card.showOnHome
+                val preservedInactive = if (oldDetails.has("manually_inactive")) oldDetails.optBoolean("manually_inactive", card.isManuallyInactive) else card.isManuallyInactive
+
+                mergedDetails.put("custom_order", preservedOrder)
+                mergedDetails.put("show_on_home", preservedHome)
+                mergedDetails.put("manually_inactive", preservedInactive)
+
                 val updated = card.copy(
                     defaultName = title,
                     cardType = cardType,
                     remainingValue = remainingValue,
-                    detailsJson = cardJson.toString(),
-                    lastUpdated = System.currentTimeMillis()
+                    detailsJson = mergedDetails.toString(),
+                    lastUpdated = System.currentTimeMillis(),
+                    customOrder = preservedOrder,
+                    showOnHome = preservedHome,
+                    isManuallyInactive = preservedInactive
                 )
                 cardDao.insertCard(updated)
             } catch (e: Exception) {
@@ -129,12 +154,26 @@ class MetroCardRepository(
                     val cardType = cardJson.optString("clase", cardJson.optString("tipo", card.cardType))
                     val remainingValue = cardJson.optString("saldo", cardJson.optString("saldoFormateado", card.remainingValue))
 
+                    // Merge network JSON while strictly PRESERVING user preferences
+                    val oldDetails = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
+                    val mergedDetails = JSONObject(cardJson.toString())
+                    val preservedOrder = if (oldDetails.has("custom_order")) oldDetails.optInt("custom_order", card.customOrder) else card.customOrder
+                    val preservedHome = if (oldDetails.has("show_on_home")) oldDetails.optBoolean("show_on_home", card.showOnHome) else card.showOnHome
+                    val preservedInactive = if (oldDetails.has("manually_inactive")) oldDetails.optBoolean("manually_inactive", card.isManuallyInactive) else card.isManuallyInactive
+
+                    mergedDetails.put("custom_order", preservedOrder)
+                    mergedDetails.put("show_on_home", preservedHome)
+                    mergedDetails.put("manually_inactive", preservedInactive)
+
                     val updated = card.copy(
                         defaultName = title,
                         cardType = cardType,
                         remainingValue = remainingValue,
-                        detailsJson = cardJson.toString(),
-                        lastUpdated = now
+                        detailsJson = mergedDetails.toString(),
+                        lastUpdated = now,
+                        customOrder = preservedOrder,
+                        showOnHome = preservedHome,
+                        isManuallyInactive = preservedInactive
                     )
                     cardDao.insertCard(updated)
                     refreshedAny = true

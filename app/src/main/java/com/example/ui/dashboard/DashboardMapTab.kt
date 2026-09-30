@@ -27,6 +27,7 @@ fun DashboardMapTab(
     selectedItinerary: PlannedItinerary?,
     onClearItinerary: () -> Unit,
     activeTripBottomPadding: Dp,
+    onStartTrip: ((PlannedItinerary) -> Unit)? = null,
     onCommuteLocationConfigured: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -46,6 +47,7 @@ fun DashboardMapTab(
         selectedItinerary = selectedItinerary,
         onClearItinerary = onClearItinerary,
         onOpenRouteDetail = null,
+        onStartTrip = onStartTrip,
         activeTripBottomPadding = activeTripBottomPadding,
         modifier = modifier.fillMaxSize()
     )

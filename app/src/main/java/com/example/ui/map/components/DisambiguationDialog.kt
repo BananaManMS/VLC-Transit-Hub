@@ -144,6 +144,7 @@ fun DisambiguationDialog(
                                 is SelectedMapItem.Cercanias -> "disambig_cercanias_${item.station.stop_id}"
                                 is SelectedMapItem.Valenbisi -> "disambig_valenbisi_${item.station.number}"
                                 is SelectedMapItem.Address -> "disambig_addr_${item.result.latitude}_${item.result.longitude}"
+                                is SelectedMapItem.LiveTrain -> "disambig_train_${item.vehicle.tripId.ifBlank { item.vehicle.trainNum }}"
                             }
                         }
                     ) { item ->
@@ -185,14 +186,27 @@ fun DisambiguationDialog(
                                 badge = "Bici"
                             }
                             is SelectedMapItem.Address -> {
-                                val isFav = item.result.category == "favorite" || item.result.type == "favorite"
-                                title = item.result.displayName.split(",").firstOrNull()?.trim() ?: item.result.displayName
-                                subtitle = item.result.displayName
-                                badge = if (isFav) {
-                                    if (appLanguage == AppLanguage.CA) "Preferit" else "Favorito"
+                                val isHome = item.result.type.equals("home", ignoreCase = true) || item.result.displayName.startsWith("Casa", ignoreCase = true)
+                                val isWork = item.result.type.equals("work", ignoreCase = true) || item.result.displayName.startsWith("Trabajo", ignoreCase = true) || item.result.displayName.startsWith("Feina", ignoreCase = true)
+                                val isFav = item.result.category == "favorite" || item.result.type == "favorite" || isHome || isWork
+
+                                title = if (!item.result.placeName.isNullOrBlank()) {
+                                    item.result.placeName
                                 } else {
-                                    if (appLanguage == AppLanguage.CA) "Destí" else "Destino"
+                                    item.result.displayName.split(",").firstOrNull()?.trim() ?: item.result.displayName
                                 }
+                                subtitle = item.result.displayName
+                                badge = when {
+                                    isHome -> if (appLanguage == AppLanguage.CA) "Casa" else "Casa"
+                                    isWork -> if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo"
+                                    isFav -> if (appLanguage == AppLanguage.CA) "Preferit" else "Favorito"
+                                    else -> if (appLanguage == AppLanguage.CA) "Destí" else "Destino"
+                                }
+                            }
+                            is SelectedMapItem.LiveTrain -> {
+                                title = "Tren ${item.vehicle.trainNum.ifBlank { item.vehicle.routeId }}"
+                                subtitle = "Cercanías ${item.vehicle.routeId} • Destino: ${item.vehicle.destinationName.ifBlank { "En circulación" }}"
+                                badge = item.vehicle.routeId.ifBlank { "RENFE" }
                             }
                         }
 

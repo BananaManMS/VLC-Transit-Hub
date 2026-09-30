@@ -170,7 +170,7 @@ fun MetrobusDepartureCard(
     sheetTextColor: Color,
     sheetSubtextColor: Color
 ) {
-    val badgeBg = parseHexColor(dep.routeColor, Color(0xFFD97706))
+    val badgeBg = parseHexColor(dep.routeColor, com.example.util.MetrobusLineColorResolver.BRAND_COLOR)
     val badgeText = Color.White
 
     Card(

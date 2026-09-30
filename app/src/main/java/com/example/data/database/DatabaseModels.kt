@@ -73,12 +73,15 @@ data class PreferenceEntity(
 @Entity(tableName = "transit_cards")
 data class TransitCardEntity(
     @PrimaryKey val cardNumber: String,
-    val assignedName: String,
-    val defaultName: String,
-    val cardType: String,
-    val remainingValue: String,
-    val detailsJson: String,
-    val lastUpdated: Long = System.currentTimeMillis()
+    val assignedName: String = "",
+    val defaultName: String = "",
+    val cardType: String = "",
+    val remainingValue: String = "",
+    val detailsJson: String = "",
+    val lastUpdated: Long = System.currentTimeMillis(),
+    val customOrder: Int = 0,
+    val showOnHome: Boolean = true,
+    val isManuallyInactive: Boolean = false
 )
 
 // 5. EMT Geoportal Stop Entity
@@ -436,10 +439,10 @@ interface PreferenceDao {
 
 @Dao
 interface TransitCardDao {
-    @Query("SELECT * FROM transit_cards ORDER BY lastUpdated DESC")
+    @Query("SELECT * FROM transit_cards ORDER BY customOrder ASC, lastUpdated DESC")
     suspend fun getAllCards(): List<TransitCardEntity>
 
-    @Query("SELECT * FROM transit_cards ORDER BY lastUpdated DESC")
+    @Query("SELECT * FROM transit_cards ORDER BY customOrder ASC, lastUpdated DESC")
     fun getAllCardsFlow(): Flow<List<TransitCardEntity>>
 
     @Query("SELECT * FROM transit_cards WHERE cardNumber = :cardNumber LIMIT 1")
@@ -452,6 +455,12 @@ interface TransitCardDao {
 
     @Query("UPDATE transit_cards SET assignedName = :newName WHERE cardNumber = :cardNumber")
     suspend fun updateCardName(cardNumber: String, newName: String)
+
+    @Query("UPDATE transit_cards SET showOnHome = :showOnHome WHERE cardNumber = :cardNumber")
+    suspend fun updateCardHomeVisibility(cardNumber: String, showOnHome: Boolean)
+
+    @Query("UPDATE transit_cards SET customOrder = :order WHERE cardNumber = :cardNumber")
+    suspend fun updateCardOrder(cardNumber: String, order: Int)
 
     @Query("DELETE FROM transit_cards WHERE cardNumber = :cardNumber")
     suspend fun deleteCardByNumber(cardNumber: String)

@@ -469,7 +469,7 @@ fun LiveDeparturesRow(
                                     lineId = dep.lineCode,
                                     destination = dep.destination,
                                     minutes = mins,
-                                    colorHex = dep.routeColor ?: "#D97706",
+                                    colorHex = dep.routeColor ?: com.example.util.MetrobusLineColorResolver.BRAND_HEX,
                                     isRealTime = dep.isRealTime
                                 )
                             }

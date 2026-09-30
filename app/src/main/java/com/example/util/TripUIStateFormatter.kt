@@ -84,8 +84,9 @@ object TripUIStateFormatter {
         distanceToTargetMeters: Double?,
         progressWithinLeg: Float
     ): Boolean {
-        if (remainingMins <= 2) return true
-        if (distanceToTargetMeters != null && distanceToTargetMeters <= 350.0) return true
+        if (progressWithinLeg < 0.60f) return false
+        if (remainingMins <= 2 && progressWithinLeg >= 0.75f) return true
+        if (distanceToTargetMeters != null && distanceToTargetMeters <= 350.0 && progressWithinLeg >= 0.80f) return true
 
         if (currentLeg.intermediateStops.isNotEmpty()) {
             val penultimateStop = currentLeg.intermediateStops.last()
@@ -95,7 +96,7 @@ object TripUIStateFormatter {
                 penultimateStop.lat, penultimateStop.lon,
                 targetLat, targetLon
             )
-            if (distanceToTargetMeters != null && distanceToTargetMeters <= distPenultimateToTarget + 60.0 && progressWithinLeg >= 0.70f) {
+            if (distanceToTargetMeters != null && distanceToTargetMeters <= distPenultimateToTarget + 60.0 && progressWithinLeg >= 0.85f) {
                 return true
             }
         }
@@ -541,7 +542,11 @@ object TripUIStateFormatter {
         val depTime = currentLeg.formattedStartTime
 
         val subheadline = if (realTimeStatus?.isLive == true && liveMins != null) {
-            "$dirPrefix $headsign · en $liveMins min"
+            if (liveMins == 0) {
+                if (isEs) "$dirPrefix $headsign · En andén / Saliendo" else "$dirPrefix $headsign · En andana / Eixint"
+            } else {
+                "$dirPrefix $headsign · en $liveMins min"
+            }
         } else if (depTime.isNotBlank()) {
             "$dirPrefix $headsign · $depTime"
         } else {
@@ -640,8 +645,6 @@ object TripUIStateFormatter {
     fun calculateBoardedRemainingMinutes(leg: PlannedLeg, realTimeStatus: RealTimeTripStatus?): Int {
         val progressFraction = ActiveTripProgressTracker.progressState.value.progressWithinLeg.coerceIn(0f, 1f)
         val totalMins = (leg.durationSeconds / 60).toInt().coerceAtLeast(1)
-        val progressMins = (totalMins * (1f - progressFraction)).toInt().coerceAtLeast(1)
-
         val delay = realTimeStatus?.delayMinutes ?: 0
         val progressBasedMins = ((totalMins * (1f - progressFraction)).toInt() + delay).coerceAtLeast(1)
 
@@ -651,18 +654,17 @@ object TripUIStateFormatter {
             return realTimeEta
         }
 
-        // Theoretical remaining based on scheduled leg end time
+        // When boarded and moving (progressFraction >= 0.08f), progressBasedMins is the true live estimate
+        if (progressFraction >= 0.08f) {
+            return progressBasedMins
+        }
+
+        // Theoretical remaining based on scheduled leg end time only at the initial waiting/boarding moment
         val endMinsTheoretical = calculateTheoreticalMinutesRemaining(leg.endTime)
             ?: calculateTheoreticalMinutesRemaining(leg.formattedEndTime)
 
         if (endMinsTheoretical != null) {
-            val theoreticalWithDelay = (endMinsTheoretical + delay).coerceAtLeast(1)
-            // If discrepancy between theoretical end and GPS progress is within 15 min OR if there is an active delay (>10m), trust theoretical
-            // Otherwise if delay is ~0 but theoretical diverges by >15m, it indicates a mismatched leg end timestamp (e.g. whole-trip end time)
-            val discrepancy = kotlin.math.abs(theoreticalWithDelay - progressBasedMins)
-            if (discrepancy <= 15 || delay > 10) {
-                return theoreticalWithDelay
-            }
+            return (endMinsTheoretical + delay).coerceAtLeast(1)
         }
 
         return progressBasedMins

@@ -99,13 +99,16 @@ class MapDataLoader(
         }
 
         scope.launch(Dispatchers.IO) {
-            // Load Bus Stops from Room DB / Assets / stops.json
+            // Load Bus Stops from Room DB, only falling back to JSON seeding if empty
             try {
-                val loadedFromSync = BusMapper.parseStopsFromJsonDirect(application)
-                if (loadedFromSync.isNotEmpty()) {
-                    database.geoportalStopDao().replaceAllStops(loadedFromSync)
+                var activeStops = database.geoportalStopDao().getAllActiveStops()
+                if (activeStops.isEmpty() || activeStops.size < 50) {
+                    val loadedFromSync = BusMapper.parseStopsFromJsonDirect(application)
+                    if (loadedFromSync.isNotEmpty()) {
+                        database.geoportalStopDao().replaceAllStops(loadedFromSync)
+                        activeStops = database.geoportalStopDao().getAllActiveStops()
+                    }
                 }
-                val activeStops = database.geoportalStopDao().getAllActiveStops()
                 busStops.value = activeStops
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
@@ -324,7 +327,10 @@ class MapDataLoader(
                 val sorted = CercaniasDepartureMapper.sortDeparturesChronologically(rawDeps)
                 cercaniasDepartures.value = sorted
             } catch (e: Exception) {
-                Log.e("MapDataLoader", "Error fetching cercanias departures for $stationId", e)
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.e("MapDataLoader", "Error fetching cercanias departures for $stationId", e)
+                }
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 cercaniasDepartures.value = emptyList()
             } finally {
                 cercaniasDeparturesLoading.value = false

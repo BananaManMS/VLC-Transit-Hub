@@ -223,6 +223,9 @@ class TripNotificationManager(private val context: Context) {
                 .build()
             notificationManager.notify(NOTIFICATION_ALERT_ID, alertNotif)
             TripSensoryAlertManager.triggerLevel2AttentionCall(context, playAudio = true)
+        } else if (!isTransferAtRisk && lastAlertedTransferLegIndex != -1) {
+            notificationManager.cancel(NOTIFICATION_ALERT_ID)
+            lastAlertedTransferLegIndex = -1
         }
 
         // B) "Sal ya" / Aviso de salida inminente hacia el primer transporte
@@ -479,14 +482,26 @@ class TripNotificationManager(private val context: Context) {
         val yesLabel = if (currentAppLanguage == AppLanguage.ES) "Sí" else "Sí"
         val noLabel = if (currentAppLanguage == AppLanguage.ES) "No" else "No"
 
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openAppPendingIntent = PendingIntent.getActivity(
+            context,
+            100,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(context, CHANNEL_ALERT_ID)
             .setSmallIcon(R.drawable.ic_location_notification)
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(false)
+            .setContentIntent(openAppPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setDefaults(Notification.DEFAULT_ALL)
+            .setVibrate(longArrayOf(0, 350, 150, 350))
             .setAutoCancel(true)
             .addAction(0, yesLabel, yesPendingIntent)
             .addAction(0, noLabel, noPendingIntent)

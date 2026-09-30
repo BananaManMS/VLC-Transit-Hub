@@ -145,25 +145,28 @@ object RealTimeTransitRepository {
         if (!forceRefresh && !includeScheduled) {
             emtArrivalsCache[cleanStop]?.let { (timestamp, data) ->
                 if (now - timestamp < CACHE_TTL_MS) {
-                    val elapsedSec = ((now - timestamp) / 1000L).toInt()
-                    val adjusted = data.mapNotNull { bus ->
-                        if (bus.secondsRemaining > 0) {
-                            val remainingSec = bus.secondsRemaining - elapsedSec
-                            if (remainingSec >= -30) {
-                                val safeSec = remainingSec.coerceAtLeast(0)
-                                val safeMins = safeSec / 60
-                                val minStr = if (safeMins <= 0) "1" else safeMins.toString()
-                                bus.copy(
-                                    secondsRemaining = safeSec,
-                                    minutos = minStr
-                                )
-                            } else null
-                        } else {
-                            bus
+                    val filteredData = data.filter { it.isRealTime }
+                    if (filteredData.isNotEmpty()) {
+                        val elapsedSec = ((now - timestamp) / 1000L).toInt()
+                        val adjusted = filteredData.mapNotNull { bus ->
+                            if (bus.secondsRemaining > 0) {
+                                val remainingSec = bus.secondsRemaining - elapsedSec
+                                if (remainingSec >= -30) {
+                                    val safeSec = remainingSec.coerceAtLeast(0)
+                                    val safeMins = safeSec / 60
+                                    val minStr = if (safeMins <= 0) "1" else safeMins.toString()
+                                    bus.copy(
+                                        secondsRemaining = safeSec,
+                                        minutos = minStr
+                                    )
+                                } else null
+                            } else {
+                                bus
+                            }
                         }
-                    }
-                    if (adjusted.isNotEmpty()) {
-                        return@withContext adjusted
+                        if (adjusted.isNotEmpty()) {
+                            return@withContext adjusted
+                        }
                     }
                 }
             }
@@ -177,7 +180,7 @@ object RealTimeTransitRepository {
         )
 
         val xml = executeGetRequest(url, headers, useFastTimeout)
-        val liveList = if (xml != null) BusMapper.parseEmtXml(xml) else emptyList()
+        val liveList = if (xml != null) BusMapper.parseEmtXml(xml).filter { it.isRealTime } else emptyList()
         if (liveList.isNotEmpty()) {
             emtArrivalsCache[cleanStop] = Pair(now, liveList)
         }
@@ -185,7 +188,13 @@ object RealTimeTransitRepository {
         if (liveList.isEmpty()) {
             val cached = emtArrivalsCache[cleanStop]?.second
             if (!cached.isNullOrEmpty()) {
-                return@withContext cached
+                val filteredCached = if (!includeScheduled) cached.filter { it.isRealTime } else cached
+                if (filteredCached.isNotEmpty()) {
+                    return@withContext filteredCached
+                }
+            }
+            if (!includeScheduled) {
+                return@withContext emptyList()
             }
             val scheduledList = com.example.data.repository.emt.EmtScheduledRepository.fetchScheduledDepartures(
                 stopId = cleanStop,

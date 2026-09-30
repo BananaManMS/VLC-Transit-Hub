@@ -131,7 +131,7 @@ class RoutePlannerViewModel @JvmOverloads constructor(
             } catch (e: Exception) {
                 emptyList()
             }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     // Transit Favorites flow
     val favoriteBusStopsSet = dashboardRepository.getPreferenceFlow("favorite_bus_stops", "")
@@ -143,6 +143,10 @@ class RoutePlannerViewModel @JvmOverloads constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     val favoriteCercaniasStationsSet = dashboardRepository.getPreferenceFlow("favorite_cercanias_stations", "")
+        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    val favoriteMetrobusStopsSet = dashboardRepository.getPreferenceFlow("favorite_metrobus_stops", "")
         .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
@@ -451,7 +455,7 @@ class RoutePlannerViewModel @JvmOverloads constructor(
     private fun executeSearchForQuery(query: String) {
         searchJob?.cancel()
         val trimmed = query.trim()
-        if (trimmed.length < 2) {
+        if (trimmed.isEmpty()) {
             _isSearching.value = false
             _searchResults.value = emptyList()
             return
@@ -459,16 +463,19 @@ class RoutePlannerViewModel @JvmOverloads constructor(
 
         _isSearching.value = true
         searchJob = viewModelScope.launch(Dispatchers.IO) {
-            delay(200) // Debounce
+            delay(150) // Debounce
             try {
                 unifiedSearchEngine.performSearch(
                     query = trimmed,
                     userLat = userLat,
                     userLon = userLon,
                     customFavorites = customFavorites.value,
+                    homeLocation = homeLocation.value,
+                    workLocation = workLocation.value,
                     favoriteBusStops = favoriteBusStopsSet.value,
                     favoriteMetroStations = favoriteMetroStationsSet.value,
-                    favoriteCercaniasStations = favoriteCercaniasStationsSet.value
+                    favoriteCercaniasStations = favoriteCercaniasStationsSet.value,
+                    favoriteMetrobusStops = favoriteMetrobusStopsSet.value
                 ).collect { results ->
                     _searchResults.value = results
                     _isSearching.value = false

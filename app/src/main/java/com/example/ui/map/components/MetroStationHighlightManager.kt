@@ -106,6 +106,14 @@ object MetroStationHighlightManager {
         mapView: MapView,
         highlightState: MetroHighlightState
     ) {
+        addDimmedMetroPolylinesToMap(mapView, highlightState)
+        addActiveMetroPolylinesToMap(mapView, highlightState)
+    }
+
+    fun addDimmedMetroPolylinesToMap(
+        mapView: MapView,
+        highlightState: MetroHighlightState
+    ) {
         val loadedLines = MetroMapOverlayLoader.getLoadedPolylines(mapView)
         if (!highlightState.isHighlighted) {
             loadedLines.forEach { polyline ->
@@ -119,9 +127,30 @@ object MetroStationHighlightManager {
             return
         }
 
-        val activeLines = mutableListOf<Polyline>()
-        val dimmedLines = mutableListOf<Polyline>()
+        for (polyline in loadedLines) {
+            val raw = polyline.relatedObject as? MetroMapOverlayLoader.RawPolyline
+            if (raw != null) {
+                val cleanRef = normalizeLineRef(raw.lineRef)
+                if (!highlightState.activeLineRefs.contains(cleanRef)) {
+                    val r = Color.red(raw.color)
+                    val g = Color.green(raw.color)
+                    val b = Color.blue(raw.color)
+                    polyline.outlinePaint.color = Color.argb(DIMMED_ALPHA_COLOR_INT, r, g, b)
+                    polyline.outlinePaint.strokeWidth = raw.strokeWidth * 0.85f
+                    mapView.overlays.add(polyline)
+                }
+            } else {
+                mapView.overlays.add(polyline)
+            }
+        }
+    }
 
+    fun addActiveMetroPolylinesToMap(
+        mapView: MapView,
+        highlightState: MetroHighlightState
+    ) {
+        if (!highlightState.isHighlighted) return
+        val loadedLines = MetroMapOverlayLoader.getLoadedPolylines(mapView)
         for (polyline in loadedLines) {
             val raw = polyline.relatedObject as? MetroMapOverlayLoader.RawPolyline
             if (raw != null) {
@@ -129,23 +158,10 @@ object MetroStationHighlightManager {
                 if (highlightState.activeLineRefs.contains(cleanRef)) {
                     polyline.outlinePaint.color = raw.color
                     polyline.outlinePaint.strokeWidth = raw.strokeWidth * 1.3f
-                    activeLines.add(polyline)
-                } else {
-                    val r = Color.red(raw.color)
-                    val g = Color.green(raw.color)
-                    val b = Color.blue(raw.color)
-                    polyline.outlinePaint.color = Color.argb(DIMMED_ALPHA_COLOR_INT, r, g, b)
-                    polyline.outlinePaint.strokeWidth = raw.strokeWidth * 0.85f
-                    dimmedLines.add(polyline)
+                    mapView.overlays.add(polyline)
                 }
-            } else {
-                dimmedLines.add(polyline)
             }
         }
-
-        // Draw dimmed lines first, active lines layered above
-        dimmedLines.forEach { mapView.overlays.add(it) }
-        activeLines.forEach { mapView.overlays.add(it) }
     }
 
     /**

@@ -10,9 +10,29 @@ object MetroDepotFilterHelper {
         "ciutat arts", "ciutat de les arts", "oceanografic", "moreres", "natzaret"
     )
 
+    // Depot-excluded lines for northern corridor stations:
+    // Facultats (FGV ID 13, WebID 68)
+    // Benimaclet (FGV ID 12, WebID 67)
+    // Machado (FGV ID 11, WebID 66)
+    // Commercial lines for these are L3 and L9. Lines 5 and 7 only run here as non-commercial depot transfers.
+    private val DEPOT_STATION_IDS = setOf("11", "12", "13", "66", "67", "68")
+    private val DEPOT_STATION_KEYWORDS = listOf("facultats", "benimaclet", "machado")
+
     fun isDepotExcludedStationLine(stationId: String?, stationName: String?, line: String): Boolean {
         val cleanLine = line.replace("L", "", ignoreCase = true).trim()
         if (cleanLine.isEmpty()) return true
+
+        if (cleanLine == "5" || cleanLine == "7") {
+            if (stationId != null && DEPOT_STATION_IDS.contains(stationId.trim())) {
+                return true
+            }
+            if (stationName != null) {
+                val norm = stationName.lowercase(Locale.ROOT)
+                if (DEPOT_STATION_KEYWORDS.any { norm.contains(it) }) {
+                    return true
+                }
+            }
+        }
 
         if (cleanLine == "10") {
             if (stationId != null && L10_STATION_IDS.contains(stationId.trim())) {

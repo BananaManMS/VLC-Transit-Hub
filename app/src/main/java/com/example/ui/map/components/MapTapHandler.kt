@@ -40,6 +40,8 @@ object MapTapHandler {
         val currentDestinationLocation: GeoPoint?,
         val currentDestinationTitle: String?,
         val currentCustomFavorites: List<RecentSearch>,
+        val currentHomeLocation: RecentSearch? = null,
+        val currentWorkLocation: RecentSearch? = null,
         val currentOnSelectItem: ((SelectedMapItem) -> Unit)?,
         val currentOnMapClick: (() -> Unit)?,
         val currentOnShowDisambiguationMenu: ((List<SelectedMapItem>) -> Unit)?
@@ -236,25 +238,49 @@ object MapTapHandler {
             }
         }
 
-        // Check Custom Favorites
+        // Check Custom Places (Home, Work, and Favorites)
+        val allCustomPlaces = mutableListOf<Pair<RecentSearch, CustomPlaceType>>()
+        tc.currentHomeLocation?.let { home ->
+            allCustomPlaces.add(Pair(home, CustomPlaceType.HOME))
+        }
+        tc.currentWorkLocation?.let { work ->
+            allCustomPlaces.add(Pair(work, CustomPlaceType.WORK))
+        }
         tc.currentCustomFavorites.forEach { fav ->
-            val pos = GeoPoint(fav.latitude, fav.longitude)
+            if (!fav.showOnMap) return@forEach
+            val placeType = when {
+                fav.title.equals("Casa", ignoreCase = true) || fav.type.equals("home", ignoreCase = true) -> CustomPlaceType.HOME
+                fav.title.equals("Trabajo", ignoreCase = true) || fav.type.equals("work", ignoreCase = true) -> CustomPlaceType.WORK
+                else -> CustomPlaceType.FAVORITE
+            }
+            val alreadyAdded = allCustomPlaces.any { it.first.latitude == fav.latitude && it.first.longitude == fav.longitude }
+            if (!alreadyAdded) {
+                allCustomPlaces.add(Pair(fav, placeType))
+            }
+        }
+
+        allCustomPlaces.forEach { (place, placeType) ->
+            val pos = GeoPoint(place.latitude, place.longitude)
             mapView.projection.toPixels(pos, markerPixel)
             val dx = (tapPixel.x - markerPixel.x).toDouble()
             val dy = (tapPixel.y - markerPixel.y).toDouble()
             if (dx * dx + dy * dy <= thresholdSq) {
                 val favItem = SelectedMapItem.Address(
                     NominatimResult(
-                        display_name = if (fav.subtitle.isNotEmpty()) fav.title + ", " + fav.subtitle else fav.title,
-                        lat = fav.latitude.toString(),
-                        lon = fav.longitude.toString(),
-                        type = "favorite",
+                        display_name = if (place.subtitle.isNotEmpty()) place.title + ", " + place.subtitle else place.title,
+                        lat = place.latitude.toString(),
+                        lon = place.longitude.toString(),
+                        type = when (placeType) {
+                            CustomPlaceType.HOME -> "home"
+                            CustomPlaceType.WORK -> "work"
+                            CustomPlaceType.FAVORITE -> "favorite"
+                        },
                         category = "favorite",
                         isLocalStop = false,
                         stopId = null,
                         stopType = null,
                         placeCategory = PlaceCategory.FAVORITE,
-                        placeName = fav.title
+                        placeName = place.title
                     )
                 )
                 candidates.add(favItem)
@@ -269,6 +295,7 @@ object MapTapHandler {
                 is SelectedMapItem.MetrobusStopItem -> "METROBUS_${item.stop.id_parada}"
                 is SelectedMapItem.Valenbisi -> "VALENBISI_${item.station.gid}"
                 is SelectedMapItem.Address -> "ADDR_${item.result.latitude}_${item.result.longitude}"
+                is SelectedMapItem.LiveTrain -> "TRAIN_${item.vehicle.tripId}_${item.vehicle.trainNum}"
             }
         }
 

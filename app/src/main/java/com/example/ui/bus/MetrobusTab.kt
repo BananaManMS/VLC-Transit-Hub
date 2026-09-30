@@ -264,7 +264,7 @@ fun MetrobusTab(
     }
 }
 
-val MetrobusAmber = Color(0xFFD97706)
+val MetrobusAmber = com.example.util.MetrobusLineColorResolver.BRAND_COLOR
 
 @Composable
 fun MetrobusStopCard(

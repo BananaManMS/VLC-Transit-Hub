@@ -20,6 +20,7 @@ fun LinkifiedText(
     text: String,
     textColor: Color,
     fontSize: TextUnit = 13.sp,
+    linkText: String? = "Leer más",
     modifier: Modifier = Modifier
 ) {
     val uriHandler = LocalUriHandler.current
@@ -34,13 +35,22 @@ fun LinkifiedText(
         while (matcher.find()) {
             val start = matcher.start()
             val end = matcher.end()
-            val url = matcher.group()
+            var url = matcher.group()
+            
+            // Clean trailing punctuation attached to URL
+            var trailingPunctuation = ""
+            val punctuationList = listOf('.', ',', ')', ';', '!', '?')
+            while (url.isNotEmpty() && punctuationList.contains(url.last())) {
+                trailingPunctuation = url.last() + trailingPunctuation
+                url = url.dropLast(1)
+            }
             
             // Append non-link text
             if (start > lastIndex) {
                 append(text.substring(lastIndex, start))
             }
             
+            val displayLabel = linkText ?: url
             // Append link text
             pushStringAnnotation(tag = "URL", annotation = url)
             withStyle(
@@ -50,9 +60,13 @@ fun LinkifiedText(
                     fontWeight = FontWeight.Medium
                 )
             ) {
-                append(url)
+                append(displayLabel)
             }
             pop()
+
+            if (trailingPunctuation.isNotEmpty()) {
+                append(trailingPunctuation)
+            }
             
             lastIndex = end
         }

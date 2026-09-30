@@ -7,7 +7,7 @@ import com.example.ui.bus.MetrobusStop
 
 enum class TransitOperator(val displayName: String, val colorHex: Long) {
     EMT("EMT", 0xFFC62828),
-    METROBUS("Metrobús", 0xFFD97706)
+    METROBUS("Metrobús", 0xFFF59E0B)
 }
 
 data class UnifiedTransitDeparture(

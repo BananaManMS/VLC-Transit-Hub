@@ -19,40 +19,24 @@ import com.example.data.model.routing.PlannedItinerary
 object MapOverlaysComposer {
 
     data class ComposeParams(
-        val context: Context,
-        val mapView: MapView,
+        val context: Context, val mapView: MapView,
         val selectedItinerary: PlannedItinerary?,
-        val showMetro: Boolean,
-        val showCercanias: Boolean,
-        val showMetrobus: Boolean,
-        val showValenbisi: Boolean,
-        val currentZoom: Double,
-        val isDarkMode: Boolean,
+        val showMetro: Boolean, val showCercanias: Boolean,
+        val showMetrobus: Boolean, val showValenbisi: Boolean,
+        val currentZoom: Double, val isDarkMode: Boolean,
         val mapEventsOverlay: MapEventsOverlay?,
-        val destinationMarker: Marker?,
-        val destinationLocation: GeoPoint?,
-        val userMarker: Marker?,
-        val userLocation: GeoPoint?,
-        val activeBusCount: Int,
-        val activeClusterCount: Int,
-        val recycledBusMarkers: List<Marker>,
-        val recycledClusterMarkers: List<Marker>,
-        val activeMergedBusCount: Int = 0,
-        val recycledMergedBusMarkers: List<Marker> = emptyList(),
-        val activeMetrobusCount: Int,
-        val activeMetrobusClusterCount: Int,
-        val recycledMetrobusMarkers: List<Marker>,
-        val recycledMetrobusClusterMarkers: List<Marker>,
-        val activeValenbisiCount: Int,
-        val activeValenbisiClusterCount: Int,
-        val recycledValenbisiMarkers: List<Marker>,
-        val recycledValenbisiClusterMarkers: List<Marker>,
-        val validMetroStationsCount: Int,
-        val recycledMetroMarkers: List<Marker>,
-        val validCercaniasStationsCount: Int,
-        val recycledCercaniasMarkers: List<Marker>,
-        val activeCustomFavCount: Int,
-        val recycledCustomFavoriteMarkers: List<Marker>,
+        val destinationMarker: Marker?, val destinationLocation: GeoPoint?,
+        val userMarker: Marker?, val userLocation: GeoPoint?,
+        val activeBusCount: Int, val activeClusterCount: Int,
+        val recycledBusMarkers: List<Marker>, val recycledClusterMarkers: List<Marker>,
+        val activeMergedBusCount: Int = 0, val recycledMergedBusMarkers: List<Marker> = emptyList(),
+        val activeMetrobusCount: Int, val activeMetrobusClusterCount: Int,
+        val recycledMetrobusMarkers: List<Marker>, val recycledMetrobusClusterMarkers: List<Marker>,
+        val activeValenbisiCount: Int, val activeValenbisiClusterCount: Int,
+        val recycledValenbisiMarkers: List<Marker>, val recycledValenbisiClusterMarkers: List<Marker>,
+        val validMetroStationsCount: Int, val recycledMetroMarkers: List<Marker>,
+        val validCercaniasStationsCount: Int, val recycledCercaniasMarkers: List<Marker>,
+        val activeCustomFavCount: Int, val recycledCustomFavoriteMarkers: List<Marker>,
         val lastZoomedItineraryId: String?,
         val selectedMapItem: com.example.ui.map.SelectedMapItem? = null,
         val validMetroStations: List<com.example.data.model.MetroStation> = emptyList(),
@@ -97,52 +81,6 @@ object MapOverlaysComposer {
 
         val selectedMetroStation = (p.selectedMapItem as? com.example.ui.map.SelectedMapItem.Metro)?.station
 
-        // Add station footprints (polygons) on top of base map when no active route
-        if (p.selectedItinerary == null && p.showMetro) {
-            MetroStationFootprintsOverlayManager.addFootprintsToMap(
-                context = p.context,
-                mapView = p.mapView,
-                showMetro = p.showMetro,
-                zoomLevel = p.currentZoom,
-                selectedStation = selectedMetroStation
-            )
-        }
-
-        // Add active metro line polylines when no active route
-        if (p.showMetro && p.selectedItinerary == null) {
-            MetroStationHighlightManager.addMetroPolylinesToMap(p.mapView, effectiveMetroHighlight)
-        }
-
-        // Add active cercanías line polylines when no active route (lazy loaded on demand)
-        if (p.showCercanias && p.selectedItinerary == null) {
-            val isOtherLayerHighlighted = metroHighlight.isHighlighted || emtHighlight.isHighlighted || mbHighlight.isHighlighted || isAnyNonMetroTransitSelected
-            CercaniasStationHighlightManager.addCercaniasPolylinesToMap(
-                context = p.context,
-                mapView = p.mapView,
-                highlightState = cercaniasHighlight,
-                isAnyOtherLayerHighlighted = isOtherLayerHighlighted
-            )
-        }
-
-        // Add active EMT bus line polylines when a bus stop is selected
-        if (emtHighlight.isHighlighted && p.selectedItinerary == null) {
-            EmtStationHighlightManager.addEmtPolylinesToMap(p.context, p.mapView, emtHighlight, p.currentZoom)
-        }
-
-        // Add active Metrobús line polylines when a Metrobús stop is selected
-        if (p.selectedMapItem is com.example.ui.map.SelectedMapItem.MetrobusStopItem && p.selectedItinerary == null) {
-            val stopLoc = GeoPoint(p.selectedMapItem.stop.lat, p.selectedMapItem.stop.lon)
-            MetrobusStationHighlightManager.addMetrobusPolylinesToMap(
-                mapView = p.mapView,
-                selectedMetrobusShapes = p.selectedMetrobusShapes,
-                currentZoom = p.currentZoom,
-                stopLocation = stopLoc,
-                selectedDirection = p.selectedDirectionFilter
-            )
-        } else {
-            MetrobusStationHighlightManager.clearPolylines(p.mapView)
-        }
-
         // In "Ruta Activa" mode (selectedItinerary != null), hide all secondary layers
         if (p.selectedItinerary == null) {
             val selectedBusStop = (p.selectedMapItem as? com.example.ui.map.SelectedMapItem.BusStop)?.stop
@@ -174,9 +112,11 @@ object MapOverlaysComposer {
             val cercaniasLayerAlpha = MapFadeTransitionManager.getLayerAlpha(MapFadeTransitionManager.Layer.CERCANIAS)
             val customPlacesLayerAlpha = MapFadeTransitionManager.getLayerAlpha(MapFadeTransitionManager.Layer.CUSTOM_PLACES)
 
+            val dimmedMarkers = mutableListOf<Marker>()
+            val activeMarkers = mutableListOf<Marker>()
             var topSelectedTransitMarker: Marker? = null
 
-            // Add active bus markers and active cluster markers
+            // 1. Process Bus markers and cluster markers
             val busMarkerPairs = ArrayList<Pair<Marker, Float>>(p.activeBusCount + p.activeClusterCount)
 
             for (i in 0 until p.activeBusCount) {
@@ -205,7 +145,7 @@ object MapOverlaysComposer {
                 if (isSelected) {
                     topSelectedTransitMarker = marker
                 } else if (busLayerAlpha > 0.005f || isBusVisible) {
-                    p.mapView.overlays.add(marker)
+                    if (baseAlpha >= 0.7f) activeMarkers.add(marker) else dimmedMarkers.add(marker)
                 }
             }
             for (i in 0 until p.activeClusterCount) {
@@ -213,11 +153,11 @@ object MapOverlaysComposer {
                 busMarkerPairs.add(Pair(marker, secondaryAlpha))
                 marker.alpha = secondaryAlpha * busLayerAlpha
                 if (busLayerAlpha > 0.005f || isBusVisible) {
-                    p.mapView.overlays.add(marker)
+                    if (secondaryAlpha >= 0.7f) activeMarkers.add(marker) else dimmedMarkers.add(marker)
                 }
             }
 
-            // Add active merged EMT + Metrobus markers
+            // 2. Process merged EMT + Metrobus markers
             for (i in 0 until p.activeMergedBusCount) {
                 val marker = p.recycledMergedBusMarkers[i]
                 val isSelected = (selectedBusStop != null && Math.abs(marker.position.latitude - selectedBusStop.lat) < 0.0001 && Math.abs(marker.position.longitude - selectedBusStop.lon) < 0.0001) ||
@@ -249,13 +189,13 @@ object MapOverlaysComposer {
                 if (isSelected) {
                     topSelectedTransitMarker = marker
                 } else if (busLayerAlpha > 0.005f || isBusVisible) {
-                    p.mapView.overlays.add(marker)
+                    if (baseAlpha >= 0.7f) activeMarkers.add(marker) else dimmedMarkers.add(marker)
                 }
             }
 
             MapFadeTransitionManager.registerActiveMarkers(MapFadeTransitionManager.Layer.BUS, busMarkerPairs)
 
-            // Add active Metrobus markers
+            // 3. Process Metrobus markers
             if (p.showMetrobus || metrobusLayerAlpha > 0.005f || selectedMetrobusStop != null) {
                 val metrobusMarkerPairs = ArrayList<Pair<Marker, Float>>(p.activeMetrobusCount + p.activeMetrobusClusterCount)
 
@@ -287,7 +227,7 @@ object MapOverlaysComposer {
                     if (isSelected) {
                         topSelectedTransitMarker = marker
                     } else if (p.showMetrobus || metrobusLayerAlpha > 0.005f) {
-                        p.mapView.overlays.add(marker)
+                        if (baseAlpha >= 0.7f) activeMarkers.add(marker) else dimmedMarkers.add(marker)
                     }
                 }
                 for (i in 0 until p.activeMetrobusClusterCount) {
@@ -295,13 +235,13 @@ object MapOverlaysComposer {
                     metrobusMarkerPairs.add(Pair(marker, secondaryAlpha))
                     marker.alpha = secondaryAlpha * metrobusLayerAlpha
                     if (p.showMetrobus || metrobusLayerAlpha > 0.005f) {
-                        p.mapView.overlays.add(marker)
+                        if (secondaryAlpha >= 0.7f) activeMarkers.add(marker) else dimmedMarkers.add(marker)
                     }
                 }
                 MapFadeTransitionManager.registerActiveMarkers(MapFadeTransitionManager.Layer.METROBUS, metrobusMarkerPairs)
             }
 
-            // Add active Valenbisi markers
+            // 4. Process Valenbisi markers
             if (p.showValenbisi || valenbisiLayerAlpha > 0.005f || selectedValenbisiStation != null) {
                 val valenbisiMarkerPairs = ArrayList<Pair<Marker, Float>>(p.activeValenbisiCount + p.activeValenbisiClusterCount)
                 for (i in 0 until p.activeValenbisiCount) {
@@ -323,34 +263,19 @@ object MapOverlaysComposer {
                     if (isSelected) {
                         topSelectedTransitMarker = marker
                     } else if (p.showValenbisi || valenbisiLayerAlpha > 0.005f) {
-                        p.mapView.overlays.add(marker)
+                        if (finalBase >= 0.7f) activeMarkers.add(marker) else dimmedMarkers.add(marker)
                     }
                 }
                 for (i in 0 until p.activeValenbisiClusterCount) {
                     val marker = p.recycledValenbisiClusterMarkers[i]
                     valenbisiMarkerPairs.add(Pair(marker, secondaryAlpha))
                     marker.alpha = secondaryAlpha * valenbisiLayerAlpha
-                    p.mapView.overlays.add(marker)
+                    if (secondaryAlpha >= 0.7f) activeMarkers.add(marker) else dimmedMarkers.add(marker)
                 }
                 MapFadeTransitionManager.registerActiveMarkers(MapFadeTransitionManager.Layer.VALENBISI, valenbisiMarkerPairs)
             }
 
-            // Add active metro station access points (escaleras/ascensores) below metro markers
-            if (p.showMetro) {
-                MetroStationFootprintsOverlayManager.addAccessesToMap(
-                    context = p.context,
-                    mapView = p.mapView,
-                    showMetro = p.showMetro,
-                    zoomLevel = p.currentZoom,
-                    selectedStation = selectedMetroStation,
-                    isEmtHighlighted = emtHighlight.isHighlighted,
-                    secondaryAlpha = secondaryAlpha,
-                    metroStations = p.validMetroStations,
-                    onSelectItem = p.onSelectItem
-                )
-            }
-
-            // Add active metro markers on top of access icons
+            // 5. Process Metro station markers
             if (p.showMetro && (p.currentZoom >= 11.5 || metroLayerAlpha > 0.005f || selectedMetroStation != null)) {
                 val metroMarkerPairs = ArrayList<Pair<Marker, Float>>(p.validMetroStationsCount)
                 for (i in 0 until p.validMetroStationsCount) {
@@ -369,13 +294,13 @@ object MapOverlaysComposer {
                     if (isSelected) {
                         topSelectedTransitMarker = marker
                     } else if (p.currentZoom >= 11.5 || metroLayerAlpha > 0.005f) {
-                        p.mapView.overlays.add(marker)
+                        if (baseAlpha >= 0.7f) activeMarkers.add(marker) else dimmedMarkers.add(marker)
                     }
                 }
                 MapFadeTransitionManager.registerActiveMarkers(MapFadeTransitionManager.Layer.METRO, metroMarkerPairs)
             }
 
-            // Add active cercanías markers
+            // 6. Process Cercanías markers
             if (p.showCercanias || cercaniasLayerAlpha > 0.005f || selectedCercaniasStation != null) {
                 val cercaniasMarkerPairs = ArrayList<Pair<Marker, Float>>(p.validCercaniasStationsCount)
                 for (i in 0 until p.validCercaniasStationsCount) {
@@ -398,25 +323,112 @@ object MapOverlaysComposer {
                     if (isSelected) {
                         topSelectedTransitMarker = marker
                     } else if (p.showCercanias || cercaniasLayerAlpha > 0.005f) {
-                        p.mapView.overlays.add(marker)
+                        if (baseAlpha >= 0.7f) activeMarkers.add(marker) else dimmedMarkers.add(marker)
                     }
                 }
                 MapFadeTransitionManager.registerActiveMarkers(MapFadeTransitionManager.Layer.CERCANIAS, cercaniasMarkerPairs)
             }
 
-            // Add custom places markers (Home, Work, Favorites) ON TOP of transit stops
+            // 7. Process Custom Places markers (Home, Work, Favorites)
             if (p.activeCustomFavCount > 0 || customPlacesLayerAlpha > 0.005f) {
                 val customFavPairs = ArrayList<Pair<Marker, Float>>(p.activeCustomFavCount)
                 for (i in 0 until p.activeCustomFavCount) {
                     val marker = p.recycledCustomFavoriteMarkers[i]
                     customFavPairs.add(Pair(marker, secondaryAlpha))
                     marker.alpha = secondaryAlpha * customPlacesLayerAlpha
-                    p.mapView.overlays.add(marker)
+                    if (secondaryAlpha >= 0.7f) activeMarkers.add(marker) else dimmedMarkers.add(marker)
                 }
                 MapFadeTransitionManager.registerActiveMarkers(MapFadeTransitionManager.Layer.CUSTOM_PLACES, customFavPairs)
             }
 
-            // ABSOLUTE TOP TRANSIT LAYER: Add the selected station/stop on top of all other markers
+            // --- LAYER ASSEMBLY ---
+            // A. Base polygons (station footprints of unselected stations)
+            if (p.showMetro && selectedMetroStation == null) {
+                MetroStationFootprintsOverlayManager.addFootprintsToMap(
+                    context = p.context,
+                    mapView = p.mapView,
+                    showMetro = p.showMetro,
+                    zoomLevel = p.currentZoom,
+                    selectedStation = null
+                )
+            }
+
+            // B. Dimmed Metro line polylines
+            if (p.showMetro) {
+                MetroStationHighlightManager.addDimmedMetroPolylinesToMap(p.mapView, effectiveMetroHighlight)
+            }
+
+            // C. Dimmed Cercanías line polylines
+            if (p.showCercanias) {
+                val isOtherLayerHighlighted = metroHighlight.isHighlighted || emtHighlight.isHighlighted || mbHighlight.isHighlighted || isAnyNonMetroTransitSelected
+                CercaniasStationHighlightManager.addDimmedCercaniasPolylinesToMap(
+                    context = p.context,
+                    mapView = p.mapView,
+                    highlightState = cercaniasHighlight,
+                    isAnyOtherLayerHighlighted = isOtherLayerHighlighted
+                )
+            }
+
+            // D. ALL DIMMED MARKERS (transparent elements layered BEHIND active lines and active stops)
+            dimmedMarkers.forEach { p.mapView.overlays.add(it) }
+
+            // E. Active Metro station access points (escaleras/ascensores)
+            if (p.showMetro) {
+                MetroStationFootprintsOverlayManager.addAccessesToMap(
+                    context = p.context,
+                    mapView = p.mapView,
+                    showMetro = p.showMetro,
+                    zoomLevel = p.currentZoom,
+                    selectedStation = selectedMetroStation,
+                    isEmtHighlighted = emtHighlight.isHighlighted,
+                    secondaryAlpha = secondaryAlpha,
+                    metroStations = p.validMetroStations,
+                    onSelectItem = p.onSelectItem
+                )
+            }
+
+            // F. Selected Metro station footprint (prominent highlighted polygon)
+            if (p.showMetro && selectedMetroStation != null) {
+                MetroStationFootprintsOverlayManager.addFootprintsToMap(
+                    context = p.context,
+                    mapView = p.mapView,
+                    showMetro = p.showMetro,
+                    zoomLevel = p.currentZoom,
+                    selectedStation = selectedMetroStation
+                )
+            }
+
+            // G. ACTIVE TRANSIT POLYLINES (Drawn cleanly ON TOP of dimmed markers)
+            if (p.showMetro) {
+                MetroStationHighlightManager.addActiveMetroPolylinesToMap(p.mapView, effectiveMetroHighlight)
+            }
+            if (p.showCercanias) {
+                CercaniasStationHighlightManager.addActiveCercaniasPolylinesToMap(
+                    context = p.context,
+                    mapView = p.mapView,
+                    highlightState = cercaniasHighlight
+                )
+            }
+            if (emtHighlight.isHighlighted) {
+                EmtStationHighlightManager.addEmtPolylinesToMap(p.context, p.mapView, emtHighlight, p.currentZoom)
+            }
+            if (p.selectedMapItem is com.example.ui.map.SelectedMapItem.MetrobusStopItem) {
+                val stopLoc = GeoPoint(p.selectedMapItem.stop.lat, p.selectedMapItem.stop.lon)
+                MetrobusStationHighlightManager.addMetrobusPolylinesToMap(
+                    mapView = p.mapView,
+                    selectedMetrobusShapes = p.selectedMetrobusShapes,
+                    currentZoom = p.currentZoom,
+                    stopLocation = stopLoc,
+                    selectedDirection = p.selectedDirectionFilter
+                )
+            } else {
+                MetrobusStationHighlightManager.clearPolylines(p.mapView)
+            }
+
+            // H. ACTIVE TRANSIT STOPS (Stops on the active route - non-transparent, drawn ON TOP of the active line)
+            activeMarkers.forEach { p.mapView.overlays.add(it) }
+
+            // I. SELECTED STOP/STATION (The focused pin - top of transit elements)
             topSelectedTransitMarker?.let {
                 it.alpha = 1.0f
                 p.mapView.overlays.add(it)
@@ -471,15 +483,5 @@ object MapOverlaysComposer {
         } catch (_: Exception) {}
 
         return updatedZoomedId
-    }
-
-    private fun createStyledChevronPath(length: Float, halfWidth: Float, indent: Float): android.graphics.Path {
-        return android.graphics.Path().apply {
-            moveTo(length * 0.5f, 0f)              // Tip (front)
-            lineTo(-length * 0.5f, -halfWidth)     // Top rear wing
-            lineTo(-length * 0.5f + indent, 0f)    // Inner middle notch
-            lineTo(-length * 0.5f, halfWidth)      // Bottom rear wing
-            close()
-        }
     }
 }

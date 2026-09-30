@@ -198,6 +198,11 @@ class LiveReconciliationEngine(
                         fromStopId = leg.fromStopId,
                         fromName = leg.fromName
                     )
+                    val isMetrobus = TransitIdMapper.isMetrobus(
+                        agencyName = leg.agencyName,
+                        routeShortName = leg.routeShortName,
+                        routeLongName = leg.routeLongName
+                    )
 
                     if (isEmt) {
                         val lineTarget = leg.routeShortName?.trim() ?: ""
@@ -211,24 +216,38 @@ class LiveReconciliationEngine(
 
                         if (!stopNumber.isNullOrEmpty() && lineTarget.isNotEmpty()) {
                             val liveArrivals = fetchEmtLiveArrivals(stopNumber)
+                            // Strict real-time check: ignore any schedule fallback data
                             val targetArrivals = liveArrivals.filter {
-                                TransitIdMapper.isSameEmtLine(it.linea, lineTarget)
+                                it.isRealTime && TransitIdMapper.isSameEmtLine(it.linea, lineTarget)
                             }
 
                             if (targetArrivals.isNotEmpty()) {
                                 val validCandidates = targetArrivals.filter { arrival ->
                                     val liveArrivalMs = nowMs + (arrival.secondsRemaining * 1000L)
                                     val vehicleKey = "EMT_${stopNumber}_${arrival.linea}_${arrival.secondsRemaining / 60}"
-                                    liveArrivalMs >= earliestReachableUserArrivalMs && !claimedVehicleKeys.contains(vehicleKey)
+                                    val matchesTimeWindow = if (scheduledLegStartEpochMs > 0) {
+                                        Math.abs(liveArrivalMs - scheduledLegStartEpochMs) <= 45 * 60 * 1000L
+                                    } else {
+                                        true
+                                    }
+                                    liveArrivalMs >= earliestReachableUserArrivalMs && matchesTimeWindow && !claimedVehicleKeys.contains(vehicleKey)
                                 }
 
                                 val chosenCandidate = if (validCandidates.isNotEmpty()) {
-                                    val firstReachable = validCandidates.minByOrNull { it.secondsRemaining }
-                                    if (firstReachable != null) {
-                                        val liveArrivalMs = nowMs + (firstReachable.secondsRemaining * 1000L)
+                                    val bestCandidate = if (scheduledLegStartEpochMs > 0) {
+                                        validCandidates.minByOrNull { arrival ->
+                                            val liveArrivalMs = nowMs + (arrival.secondsRemaining * 1000L)
+                                            Math.abs(liveArrivalMs - scheduledLegStartEpochMs)
+                                        }
+                                    } else {
+                                        validCandidates.minByOrNull { it.secondsRemaining }
+                                    }
+
+                                    if (bestCandidate != null) {
+                                        val liveArrivalMs = nowMs + (bestCandidate.secondsRemaining * 1000L)
                                         val delaySec = if (scheduledLegStartEpochMs > 0) ((liveArrivalMs - scheduledLegStartEpochMs) / 1000).toInt() else 0
                                         val delayMins = (delaySec / 60)
-                                        Triple(firstReachable, liveArrivalMs, delayMins)
+                                        Triple(bestCandidate, liveArrivalMs, delayMins)
                                     } else null
                                 } else null
 
@@ -237,6 +256,58 @@ class LiveReconciliationEngine(
                                     val vehicleKey = "EMT_${stopNumber}_${arrival.linea}_${arrival.secondsRemaining / 60}"
                                     val lineClean = lineTarget.removePrefix("L").removePrefix("l")
                                     val busLabel = if (lineClean.startsWith("C") || lineClean.startsWith("N") || lineClean.length >= 3) "Bus $lineClean" else "Bus $lineClean"
+                                    claimedVehicleKeys.add(vehicleKey)
+                                    matchedLiveDelayMins = delayMins
+                                    matchedLiveLabel = busLabel
+                                }
+                            }
+                        }
+                    } else if (isMetrobus) {
+                        val stopId = leg.fromStopId?.filter { it.isDigit() }
+                        val lineTarget = leg.routeShortName?.trim() ?: ""
+                        if (!stopId.isNullOrEmpty() && lineTarget.isNotEmpty()) {
+                            val mbArrivals = fetchMetrobusLiveArrivals(stopId)
+                            // Strict real-time check: ignore any schedule fallback data
+                            val targetArrivals = mbArrivals.filter {
+                                it.isRealTime && (it.lineCode.equals(lineTarget, ignoreCase = true) ||
+                                        it.lineCode.filter { c -> c.isDigit() } == lineTarget.filter { c -> c.isDigit() })
+                            }
+
+                            if (targetArrivals.isNotEmpty()) {
+                                val validCandidates = targetArrivals.filter { arrival ->
+                                    val liveArrivalMs = nowMs + (arrival.secondsRemaining * 1000L)
+                                    val vehicleKey = "METROBUS_${stopId}_${arrival.lineCode}_${arrival.secondsRemaining / 60}"
+                                    val matchesTimeWindow = if (scheduledLegStartEpochMs > 0) {
+                                        Math.abs(liveArrivalMs - scheduledLegStartEpochMs) <= 45 * 60 * 1000L
+                                    } else {
+                                        true
+                                    }
+                                    liveArrivalMs >= earliestReachableUserArrivalMs && matchesTimeWindow && !claimedVehicleKeys.contains(vehicleKey)
+                                }
+
+                                val chosenCandidate = if (validCandidates.isNotEmpty()) {
+                                    val bestCandidate = if (scheduledLegStartEpochMs > 0) {
+                                        validCandidates.minByOrNull { arrival ->
+                                            val liveArrivalMs = nowMs + (arrival.secondsRemaining * 1000L)
+                                            Math.abs(liveArrivalMs - scheduledLegStartEpochMs)
+                                        }
+                                    } else {
+                                        validCandidates.minByOrNull { it.secondsRemaining }
+                                    }
+
+                                    if (bestCandidate != null) {
+                                        val liveArrivalMs = nowMs + (bestCandidate.secondsRemaining * 1000L)
+                                        val delaySec = if (scheduledLegStartEpochMs > 0) ((liveArrivalMs - scheduledLegStartEpochMs) / 1000).toInt() else 0
+                                        val delayMins = (delaySec / 60)
+                                        Triple(bestCandidate, liveArrivalMs, delayMins)
+                                    } else null
+                                } else null
+
+                                if (chosenCandidate != null) {
+                                    val (arrival, _, delayMins) = chosenCandidate
+                                    val vehicleKey = "METROBUS_${stopId}_${arrival.lineCode}_${arrival.secondsRemaining / 60}"
+                                    val lineClean = lineTarget.removePrefix("L").removePrefix("l")
+                                    val busLabel = "Metrobús $lineClean"
                                     claimedVehicleKeys.add(vehicleKey)
                                     matchedLiveDelayMins = delayMins
                                     matchedLiveLabel = busLabel
@@ -258,19 +329,27 @@ class LiveReconciliationEngine(
                         )
 
                         val targetDepartures = liveDepartures.filter { dep ->
-                            val depDigits = dep.line.filter { it.isDigit() }
-                            allowedLines.any { allowed ->
-                                val allowedDigits = allowed.filter { it.isDigit() }
-                                dep.line.equals(allowed, ignoreCase = true) ||
-                                (depDigits.isNotBlank() && depDigits == allowedDigits)
-                            } && TransitIdMapper.isDestinationMatch(dep.destination, leg)
+                            dep.isRealTime && run {
+                                val depDigits = dep.line.filter { it.isDigit() }
+                                allowedLines.any { allowed ->
+                                    val allowedDigits = allowed.filter { it.isDigit() }
+                                    dep.line.equals(allowed, ignoreCase = true) ||
+                                    (depDigits.isNotBlank() && depDigits == allowedDigits)
+                                } && TransitIdMapper.isDestinationMatch(dep.destination, leg, dep.line)
+                            }
                         }
 
                         if (targetDepartures.isNotEmpty()) {
                             val validCandidates = targetDepartures.filter { dep ->
                                 val liveArrivalMs = nowMs + (dep.seconds * 1000L)
                                 val vehicleKey = "METRO_${stationIdInt}_${dep.line}_${dep.destination}_${dep.seconds / 60}"
-                                liveArrivalMs >= earliestReachableUserArrivalMs && !claimedVehicleKeys.contains(vehicleKey)
+                                val matchesTimeWindow = if (scheduledLegStartEpochMs > 0) {
+                                    val diffMs = liveArrivalMs - scheduledLegStartEpochMs
+                                    diffMs >= -120_000L && diffMs <= 30 * 60 * 1000L
+                                } else {
+                                    true
+                                }
+                                liveArrivalMs >= earliestReachableUserArrivalMs && matchesTimeWindow && !claimedVehicleKeys.contains(vehicleKey)
                             }
 
                             val chosenCandidate = if (validCandidates.isNotEmpty()) {
@@ -304,7 +383,7 @@ class LiveReconciliationEngine(
                                 if (selectedDep != null) {
                                     val liveArrivalMs = nowMs + (selectedDep.seconds * 1000L)
                                     val delaySec = if (scheduledLegStartEpochMs > 0) ((liveArrivalMs - scheduledLegStartEpochMs) / 1000).toInt() else 0
-                                    val delayMins = (delaySec / 60)
+                                    val delayMins = (delaySec / 60).coerceAtLeast(0)
                                     Triple(selectedDep, liveArrivalMs, delayMins)
                                 } else null
                             } else null
@@ -455,9 +534,6 @@ class LiveReconciliationEngine(
                 val notices = legReconciliationResults.map { (_, delayMinutes, label) ->
                     if (delayMinutes > 0) {
                         "$label con +$delayMinutes min de retraso"
-                    } else if (delayMinutes < 0) {
-                        val absDelay = Math.abs(delayMinutes)
-                        "$label con $absDelay min de adelanto"
                     } else {
                         "$label en hora"
                     }
@@ -616,7 +692,24 @@ class LiveReconciliationEngine(
     }
 
     private suspend fun fetchEmtLiveArrivals(stopNumber: String): List<EmtBusTime> {
-        return RealTimeTransitRepository.getEmtLiveArrivals(stopNumber, useFastTimeout = true)
+        return RealTimeTransitRepository.getEmtLiveArrivals(stopNumber, useFastTimeout = true, includeScheduled = false)
+    }
+
+    private val metrobusRepository by lazy {
+        val appContext = context ?: com.example.MainApplication.instance
+        com.example.data.repository.MetrobusRepository(
+            database = com.example.data.database.AppDatabase.getDatabase(appContext),
+            client = NetworkModule.okHttpClient,
+            context = appContext
+        )
+    }
+
+    private suspend fun fetchMetrobusLiveArrivals(stopId: String): List<com.example.ui.bus.MetrobusDepartureUiModel> {
+        return try {
+            metrobusRepository.getMetrobusArrivals(stopId, limitPerLine = 3, includeScheduled = false)
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     private fun checkMetroAlerts(metroLine: String?, stationName: String): List<String> {

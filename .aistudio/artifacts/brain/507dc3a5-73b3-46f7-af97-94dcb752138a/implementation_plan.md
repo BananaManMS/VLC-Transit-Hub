@@ -1,89 +1,110 @@
-# Plan de Saneamiento y Corrección de Referencias
+# Plan de Migración: Mapa de Cercanías en Vivo Independiente (Revisado)
 
-Plan detallado para eliminar llamadas inventadas, resolver clases duplicadas y corregir referencias rotas en el código de transporte de Valencia, preservando intactas las llamadas a APIs reales y la persistencia local.
-
-### User Review & Critical Decisions
-
-> [!IMPORTANT]
-> Confirmaciones obtenidas para la ejecución de este plan:
-> - **Llamadas inventadas (`deleteAllStations`, `insertAll`, etc.)**: Se eliminarán directamente en lugar de inventar métodos vacíos o tocar la base de datos Room, restaurando el comportamiento original.
-> - **Clases / Objetos duplicados (`AccessibilityNoticeFormatter`, `PenultimateStopArrivalMatcher`)**: Se comparará el contenido de ambas implementaciones antes de eliminar los duplicados para no perder ninguna lógica útil.
-> - **Metodología de ejecución**: Se procederá por lotes organizados por tipo de error, ejecutando una verificación de compilación tras cada lote para evitar roturas en cascada.
-> - **Blindaje de APIs y Datos Estáticos**: Cero modificaciones en `MetrobusRepository`, `EmtRepository`, servicios de red o GeoJSON/JSON locales.
+Este plan detalla la migración de la funcionalidad de rastreo de trenes Cercanías hacia un nuevo mapa autónomo. Incorpora la optimización sugerida por el usuario para **aprovechar al máximo la memoria caché compartida del panel de salidas**, logrando un mapa de carga instantánea con cero peticiones de red duplicadas.
 
 ---
 
-### 1. Overview & Core Concept
+### Análisis de Integración con el Panel de Salidas (Optimización Clave)
 
-- **Objetivo**: Sanear el código fuente de Kotlin para que vuelva a compilar con éxito (`BUILD SUCCESSFUL`) sin introducir métodos ficticios, sin vaciar modelos y sin romper la integración existente entre el mapa (osmdroid), las APIs en tiempo real y los datos en assets.
-- **Enfoque**: Corrección quirúrgica y conservadora. En lugar de adaptar el resto de la app a errores generados por la IA, se limpian las llamadas espurias que nunca debieron existir.
+Tras analizar los componentes internos de Renfe en la aplicación, descubrimos una excelente oportunidad de optimización utilizando **`GtfsCacheManager`** y **`RenfeRepository`**:
+
+1. **Caché Unificada en Memoria (`GtfsCacheManager`)**:
+   * Cuando el panel de salidas de Cercanías se refresca periódicamente (cada 20s-30s), descarga e interpreta tres feeds: `flota.json`, `trip_updates.json` y `vehicle_positions.json`.
+   * Estos datos se guardan de forma segura bajo un **Mutex** en `GtfsCacheManager` con un tiempo de vida (TTL) de **15 segundos**.
+2. **Carga Instantánea sin Latencia (Cero Segundos)**:
+   * Al abrir el nuevo mapa de trenes, **no necesitamos esperar a una nueva llamada de red**. Podemos consumir inmediatamente `renfeRepository.getUniqueLiveVehicles()`, que retornará al instante todas las posiciones ya descargadas y parseadas por el panel de salidas.
+3. **Detalles Completos del Tren (`LiveVehicleInfo`)**:
+   * Cada registro en caché ya contiene información crucial del tren: `originName` (estación de origen), `destinationName` (dirección/cabecera), `trainNum` (número de servicio), `delayMinutes` (retraso acumulado), y la línea (`routeId`).
+   * No es necesario realizar peticiones adicionales para rellenar la cabecera o la dirección del tren en la hoja inferior (`LiveTrainBottomSheet`), ya están pre-cargadas.
 
 ---
 
-### 2. Metodología por Lotes (Batch by Error Type)
+## 1. Concepto y Flujo de Usuario (UX)
 
+### Flujo de Datos Inteligente y Cero Latencia:
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                       LOTE 1                                │
-│       Comparación y Limpieza de Clases Duplicadas           │
-│  • AccessibilityNoticeFormatter  • PenultimateStopMatcher   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Verificación Gradle
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       LOTE 2                                │
-│        Eliminación de Llamadas Inventadas en ViewModel       │
-│  • MetroViewModel (eliminar deleteAllStations, insertAll)   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Verificación Gradle
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       LOTE 3                                │
-│    Alineación de Referencias a Modelos Reales Existentes    │
-│  • MetroStationHeader & SelectedStationInfoCard             │
-│    (conectar con propiedades reales: getLineInfo, etc.)     │
-│  • OsmdroidMapView (llamada a sync manager real)            │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Verificación Final
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       ESTADO SANO                           │
-│   Compilación Verde + APK actualizado en Preview            │
-└─────────────────────────────────────────────────────────────┘
+                                PANEL DE SALIDAS (Activo en Pestaña)
+                                                 │
+                                                 ▼ (Cada 20-30s)
+                                    ┌────────────────────────┐
+                                    │   GtfsCacheManager     │ <── Memoria Caché Compartida (TTL 15s)
+                                    └────────────┬───────────┘
+                                                 │
+                             Pulsar FAB          │ (Consumo Instantáneo)
+                        ────────────────────────►│
+                                                 ▼
+                                    ┌────────────────────────┐
+                                    │ CercaniasLiveMapDialog │ ──► Carga instantánea de trenes
+                                    │ (Mapa Dedicado Limpio) │ ──► Sin llamadas de red redundantes
+                                    └────────────────────────┘
 ```
 
----
-
-### 3. Detalle de los Lotes de Trabajo
-
-#### Lote 1: Comparar y Desduplicar Clases Repetidas
-* **`AccessibilityNoticeFormatter`**:
-  * Comparar la versión aislada en `util/AccessibilityNoticeFormatter.kt` frente a la que quedó incrustada al final de `util/StationAccessibilityHelper.kt`.
-  * Mantener la versión más completa y eliminar la duplicada para resolver el error `Redeclaration`.
-* **`PenultimateStopArrivalMatcher`**:
-  * Comparar la versión en `util/PenultimateStopArrivalMatcher.kt` con la incrustada al final de `util/BoardedDriftReconciler.kt`.
-  * Retirar la redeclaración redundante preservando el objeto único.
-* **Verificación**: Comprobar que desaparecen los 4 errores de `Redeclaration`.
-
-#### Lote 2: Limpieza de Métodos Inventados en ViewModels
-* **`MetroViewModel.kt`**:
-  * Revisar líneas 241-245: eliminar la llamada a `metroStationDao.deleteAllStations()` y `insertAll()`.
-  * Revisar línea 265: eliminar el parámetro inventado `description` que no existe en el constructor original de la entidad.
-  * Mantener inalterado todo el flujo de carga reactivo (`StateFlow`, consultas a Room existentes y llamadas a servicios).
-* **Verificación**: Comprobar que el ViewModel queda libre de llamadas ficticias.
-
-#### Lote 3: Alineación de Referencias a Modelos Reales
-* **`MetroStationHeader.kt` y `SelectedStationInfoCard.kt`**:
-  * Verificar en `MetroModels.kt` qué método existe realmente para obtener la información de una línea (por ejemplo `ValenciaMetroData.getLineInfo(lineId)` en lugar del inventado `getLine(lineId)`).
-  * Conectar las propiedades reales del modelo (como `lineColor` o el enum correspondiente) sin crear capas intermedias vacías.
-* **`OsmdroidMapView.kt`**:
-  * Revisar la llamada a `syncIfNeeded`: comprobar si el gestor de sincronización real tiene `sync()` o si la llamada no es requerida en el renderizado del mapa.
-* **Verificación**: Ejecutar `compile_applet` para confirmar compilación limpia y despliegue del nuevo APK sin fallos.
+1. El usuario está visualizando el panel de salidas de una estación. En segundo plano, `GtfsCacheManager` mantiene frescas las posiciones de toda la flota de Valencia.
+2. El usuario pulsa el **Botón Flotante (FAB)** en la esquina inferior derecha.
+3. Al instante se despliega el mapa dedicado y **pinta los trenes de forma inmediata** con los datos de la caché en memoria.
+4. El mapa mantiene el bucle de refresco coordinado con la caché compartida, asegurando que las llamadas de red sigan el mismo ciclo de vida sin duplicarse.
+5. Al pulsar un tren, el panel `LiveTrainBottomSheet` muestra de inmediato el número de tren, su origen, destino y minutos de demora extraídos directamente de `LiveVehicleInfo`.
 
 ---
 
-### 4. Criterios de Éxito y Seguridad
-1. **Cero regresiones en red**: No se tocan URLs, endpoints de la EMT ni parseos de GeoJSON de Metrovalencia/Cercanías.
-2. **Cero métodos huecos**: No se añadirán stubs con `return emptyList()` ni implementaciones vacías.
-3. **Compilación exitosa**: `gradle compileDebugKotlin` finaliza con código 0.
-4. **Actualización de la preview**: El emulador pasa a ejecutar el código fuente real saneado.
+## 2. Plan de Trabajo Paso a Paso
+
+### Paso 1: Limpieza del Mapa Multi-Modal Principal
+- **`MapViewModel.kt`**:
+  - Remover el estado `liveCercaniasVehicles` y suspender el bucle de polling de flota de Renfe en `init` para que no consuma recursos del sistema en segundo plano.
+- **`OsmdroidMapView.kt`**:
+  - Eliminar el gestor de capas de trenes Cercanías de la pantalla principal.
+
+### Paso 2: Exponer la Caché en `CercaniasViewModel.kt`
+- Añadiremos un flujo dedicado a los trenes en vivo en `CercaniasViewModel` que consulte la caché compartida del repositorio:
+  ```kotlin
+  private val _liveTrains = MutableStateFlow<List<LiveVehicleInfo>>(emptyList())
+  val liveTrains = _liveTrains.asStateFlow()
+  ```
+- Al abrir el mapa, invocamos `loadLiveTrainsFromCache()` para poblar el mapa al instante de manera síncrona.
+- Iniciamos un loop de refresco ligero de 20s en segundo plano mientras el mapa esté abierto que invoque a `renfeRepository.getUniqueLiveVehicles()`.
+
+### Paso 3: Crear el Diálogo Autónomo `CercaniasLiveMapDialog.kt`
+- Diseñar el diálogo de pantalla completa con un `MapView` exclusivo para Cercanías.
+- Pintar las líneas férreas y las estaciones de Cercanías de Valencia.
+- Renderizar los trenes en vivo recuperados de `liveTrains` y aplicar la animación suave de movimiento en base a sus coordenadas.
+- Al interactuar con el mapa:
+  - Estaciones de tren: abren `CercaniasStationBottomSheet`.
+  - Trenes en vivo: abren `LiveTrainBottomSheet` cargando la dirección y origen ya almacenados en el objeto de datos.
+
+### Paso 4: Agregar el FAB de Mapa a la Pantalla de Cercanías
+- Añadir un `FloatingActionButton` circular de Material 3 con el color identificativo de Cercanías en el archivo `CercaniasScreen.kt`.
+- El botón abrirá el mapa instantáneamente activando el diálogo modal.
+
+---
+
+## 3. Arquitectura de Datos Unificada
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                              CAPA DE DATOS                             │
+│                                                                        │
+│                       ┌────────────────────────┐                       │
+│                       │    GtfsCacheManager    │                       │
+│                       │   (Caché con Mutex)    │                       │
+│                       └───────────┬────────────┘                       │
+└───────────────────────────────────┼────────────────────────────────────┘
+                                    │
+                                    ▼ (Consultas Locales Sin Redundancia)
+┌────────────────────────────────────────────────────────────────────────┐
+│                           CAPA DE PRESENTACIÓN                         │
+│                                                                        │
+│  ┌────────────────────────────────┐    ┌────────────────────────────┐  │
+│  │     Panel de Salidas           │    │  CercaniasLiveMapDialog    │  │
+│  │  (Consume horarios y demoras)  │    │  (Consume flota de trenes) │  │
+│  └────────────────────────────────┘    └────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. Beneficios del Enfoque Optimizado
+
+* **Cero Latencia en Apertura**: La pantalla se dibuja con trenes en tiempo real desde el milisegundo uno.
+* **Consumo de Datos Eficiente**: Al reusar el gestor de caché con TTL de 15s, evitamos saturar las conexiones móviles del usuario y los servidores de Renfe.
+* **Aislamiento Perfecto**: El mapa principal queda 100% desligado de la telemetría de Renfe, recuperando un rendimiento óptimo.

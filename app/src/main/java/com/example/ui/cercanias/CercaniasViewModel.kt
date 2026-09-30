@@ -81,6 +81,9 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isCercaniasAlertsLoading = MutableStateFlow(true)
     val isCercaniasAlertsLoading = _isCercaniasAlertsLoading.asStateFlow()
 
+    private val _hasCercaniasAlertsError = MutableStateFlow(false)
+    val hasCercaniasAlertsError = _hasCercaniasAlertsError.asStateFlow()
+
     private val _allCercaniasStations = MutableStateFlow<List<CercaniasStationEntity>>(emptyList())
     val allCercaniasStations: StateFlow<List<CercaniasStationEntity>> = _allCercaniasStations.asStateFlow()
 
@@ -259,10 +262,16 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
 
                         val currentSelected = _selectedCercaniasDeparture.value
                         if (currentSelected != null) {
-                            val updated = filteredAndSorted.find {
-                                it.tripId == currentSelected.tripId ||
-                                (it.departureTime == currentSelected.departureTime && it.routeId == currentSelected.routeId) ||
-                                (it.allTripIds.isNotEmpty() && currentSelected.allTripIds.isNotEmpty() && it.allTripIds.any { id -> currentSelected.allTripIds.contains(id) })
+                            val selectedKeys = (listOf(currentSelected.tripId) + currentSelected.allTripIds)
+                                .flatMap { CercaniasRouteUtils.getTripKeys(it) }
+                                .distinct()
+
+                            val updated = filteredAndSorted.find { item ->
+                                val itemKeys = (listOf(item.tripId) + item.allTripIds)
+                                    .flatMap { CercaniasRouteUtils.getTripKeys(it) }
+                                    .distinct()
+                                selectedKeys.any { sk -> itemKeys.contains(sk) } ||
+                                (item.departureTime == currentSelected.departureTime && item.routeId == currentSelected.routeId)
                             }
                             if (updated != null) {
                                 _selectedCercaniasDeparture.value = updated
@@ -466,6 +475,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     fun fetchCercaniasRealTimeAlerts() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             _isCercaniasAlertsLoading.value = true
+            _hasCercaniasAlertsError.value = false
             try {
                 val allValenciaStations = database.cercaniasStationDao().getAllStations()
                 val valenciaStopIds = allValenciaStations.map { it.id }.toSet()
@@ -513,7 +523,18 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                                 for (j in 0 until informedEntitiesArray.length()) {
                                     val inf = informedEntitiesArray.optJSONObject(j) ?: continue
                                     val routeId = inf.optString("route_id", "").ifBlank { inf.optString("routeId", "") }
-                                    if (routeId.isNotBlank()) routeIds.add(routeId)
+                                    if (routeId.isNotBlank()) {
+                                        routeIds.add(routeId)
+                                        // Renfe encodes trip-specific alerts inside routeId e.g. "40T0053C2"
+                                        val m = Regex("""40[A-Za-z0-9]*?(\d{4})C?[1-6]?""").find(routeId)
+                                        if (m != null) {
+                                            val num4 = m.groupValues[1]
+                                            val numShort = num4.trimStart('0')
+                                            tripIds.add(routeId)
+                                            tripIds.add(num4)
+                                            if (numShort.isNotBlank()) tripIds.add(numShort)
+                                        }
+                                    }
                                     
                                     val tripIdObj = inf.optJSONObject("trip")
                                     val tripId = tripIdObj?.optString("trip_id", "")?.ifBlank { tripIdObj.optString("tripId", "") } ?: ""
@@ -624,12 +645,18 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                     }
                     _cercaniasAlerts.value = list
+                    _hasCercaniasAlertsError.value = false
+                } else {
+                    _hasCercaniasAlertsError.value = true
                 }
             } catch (e: java.net.SocketTimeoutException) {
+                _hasCercaniasAlertsError.value = true
                 android.util.Log.w("CercaniasAlerts", "Timeout fetching Cercanías alerts from Renfe GTFS-RT: ${e.message}")
             } catch (e: java.io.IOException) {
+                _hasCercaniasAlertsError.value = true
                 android.util.Log.w("CercaniasAlerts", "Network error fetching Cercanías alerts: ${e.message}")
             } catch (e: Exception) {
+                _hasCercaniasAlertsError.value = true
                 android.util.Log.w("CercaniasAlerts", "Unexpected error fetching Cercanías alerts: ${e.message}")
             } finally {
                 _isCercaniasAlertsLoading.value = false
@@ -683,5 +710,65 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
             startIndex = index + 1
         }
         return false
+    }
+
+    // --- Standalone Live Train Map Support ---
+    private val _liveCercaniasVehicles = MutableStateFlow<List<LiveVehicleInfo>>(emptyList())
+    val liveCercaniasVehicles: StateFlow<List<LiveVehicleInfo>> = _liveCercaniasVehicles.asStateFlow()
+
+    private val _isLiveMapLoading = MutableStateFlow(false)
+    val isLiveMapLoading: StateFlow<Boolean> = _isLiveMapLoading.asStateFlow()
+
+    private var liveTrainsJob: Job? = null
+
+    fun startLiveTrainsPolling() {
+        liveTrainsJob?.cancel()
+        if (_liveCercaniasVehicles.value.isEmpty()) {
+            _isLiveMapLoading.value = true
+        }
+        liveTrainsJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // 1. Instant cache load: populate train markers with ZERO latency if currently empty
+            try {
+                val cached = renfeRepository.getUniqueLiveVehicles()
+                if (cached.isNotEmpty()) {
+                    _liveCercaniasVehicles.value = cached
+                }
+            } catch (e: Exception) {
+                Log.d("CercaniasViewModel", "Error fetching cached live vehicles: ${e.message}")
+            } finally {
+                _isLiveMapLoading.value = false
+            }
+
+            // 2. Continuous background poll with adaptive cadence:
+            // - If Renfe header timestamp is unchanged: wait 5s to re-query (body parse is skipped to save resources).
+            // - If Renfe provides fresh data: emit updated vehicles and wait 20s before next standard cycle.
+            while (isActive) {
+                var hasNewData = false
+                try {
+                    val (vehicles, isFresh) = renfeRepository.getLiveVehiclesWithFreshness(forceFetch = true)
+                    hasNewData = isFresh
+                    if (isFresh || _liveCercaniasVehicles.value.isEmpty()) {
+                        _liveCercaniasVehicles.value = vehicles
+                    }
+                } catch (e: Exception) {
+                    if (e !is kotlinx.coroutines.CancellationException) {
+                        Log.w("CercaniasViewModel", "Error polling live vehicles: ${e.message}")
+                    }
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                }
+
+                val nextDelay = if (hasNewData) 20_000L else 5_000L
+                delay(nextDelay)
+            }
+        }
+    }
+
+    fun stopLiveTrainsPolling(clearState: Boolean = false) {
+        liveTrainsJob?.cancel()
+        liveTrainsJob = null
+        if (clearState) {
+            _liveCercaniasVehicles.value = emptyList()
+        }
+        _isLiveMapLoading.value = false
     }
 }

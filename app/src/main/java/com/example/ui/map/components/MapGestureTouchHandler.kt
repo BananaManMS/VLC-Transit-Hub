@@ -166,14 +166,12 @@ object MapGestureTouchHandler {
                             lockedCenter?.let { onCameraPositionChanged?.invoke(it, mapView.zoomLevelDouble) }
                             return@OnTouchListener true
                         } else {
-                            // Quick double tap without drag -> perform single step zoom-in centered on dynamic map center
-                            val fx = mapView.width / 2
-                            val offsetY = getMapCenterOffsetY()
-                            val fy = if (mapView.height > 0) mapView.height / 2 + offsetY else mapView.height / 2
-                            mapView.controller.zoomInFixing(fx, fy)
-                            lockedCenter?.let { mapView.setExpectedCenter(it) }
-                            onZoomLevelChanged?.invoke(mapView.zoomLevelDouble)
-                            lockedCenter?.let { onCameraPositionChanged?.invoke(it, mapView.zoomLevelDouble) }
+                            // Quick double tap without drag -> perform single step zoom-in centered on tapped point
+                            val tapX = downX.toInt().coerceIn(0, (mapView.width - 1).coerceAtLeast(0))
+                            val tapY = downY.toInt().coerceIn(0, (mapView.height - 1).coerceAtLeast(0))
+                            mapView.controller.zoomInFixing(tapX, tapY)
+                            val newZoom = (mapView.zoomLevelDouble + 1.0).coerceAtMost(mapView.maxZoomLevel)
+                            onZoomLevelChanged?.invoke(newZoom)
                             return@OnTouchListener true
                         }
                     } else {

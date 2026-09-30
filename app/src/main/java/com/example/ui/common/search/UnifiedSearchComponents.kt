@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Place
@@ -255,6 +256,31 @@ fun UnifiedSearchSuggestionsPanel(
                     }
                 }
 
+                // 1.5 Saved Favorite Places Block
+                if (customFavorites.isNotEmpty()) {
+                    item {
+                        SectionHeader(
+                            title = if (appLanguage == AppLanguage.CA) "Llocs preferits guardats" else "Sitios favoritos guardados",
+                            isDarkMode = isDarkMode
+                        )
+                    }
+                    items(
+                        items = customFavorites,
+                        key = { "fav_saved_${it.id}_${it.latitude}_${it.longitude}" }
+                    ) { fav ->
+                        RecentSearchRow(
+                            item = fav,
+                            isDarkMode = isDarkMode,
+                            appLanguage = appLanguage,
+                            onItemClick = {
+                                val searchResult = recentSearchToSearchResult(fav)
+                                onSearchResultClick(searchResult)
+                            },
+                            onDeleteClick = null
+                        )
+                    }
+                }
+
                 // 2. Recent Searches Block
                 if (recentSearches.isNotEmpty()) {
                     item {
@@ -330,11 +356,14 @@ fun SearchResultRow(
         is MapSearchResult.Metro -> result.station.name
         is MapSearchResult.Cercanias -> result.station.displayName
         is MapSearchResult.Address -> {
-            val pName = result.result.placeName
-            if (!pName.isNullOrBlank()) {
-                pName
-            } else {
-                result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName
+            val isHome = result.result.type == "home" || result.result.placeName?.equals("Casa", ignoreCase = true) == true
+            val isWork = result.result.type == "work" || result.result.placeName?.equals("Trabajo", ignoreCase = true) == true || result.result.placeName?.equals("Feina", ignoreCase = true) == true
+            when {
+                !result.customTitle.isNullOrBlank() -> result.customTitle
+                isHome -> if (appLanguage == AppLanguage.CA) "Casa" else "Casa"
+                isWork -> if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo"
+                !result.result.placeName.isNullOrBlank() -> result.result.placeName
+                else -> result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName
             }
         }
     }
@@ -342,40 +371,83 @@ fun SearchResultRow(
     val subtitle = when (result) {
         is MapSearchResult.BusStop -> {
             val alias = result.alias
-            if (!alias.isNullOrBlank()) {
+            val base = if (!alias.isNullOrBlank()) {
                 "${result.stop.denominacion} • Parada ${result.stop.id_parada}"
             } else {
                 "Parada ${result.stop.id_parada}"
             }
+            if (result.isFavorite) {
+                val favPrefix = if (appLanguage == AppLanguage.CA) "★ Preferida" else "★ Favorita"
+                "$favPrefix • $base"
+            } else base
         }
         is MapSearchResult.MetrobusStop -> {
             val alias = result.alias
-            if (!alias.isNullOrBlank()) {
+            val base = if (!alias.isNullOrBlank()) {
                 "${result.stop.denominacion} • Metrobús • Parada ${result.stop.id_parada}"
             } else {
                 "Metrobús • Parada ${result.stop.id_parada}"
             }
+            if (result.isFavorite) {
+                val favPrefix = if (appLanguage == AppLanguage.CA) "★ Preferida" else "★ Favorita"
+                "$favPrefix • $base"
+            } else base
         }
         is MapSearchResult.Metro -> {
             val z = com.example.data.model.cleanZoneCode(result.station.zone)
-            if (z.isNotEmpty()) "Zona $z" else "Estación Metro"
+            val base = if (z.isNotEmpty()) "Zona $z" else "Estación Metro"
+            if (result.isFavorite) {
+                val favPrefix = if (appLanguage == AppLanguage.CA) "★ Preferida" else "★ Favorita"
+                "$favPrefix • $base"
+            } else base
         }
-        is MapSearchResult.Cercanias -> "Estación Renfe"
+        is MapSearchResult.Cercanias -> {
+            val base = "Estación Renfe"
+            if (result.isFavorite) {
+                val favPrefix = if (appLanguage == AppLanguage.CA) "★ Preferida" else "★ Favorita"
+                "$favPrefix • $base"
+            } else base
+        }
         is MapSearchResult.Address -> {
             val addr = result.result
+            val isHome = addr.type == "home" || addr.placeName?.equals("Casa", ignoreCase = true) == true
+            val isWork = addr.type == "work" || addr.placeName?.equals("Trabajo", ignoreCase = true) == true || addr.placeName?.equals("Feina", ignoreCase = true) == true
+            val isFav = result.isFavorite || isHome || isWork || addr.placeCategory == PlaceCategory.FAVORITE || addr.category == "favorite" || addr.type == "favorite"
+
             val road = addr.road
             val hn = if (!addr.houseNumber.isNullOrBlank()) " ${addr.houseNumber}" else ""
             val area = addr.suburb ?: addr.city
 
-            if (!road.isNullOrBlank()) {
+            val locationText = if (!road.isNullOrBlank()) {
                 if (!area.isNullOrBlank() && !area.equals(road, ignoreCase = true)) {
                     "$road$hn • $area"
                 } else {
                     "$road$hn"
                 }
             } else {
-                val parts = result.result.displayName.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                if (parts.size > 1) parts.drop(1).take(2).joinToString(", ") else result.result.placeCategory.getLabel(appLanguage)
+                val parts = addr.displayName.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                if (parts.size > 1) {
+                    parts.drop(1).take(2).joinToString(", ")
+                } else {
+                    ""
+                }
+            }
+
+            when {
+                isHome -> {
+                    val label = if (appLanguage == AppLanguage.CA) "Llar guardada" else "Casa guardada"
+                    if (locationText.isNotBlank()) "$label • $locationText" else label
+                }
+                isWork -> {
+                    val label = if (appLanguage == AppLanguage.CA) "Feina guardada" else "Trabajo guardado"
+                    if (locationText.isNotBlank()) "$label • $locationText" else label
+                }
+                isFav -> {
+                    val label = if (appLanguage == AppLanguage.CA) "Lloc preferit guardat" else "Sitio favorito guardado"
+                    if (locationText.isNotBlank()) "$label • $locationText" else label
+                }
+                locationText.isNotBlank() -> locationText
+                else -> addr.placeCategory.getLabel(appLanguage)
             }
         }
     }
@@ -434,15 +506,68 @@ fun SearchResultRow(
                 }
             }
             is MapSearchResult.Address -> {
-                val isFavAddr = result.result.placeCategory == com.example.data.model.PlaceCategory.FAVORITE ||
+                val isHome = result.result.type == "home" || result.result.placeName?.equals("Casa", ignoreCase = true) == true
+                val isWork = result.result.type == "work" || result.result.placeName?.equals("Trabajo", ignoreCase = true) == true || result.result.placeName?.equals("Feina", ignoreCase = true) == true
+                val isFavAddr = isHome || isWork || result.result.placeCategory == PlaceCategory.FAVORITE ||
                         result.result.category == "favorite" || result.result.type == "favorite"
-                val category = if (isFavAddr) com.example.data.model.PlaceCategory.FAVORITE else result.result.placeCategory
-                com.example.ui.map.components.PlaceCategoryIconBox(
-                    category = category,
-                    isDarkMode = isDarkMode,
-                    boxSize = 36.dp,
-                    iconSize = 18.dp
-                )
+
+                if (isHome) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Home,
+                                contentDescription = "Casa",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                } else if (isWork) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Work,
+                                contentDescription = "Trabajo",
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                } else if (isFavAddr) {
+                    val favColor = result.result.colorHex?.let {
+                        try { Color(android.graphics.Color.parseColor(it)) } catch (_: Exception) { null }
+                    } ?: Color(0xFFEF4444)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = favColor.copy(alpha = 0.2f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = "Favorito",
+                                tint = favColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                } else {
+                    val category = result.result.placeCategory
+                    com.example.ui.map.components.PlaceCategoryIconBox(
+                        category = category,
+                        isDarkMode = isDarkMode,
+                        boxSize = 36.dp,
+                        iconSize = 18.dp
+                    )
+                }
             }
         }
 
@@ -470,11 +595,36 @@ fun SearchResultRow(
         Spacer(modifier = Modifier.width(8.dp))
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             when (result) {
                 is MapSearchResult.BusStop -> {
+                    if (result.isFavorite) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFF59E0B).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = Color(0xFFF59E0B),
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Preferida" else "Favorita",
+                                    color = Color(0xFFD97706),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
                     val lines = (result.stop.lineas ?: "").split(",")
                         .map { it.trim() }
                         .filter { it.isNotEmpty() }
@@ -486,6 +636,31 @@ fun SearchResultRow(
                     }
                 }
                 is MapSearchResult.MetrobusStop -> {
+                    if (result.isFavorite) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFF59E0B).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = Color(0xFFF59E0B),
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Preferida" else "Favorita",
+                                    color = Color(0xFFD97706),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
                     val lines = (result.stop.lineas ?: "").split(",")
                         .map { it.trim() }
                         .filter { it.isNotEmpty() }
@@ -497,6 +672,31 @@ fun SearchResultRow(
                     }
                 }
                 is MapSearchResult.Metro -> {
+                    if (result.isFavorite) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFF59E0B).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = Color(0xFFF59E0B),
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Preferida" else "Favorita",
+                                    color = Color(0xFFD97706),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
                     result.station.lines.take(3).forEach { line ->
                         LineBadge(text = line, bgColor = com.example.util.LineColorResolver.getMetroLineColor(line))
                     }
@@ -505,6 +705,31 @@ fun SearchResultRow(
                     }
                 }
                 is MapSearchResult.Cercanias -> {
+                    if (result.isFavorite) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFF59E0B).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = Color(0xFFF59E0B),
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Preferida" else "Favorita",
+                                    color = Color(0xFFD97706),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
                     val lines = result.station.lines
                         .map { it.trim() }
                         .filter { it.isNotEmpty() }
@@ -516,7 +741,65 @@ fun SearchResultRow(
                     }
                 }
                 is MapSearchResult.Address -> {
-                    // Category icon is already shown on the left leading icon box with dedicated color
+                    val isHome = result.result.type == "home" || result.result.placeName?.equals("Casa", ignoreCase = true) == true
+                    val isWork = result.result.type == "work" || result.result.placeName?.equals("Trabajo", ignoreCase = true) == true || result.result.placeName?.equals("Feina", ignoreCase = true) == true
+                    val isFavAddr = result.isFavorite || isHome || isWork || result.result.placeCategory == PlaceCategory.FAVORITE ||
+                            result.result.category == "favorite" || result.result.type == "favorite"
+
+                    if (isHome) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                        ) {
+                            Text(
+                                text = "Casa",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    } else if (isWork) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFF59E0B).copy(alpha = 0.2f)
+                        ) {
+                            Text(
+                                text = if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo",
+                                color = Color(0xFFD97706),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    } else if (isFavAddr) {
+                        val favColor = result.result.colorHex?.let {
+                            try { Color(android.graphics.Color.parseColor(it)) } catch (_: Exception) { null }
+                        } ?: Color(0xFFEF4444)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = favColor.copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Favorite,
+                                    contentDescription = null,
+                                    tint = favColor,
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Preferit" else "Favorito",
+                                    color = favColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -774,7 +1057,7 @@ fun RecentSearchRow(
 /**
  * Converts a RecentSearch item into a MapSearchResult for uniform dispatching.
  */
-fun recentSearchToSearchResult(item: RecentSearch): MapSearchResult {
+fun recentSearchToSearchResult(item: RecentSearch, score: Double = 1.0): MapSearchResult {
     return when (item.type) {
         "bus" -> {
             val den = if (item.title.startsWith("Parada ") && item.subtitle.isNotBlank() && !item.subtitle.startsWith("Parada ")) {
@@ -792,7 +1075,7 @@ fun recentSearchToSearchResult(item: RecentSearch): MapSearchResult {
                 lon = item.longitude,
                 lineas = item.extraData ?: ""
             )
-            MapSearchResult.BusStop(geoportalStop, null, 1.0)
+            MapSearchResult.BusStop(geoportalStop, null, score)
         }
         "metrobus" -> {
             val metrobusStop = com.example.data.database.MetrobusStopEntity(
@@ -802,7 +1085,7 @@ fun recentSearchToSearchResult(item: RecentSearch): MapSearchResult {
                 lon = item.longitude,
                 lineas = item.extraData ?: ""
             )
-            MapSearchResult.MetrobusStop(metrobusStop, null, 1.0)
+            MapSearchResult.MetrobusStop(metrobusStop, null, score)
         }
         "metro" -> {
             val z = com.example.data.model.cleanZoneCode(item.subtitle)
@@ -814,7 +1097,7 @@ fun recentSearchToSearchResult(item: RecentSearch): MapSearchResult {
                 longitude = item.longitude,
                 zone = z
             )
-            MapSearchResult.Metro(metroStation, 1.0)
+            MapSearchResult.Metro(metroStation, score, isFavorite = true)
         }
         "cercanias" -> {
             val cercaniasStation = com.example.data.database.CercaniasStationEntity(
@@ -823,18 +1106,26 @@ fun recentSearchToSearchResult(item: RecentSearch): MapSearchResult {
                 lat = item.latitude,
                 lon = item.longitude
             )
-            MapSearchResult.Cercanias(cercaniasStation, 1.0)
+            MapSearchResult.Cercanias(cercaniasStation, score, isFavorite = true)
         }
         else -> {
-            val isFav = item.type == "favorite"
+            val isHome = item.type == "home" || item.id == "home_location" || item.title.equals("Casa", ignoreCase = true)
+            val isWork = item.type == "work" || item.id == "work_location" || item.title.equals("Trabajo", ignoreCase = true) || item.title.equals("Feina", ignoreCase = true)
+            val isFav = item.type == "favorite" || isHome || isWork
+
+            val resolvedType = when {
+                isHome -> "home"
+                isWork -> "work"
+                isFav -> "favorite"
+                else -> item.categoryType?.split(":")?.getOrNull(1) ?: item.type
+            }
+            val resolvedCat = if (isFav) "favorite" else (item.categoryType?.split(":")?.getOrNull(0) ?: "place")
+
             val fullDisplayName = if (item.subtitle.isNotBlank() && item.subtitle != "Dirección" && item.subtitle != "Ubicación" && item.subtitle != "València") {
                 "${item.title}, ${item.subtitle}"
             } else {
                 item.title
             }
-            val parts = item.categoryType?.split(":")
-            val resolvedCat = parts?.getOrNull(0) ?: (if (isFav) "favorite" else "place")
-            val resolvedType = parts?.getOrNull(1) ?: (if (isFav) "favorite" else item.type)
 
             val resolvedPlaceCategory = if (isFav) {
                 PlaceCategory.FAVORITE
@@ -849,34 +1140,41 @@ fun recentSearchToSearchResult(item: RecentSearch): MapSearchResult {
             }
 
             val nomResult = NominatimResult(
-                display_name = fullDisplayName,
-                lat = item.latitude.toString(),
-                lon = item.longitude.toString(),
+                displayName = fullDisplayName,
+                latitude = item.latitude,
+                longitude = item.longitude,
                 type = resolvedType,
                 category = resolvedCat,
                 isLocalStop = false,
                 placeCategory = resolvedPlaceCategory,
-                placeName = item.placeName ?: item.title,
-                road = item.road ?: "",
-                houseNumber = item.houseNumber ?: "",
-                suburb = item.suburb ?: "",
-                city = item.city ?: "",
-                postcode = item.postcode ?: "",
-                openingHours = item.openingHours ?: "",
-                wheelchair = item.wheelchair ?: "",
-                brand = item.brand ?: "",
-                operator = item.operator ?: "",
-                phone = item.phone ?: "",
-                email = item.email ?: "",
-                website = item.website ?: "",
-                wikipedia = item.wikipedia ?: "",
-                wikidata = item.wikidata ?: "",
-                fee = item.fee ?: "",
-                charge = item.charge ?: "",
-                startDate = item.startDate ?: "",
-                historicType = item.historicType ?: ""
+                placeName = if (isFav) item.title else (item.placeName ?: item.title),
+                road = item.road,
+                houseNumber = item.houseNumber,
+                suburb = item.suburb,
+                city = item.city,
+                postcode = item.postcode,
+                openingHours = item.openingHours,
+                wheelchair = item.wheelchair,
+                brand = item.brand,
+                operator = item.operator,
+                phone = item.phone,
+                email = item.email,
+                website = item.website,
+                wikipedia = item.wikipedia,
+                wikidata = item.wikidata,
+                fee = item.fee,
+                charge = item.charge,
+                startDate = item.startDate,
+                historicType = item.historicType,
+                colorHex = item.colorHex,
+                showOnMap = item.showOnMap
             )
-            MapSearchResult.Address(nomResult, 1.0)
+            MapSearchResult.Address(
+                result = nomResult,
+                score = score,
+                isFavorite = isFav,
+                customTitle = if (isFav) item.title else null
+            )
         }
     }
 }
@@ -933,7 +1231,17 @@ fun mapSearchResultToPlannerLocation(result: MapSearchResult, appLanguage: AppLa
             )
         }
         is MapSearchResult.Address -> {
-            val mainTitle = result.result.placeName ?: (result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName)
+            val isHome = result.result.type == "home" || result.result.placeName?.equals("Casa", ignoreCase = true) == true
+            val isWork = result.result.type == "work" || result.result.placeName?.equals("Trabajo", ignoreCase = true) == true || result.result.placeName?.equals("Feina", ignoreCase = true) == true
+            val isFav = result.isFavorite || isHome || isWork || result.result.placeCategory == PlaceCategory.FAVORITE || result.result.category == "favorite" || result.result.type == "favorite"
+
+            val mainTitle = when {
+                !result.customTitle.isNullOrBlank() -> result.customTitle
+                isHome -> if (appLanguage == AppLanguage.CA) "Casa" else "Casa"
+                isWork -> if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo"
+                !result.result.placeName.isNullOrBlank() -> result.result.placeName
+                else -> result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName
+            }
             val secondary = if (!result.result.road.isNullOrBlank()) {
                 val hn = if (!result.result.houseNumber.isNullOrBlank()) " ${result.result.houseNumber}" else ""
                 val area = result.result.suburb ?: result.result.city ?: ""
@@ -945,9 +1253,19 @@ fun mapSearchResultToPlannerLocation(result: MapSearchResult, appLanguage: AppLa
             } else {
                 result.result.displayName.split(",").drop(1).take(2).joinToString(", ").trim()
             }
+            val displaySubtitle = if (isFav) {
+                val favLabel = when {
+                    isHome -> if (appLanguage == AppLanguage.CA) "Llar guardada" else "Casa guardada"
+                    isWork -> if (appLanguage == AppLanguage.CA) "Feina guardada" else "Trabajo guardado"
+                    else -> if (appLanguage == AppLanguage.CA) "Lloc preferit" else "Sitio favorito"
+                }
+                if (secondary.isNotEmpty()) "$favLabel • $secondary" else favLabel
+            } else {
+                secondary.ifEmpty { "València" }
+            }
             PlannerLocation(
                 title = mainTitle,
-                subtitle = secondary.ifEmpty { "València" },
+                subtitle = displaySubtitle,
                 latitude = result.result.latitude,
                 longitude = result.result.longitude,
                 stopId = result.result.stopId,

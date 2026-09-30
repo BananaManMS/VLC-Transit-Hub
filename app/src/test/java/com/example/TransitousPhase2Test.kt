@@ -135,4 +135,51 @@ class TransitousPhase2Test {
         assertEquals("L3", itin.legs[1].routeShortName)
         assertEquals("C41833", itin.legs[1].routeColorHex)
     }
+
+    @Test
+    fun testRosesBenimacletLineMatchingExcludesLine5() {
+        // 1. Allowed lines between Roses and Benimaclet must ONLY be 3 and 9 (never 5 or 7)
+        val alternatives = TransitIdMapper.getAlternativeTransitLines(
+            mode = TransitMode.SUBWAY,
+            originalLine = "3",
+            fromName = "Roses",
+            toName = "Benimaclet"
+        )
+        assertTrue(alternatives.contains("L3") || alternatives.contains("3"))
+        assertTrue(alternatives.contains("L9") || alternatives.contains("9"))
+        assertFalse("L5 must NOT be allowed for Roses->Benimaclet", alternatives.contains("L5") || alternatives.contains("5"))
+        assertFalse("L7 must NOT be allowed for Roses->Benimaclet", alternatives.contains("L7") || alternatives.contains("7"))
+
+        // 2. Downstream destination matching for Roses -> Benimaclet
+        val plannedLeg = com.example.data.model.routing.PlannedLeg(
+            mode = TransitMode.SUBWAY,
+            durationSeconds = 600L,
+            distanceMeters = 5000.0,
+            formattedDuration = "10 min",
+            startTime = "2026-08-14T16:00:00Z",
+            endTime = "2026-08-14T16:10:00Z",
+            formattedStartTime = "16:00",
+            formattedEndTime = "16:10",
+            routeColorHex = "E62238",
+            fromName = "Roses",
+            toName = "Benimaclet",
+            headsign = "Rafelbunyol",
+            routeShortName = "L3"
+        )
+
+        // Valid forward terminus beyond or at Benimaclet
+        assertTrue(TransitIdMapper.isDestinationMatch("Rafelbunyol", plannedLeg, "3"))
+        assertTrue(TransitIdMapper.isDestinationMatch("Alboraia Peris Aragó", plannedLeg, "9"))
+        assertTrue(TransitIdMapper.isDestinationMatch("Benimaclet", plannedLeg, "3"))
+
+        // Invalid: Marítim branches off at Alameda and does NOT reach Benimaclet
+        assertFalse("Marítim must not match Roses->Benimaclet on L5", TransitIdMapper.isDestinationMatch("Marítim", plannedLeg, "5"))
+        assertFalse("Marítim must not match Roses->Benimaclet even without line specified", TransitIdMapper.isDestinationMatch("Marítim", plannedLeg))
+
+        // Invalid: Short-turn train terminating at Av. del Cid before reaching Benimaclet
+        assertFalse("Av. del Cid must not match Roses->Benimaclet", TransitIdMapper.isDestinationMatch("Av. del Cid", plannedLeg, "3"))
+
+        // Invalid: Backwards train heading to Aeroport
+        assertFalse("Aeroport must not match Roses->Benimaclet", TransitIdMapper.isDestinationMatch("Aeroport", plannedLeg, "3"))
+    }
 }

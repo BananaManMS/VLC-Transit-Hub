@@ -289,10 +289,13 @@ fun MapControlsOverlay(
             }
         }
 
+        val layersSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
         // UNIFIED GOOGLE MAPS STYLE LAYERS BOTTOM SHEET
         if (showLayersSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showLayersSheet = false },
+                sheetState = layersSheetState,
                 containerColor = com.example.ui.theme.AppThemeColors.cardBackground(isDarkMode),
                 dragHandle = { BottomSheetDefaults.DragHandle() },
                 modifier = Modifier.testTag("map_layers_bottom_sheet")
@@ -615,7 +618,7 @@ fun MapControlsOverlay(
                         MapLayerFilterItem(
                             type = MapFilterType.METROBUS,
                             label = if (appLanguage == AppLanguage.CA) "Metrobús" else "Metrobús",
-                            activeColor = Color(0xFFD97706), // Official Metrobús Amber
+                            activeColor = com.example.util.MetrobusLineColorResolver.BRAND_COLOR, // Official Metrobús Amber (#F59E0B)
                             logoRes = R.drawable.logo_metrobus,
                             fallbackVector = Icons.Default.DirectionsBus,
                             padding = 0.dp

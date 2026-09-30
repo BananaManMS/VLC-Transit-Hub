@@ -358,7 +358,7 @@ class MetrobusRepository(
         limitPerLine: Int = 3,
         includeScheduled: Boolean = true
     ): List<MetrobusDepartureUiModel> = withContext(Dispatchers.IO) {
-        val realTime = fetchRealTimeEstimations(stopId)
+        val realTime = fetchRealTimeEstimations(stopId).filter { it.isRealTime }
         if (realTime.isNotEmpty()) {
             if (!includeScheduled) {
                 return@withContext realTime.take(limitPerLine * 5)
@@ -375,6 +375,9 @@ class MetrobusRepository(
                 }
             }
             return@withContext combined.sortedBy { it.minutesRemaining }
+        }
+        if (!includeScheduled) {
+            return@withContext emptyList()
         }
         getMetrobusScheduledDepartures(stopId, limitPerLine)
     }

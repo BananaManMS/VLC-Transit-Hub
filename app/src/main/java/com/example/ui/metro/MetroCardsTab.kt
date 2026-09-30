@@ -159,17 +159,11 @@ fun TarjetasTab(
                 }
             } else {
                 val finalSortedCards = remember(cards) {
-                    val sortedNormal = cards.filter { !it.isFaded }.sortedWith(
+                    cards.sortedWith(
                         compareBy<TransitCardUiModel> { it.customOrder }
                             .thenBy { try { CardCategory.valueOf(it.category).orderIndex } catch (_: Exception) { 99 } }
                             .thenBy { it.cardNumber }
                     )
-                    val sortedFaded = cards.filter { it.isFaded }.sortedWith(
-                        compareBy<TransitCardUiModel> { it.customOrder }
-                            .thenBy { try { CardCategory.valueOf(it.category).orderIndex } catch (_: Exception) { 99 } }
-                            .thenBy { it.cardNumber }
-                    )
-                    sortedNormal + sortedFaded
                 }
 
                 LazyColumn(
@@ -329,17 +323,11 @@ fun ManageCardsDialog(
 ) {
     // Remember cardList ONLY ONCE when dialog opens to prevent recomposition glitches during drag
     val cardList = remember {
-        val sortedNormal = cards.filter { !it.isFaded }.sortedWith(
+        cards.sortedWith(
             compareBy<TransitCardUiModel> { it.customOrder }
                 .thenBy { try { CardCategory.valueOf(it.category).orderIndex } catch (_: Exception) { 99 } }
                 .thenBy { it.cardNumber }
-        )
-        val sortedFaded = cards.filter { it.isFaded }.sortedWith(
-            compareBy<TransitCardUiModel> { it.customOrder }
-                .thenBy { try { CardCategory.valueOf(it.category).orderIndex } catch (_: Exception) { 99 } }
-                .thenBy { it.cardNumber }
-        )
-        (sortedNormal + sortedFaded).toMutableStateList()
+        ).toMutableStateList()
     }
 
     var draggingIndex by remember { mutableStateOf<Int?>(null) }

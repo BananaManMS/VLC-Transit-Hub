@@ -223,4 +223,73 @@ class UnifiedActiveTripEngineTest {
         UnifiedActiveTripStateTracker.reset()
         assertEquals(null, UnifiedActiveTripStateTracker.snapshot.value)
     }
+
+    @Test
+    fun testTripOriginRealTimeCache_2MinLiveDepartureCourtesy_RetainsDepartedVehicle() {
+        val cache = com.example.util.TripOriginRealTimeCache()
+        val leg = PlannedLeg(
+            mode = TransitMode.SUBWAY,
+            durationSeconds = 600,
+            distanceMeters = 2000.0,
+            formattedDuration = "10 min",
+            startTime = "10:00",
+            endTime = "10:10",
+            formattedStartTime = "10:00",
+            formattedEndTime = "10:10",
+            agencyName = "Metrovalencia",
+            routeShortName = "3",
+            routeLongName = "L3",
+            headsign = "Rafelbunyol",
+            routeColorHex = "#D32F2F",
+            fromName = "Xàtiva",
+            toName = "Rafelbunyol",
+            fromStopId = "100",
+            toStopId = "200",
+            fromLat = 39.4690,
+            fromLon = -0.3760,
+            toLat = 39.5800,
+            toLon = -0.3300
+        )
+
+        // 1. Train arrives at platform (liveMinutes = 0, "en andén")
+        val arrivalResult = com.example.util.LegReconciliationResult(
+            normalizedLine = "3",
+            liveMinutes = 0,
+            liveSeconds = 0,
+            liveDestination = "Rafelbunyol",
+            isLive = true,
+            delayMinutes = 2,
+            adjustedDepartureTime = "10:02",
+            matchedLineShortName = "L3"
+        )
+        cache.recordMatchedCandidate("METRO_100_3_Rafelbunyol", "veh_1", System.currentTimeMillis())
+        val res1 = cache.updateWithLiveResult(arrivalResult, leg, isUserPhysicallyAtStation = true)
+        assertTrue(res1.isLive)
+        assertEquals(0, res1.liveMinutes)
+        assertEquals("Rafelbunyol", res1.liveDestination)
+
+        // 2. Next poll: Train departs and disappears! API returns NEXT train in 12 minutes!
+        val nextTrainResult = com.example.util.LegReconciliationResult(
+            normalizedLine = "3",
+            liveMinutes = 12,
+            liveSeconds = 720,
+            liveDestination = "Rafelbunyol",
+            isLive = true,
+            delayMinutes = 0,
+            adjustedDepartureTime = "10:14",
+            matchedLineShortName = "L3"
+        )
+        // Must NOT roll over to 12 min! Must enter 2-minute courtesy window based on live departure!
+        val res2 = cache.updateWithLiveResult(nextTrainResult, leg, isUserPhysicallyAtStation = true)
+        assertTrue("Grace period must be active", cache.isGracePeriodActive())
+        assertTrue("Must retain isLive", res2.isLive)
+        assertEquals("Must hold vehicle at 0 min remaining during courtesy window", 0, res2.liveMinutes)
+        assertEquals("L3", res2.normalizedLine)
+        assertEquals("Rafelbunyol", res2.liveDestination)
+
+        val graceUntilMs = cache.getGracePeriodUntilMs()
+        assertNotNull(graceUntilMs)
+        val remainingMs = graceUntilMs!! - System.currentTimeMillis()
+        assertTrue("Grace period duration must be approximately 2 minutes (>= 115s)", remainingMs >= 115_000L)
+    }
 }

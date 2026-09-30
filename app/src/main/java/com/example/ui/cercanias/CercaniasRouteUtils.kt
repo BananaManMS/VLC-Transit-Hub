@@ -144,12 +144,84 @@ object CercaniasRouteUtils {
         }
     }
 
-    fun getBaseTripKey(tid: String): String {
+    fun getTripKeys(tid: String?): List<String> {
+        if (tid.isNullOrBlank()) return emptyList()
         val trimmed = tid.trim()
-        return if (trimmed.length > 5) {
-            trimmed.substring(0, 4) + trimmed.substring(5)
-        } else {
-            trimmed
+        val list = mutableListOf<String>()
+
+        list.add(trimmed)
+        list.add(trimmed.lowercase(Locale.ROOT))
+        list.add(trimmed.uppercase(Locale.ROOT))
+
+        // Strip suffix after _ or - (e.g. "4070M24249C1_1" -> "4070M24249C1")
+        if (trimmed.contains("_") || trimmed.contains("-")) {
+            val base = trimmed.split(Regex("[_-]")).firstOrNull { it.isNotBlank() } ?: ""
+            if (base.isNotBlank()) {
+                list.add(base)
+                list.add(base.lowercase(Locale.ROOT))
+                list.add(base.uppercase(Locale.ROOT))
+            }
+        }
+
+        // If index 4 is a letter (e.g. "4070M24249C1"), add version without index 4 ("407024249C1") and with all day codes (L,M,X,J,V,S,D)
+        if (trimmed.length > 5 && trimmed[4].isLetter()) {
+            val prefix = trimmed.substring(0, 4)
+            val suffix = trimmed.substring(5)
+            val noLetter = prefix + suffix
+            list.add(noLetter)
+            list.add(noLetter.lowercase(Locale.ROOT))
+            list.add(noLetter.uppercase(Locale.ROOT))
+
+            val dayCodes = listOf("L", "M", "X", "J", "V", "S", "D")
+            for (dc in dayCodes) {
+                val variant = prefix + dc + suffix
+                list.add(variant)
+                list.add(variant.lowercase(Locale.ROOT))
+            }
+        }
+
+        // Extract train number (e.g., "24249")
+        val trainNo = extractTrainNumber(trimmed)
+        if (!trainNo.isNullOrBlank()) {
+            list.add(trainNo)
+            val noZero = trainNo.trimStart('0')
+            if (noZero.isNotBlank()) list.add(noZero)
+        }
+
+        // Extract 4-5 digit sequences
+        val digits = trimmed.filter { it.isDigit() }
+        if (digits.length in 4..5) {
+            list.add(digits)
+            val noZeroDigits = digits.trimStart('0')
+            if (noZeroDigits.isNotBlank()) list.add(noZeroDigits)
+        }
+
+        return list.distinct().filter { it.isNotBlank() }
+    }
+
+    fun getBaseTripKey(tid: String): String {
+        return getTripKeys(tid).firstOrNull() ?: tid.trim()
+    }
+
+    fun isTripMatchedByAlert(
+        departureTripId: String,
+        departureAllTripIds: List<String>,
+        alertTripIds: List<String>
+    ): Boolean {
+        if (alertTripIds.isEmpty()) return false
+        val departureKeys = (listOf(departureTripId) + departureAllTripIds)
+            .flatMap { getTripKeys(it) }
+            .distinct()
+        val alertKeys = alertTripIds
+            .flatMap { getTripKeys(it) }
+            .distinct()
+
+        return departureKeys.any { dKey ->
+            alertKeys.any { aKey ->
+                dKey.equals(aKey, ignoreCase = true) ||
+                (dKey.length >= 4 && aKey.contains(dKey, ignoreCase = true)) ||
+                (aKey.length >= 4 && dKey.contains(aKey, ignoreCase = true))
+            }
         }
     }
 
@@ -332,5 +404,92 @@ object CercaniasRouteUtils {
         if (m2 != null) return m2.value
         val m3 = Regex("""\d{5}""").find(input)
         return m3?.value
+    }
+
+    fun getEffectiveTrainNumber(trainNum: String?, tripId: String? = null): String {
+        val num = (trainNum ?: "").trim()
+        if (num.isNotBlank() && num.all { it.isDigit() }) return num
+        val extracted = extractTrainNumber(num.ifBlank { tripId ?: "" })
+        if (!extracted.isNullOrBlank()) return extracted
+        return num.ifBlank { tripId ?: "" }
+    }
+
+    fun getCanonicalLineNumber(routeId: String?, tripId: String? = null): String {
+        val r = (routeId ?: "").trim()
+        val t = (tripId ?: "").trim()
+        val combined = "$r $t".uppercase(Locale.ROOT)
+
+        // 1. Direct line label checks
+        for (digit in listOf("1", "2", "3", "4", "5", "6")) {
+            if (combined.contains("C$digit") || combined.contains("C-$digit") || combined.contains("C_$digit") ||
+                combined.contains("LÍNEA $digit") || combined.contains("LINEA $digit")) {
+                return digit
+            }
+        }
+
+        // 2. Nucleus 40 prefix: e.g. "401" -> "1", "402" -> "2", "403" -> "3", "405" -> "5", "406" -> "6"
+        val match40 = Regex("""\b40([1-6])\b""").find(r)
+        if (match40 != null) {
+            return match40.groupValues[1]
+        }
+
+        val match40Anywhere = Regex("""40(?:C-?)?([1-6])""").find(combined)
+        if (match40Anywhere != null) {
+            return match40Anywhere.groupValues[1]
+        }
+
+        // 3. Single standalone digit 1..6
+        val matchSingleDigit = Regex("""\b([1-6])\b""").find(r)
+        if (matchSingleDigit != null) {
+            return matchSingleDigit.groupValues[1]
+        }
+
+        // 4. Suffix digit in route or trip
+        val matchEndDigit = Regex("""[_-]?([1-6])$""").find(r)
+        if (matchEndDigit != null) {
+            return matchEndDigit.groupValues[1]
+        }
+
+        return "1"
+    }
+
+    fun hasTripInSchedule(tripId: String, trainNum: String? = null): Boolean {
+        val keys = getTripKeys(tripId) + (if (trainNum != null) getTripKeys(trainNum) else emptyList())
+        return keys.any { tripScheduleMap.containsKey(it) }
+    }
+
+    fun getTripOriginAndDestination(tripId: String, routeId: String, trainNum: String? = null): Pair<String, String>? {
+        if (tripId.isBlank() && (trainNum == null || trainNum.isBlank())) return null
+        val keys = getTripKeys(tripId) + (if (!trainNum.isNullOrBlank()) getTripKeys(trainNum) else emptyList())
+        var subMap: Map<String, String>? = null
+        for (k in keys) {
+            val m = tripScheduleMap[k]
+            if (m != null && m.isNotEmpty()) {
+                subMap = m
+                break
+            }
+        }
+        if (subMap == null || subMap.isEmpty()) return null
+
+        // In subMap, we have entries where key is either stopId (digit) or normalized name (non-digit), and value is time (HH:mm)
+        // Let's filter to entries where key is a stopId (digits)
+        val stopEntries = subMap.entries.filter { it.key.all { c -> c.isDigit() } }
+        if (stopEntries.isEmpty()) return null
+
+        // Sort by time
+        val sorted = stopEntries.sortedBy { it.value }
+        val firstStopId = sorted.first().key
+        val lastStopId = sorted.last().key
+
+        // Now look up names of these stopIds using our stations list
+        val lineKey = normalizeLineId(routeId)
+        val stations = lineStationsMap[lineKey] ?: lineStationsMap.values.flatten()
+        val originName = stations.find { it.id == firstStopId }?.name ?: ""
+        val destName = stations.find { it.id == lastStopId }?.name ?: ""
+
+        if (originName.isNotBlank() && destName.isNotBlank()) {
+            return Pair(originName, destName)
+        }
+        return null
     }
 }

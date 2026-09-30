@@ -82,7 +82,7 @@ internal fun createMarkerIcon(context: Context, label: String, primaryColor: Int
         canvas.drawRoundRect(squareRect, 10f, 10f, paint)
 
         // Orange border stroke around square
-        paint.color = Color.parseColor("#D97706")
+        paint.color = android.graphics.Color.parseColor(com.example.util.MetrobusLineColorResolver.BRAND_HEX)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2.5f
         canvas.drawRoundRect(squareRect, 10f, 10f, paint)

@@ -10,10 +10,60 @@ object StationAccessibilityHelper {
         return cleanAccessibilityText(rawText)
     }
 
+    private fun getStationVariants(stationName: String): List<String> {
+        val list = mutableListOf<String>()
+        list.add(stationName)
+
+        if (stationName.contains("-")) {
+            val parts = stationName.split("-").map { it.trim() }.filter { it.isNotBlank() }
+            list.addAll(parts)
+        }
+        if (stationName.contains("/")) {
+            val parts = stationName.split("/").map { it.trim() }.filter { it.isNotBlank() }
+            list.addAll(parts)
+        }
+
+        val norm = stationName.normalizeForSearch()
+        if (norm.contains("valencia nord") || norm.contains("valencia norte")) {
+            list.add("Valencia Nord")
+            list.add("Valencia Norte")
+            list.add("València Nord")
+        }
+        if (norm.contains("xativa") || norm.contains("jativa")) {
+            list.add("Xàtiva")
+            list.add("Játiva")
+            list.add("Xativa")
+            list.add("Jativa")
+        }
+        if (norm.contains("castello") || norm.contains("castellon")) {
+            list.add("Castelló")
+            list.add("Castellón")
+        }
+        if (norm.contains("alacant") || norm.contains("alicante")) {
+            list.add("Alacant")
+            list.add("Alicante")
+        }
+        return list
+    }
+
     fun isStationInAlertTitle(stationName: String, alertTitle: String): Boolean {
-        val normName = stationName.normalizeForSearch()
-        val titleNorm = alertTitle.normalizeForSearch()
-        return titleNorm.contains(normName)
+        if (stationName.isBlank() || alertTitle.isBlank()) return false
+
+        // Normalize title: remove "silla(s) de ruedas" so it doesn't false-positive match station "Silla"
+        val titleCleanedOfWheelchair = alertTitle.replace(Regex("""\bsillas?\s+de\s+ruedas?\b""", RegexOption.IGNORE_CASE), "")
+
+        val normTitle = titleCleanedOfWheelchair.normalizeForSearch()
+
+        val variants = getStationVariants(stationName)
+
+        return variants.any { variant ->
+            val normVar = variant.normalizeForSearch()
+            if (normVar.isBlank()) false
+            else {
+                val pattern = Regex("""(?:\b|_)""" + Regex.escape(normVar) + """(?:\b|_)""", RegexOption.IGNORE_CASE)
+                pattern.containsMatchIn(normTitle)
+            }
+        }
     }
 
     fun isMetroStationAffected(

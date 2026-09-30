@@ -234,8 +234,19 @@ class DashboardActiveTripManager(
     fun advanceActiveTripLeg(newIndex: Int) {
         scope.launch {
             val currentTrip = activeTripState.value
+            ActiveTripProgressTracker.resetForNewLeg(newIndex)
+            if (currentTrip != null && newIndex != currentTrip.currentLegIndex) {
+                activeTripRepository.advanceLegIndex(newIndex)
+            }
+            refreshRealTimeTripStatus()
+        }
+    }
+
+    fun confirmBoarding(targetLegIndex: Int) {
+        scope.launch {
+            val currentTrip = activeTripState.value
             val legs = currentTrip?.itinerary?.legs
-            val targetLeg = legs?.getOrNull(newIndex)
+            val targetLeg = legs?.getOrNull(targetLegIndex)
 
             val isTransit = targetLeg != null && targetLeg.mode in listOf(
                 TransitMode.SUBWAY,
@@ -245,25 +256,19 @@ class DashboardActiveTripManager(
             )
 
             if (isTransit && targetLeg != null) {
-                TripStepProgressionEngine.markLegBoarded(newIndex)
-                TripStepProgressionEngine.notifyBoardingConfirmed(newIndex, targetLeg)
-                ActiveTripProgressTracker.markAsBoarded(newIndex)
+                TripStepProgressionEngine.markLegBoarded(targetLegIndex)
+                TripStepProgressionEngine.notifyBoardingConfirmed(targetLegIndex, targetLeg)
+                ActiveTripProgressTracker.markAsBoarded(targetLegIndex)
+                ActiveTripTrackingService.confirmManualBoarding(application, targetLegIndex)
             } else {
-                ActiveTripProgressTracker.resetForNewLeg(newIndex)
+                ActiveTripProgressTracker.resetForNewLeg(targetLegIndex)
             }
 
-            if (currentTrip != null && newIndex != currentTrip.currentLegIndex) {
-                activeTripRepository.advanceLegIndex(newIndex)
-            }
-            if (isTransit) {
-                ActiveTripTrackingService.confirmManualBoarding(application, newIndex)
+            if (currentTrip != null && targetLegIndex != currentTrip.currentLegIndex) {
+                activeTripRepository.advanceLegIndex(targetLegIndex)
             }
             refreshRealTimeTripStatus()
         }
-    }
-
-    fun confirmBoarding(targetLegIndex: Int) {
-        advanceActiveTripLeg(targetLegIndex)
     }
 
     fun refreshRealTimeTripStatus() {

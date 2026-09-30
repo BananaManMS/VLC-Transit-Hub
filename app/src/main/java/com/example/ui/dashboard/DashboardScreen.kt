@@ -522,6 +522,22 @@ fun DashboardScreen(
                                         isViewingPlannerItineraryOnMap = false
                                     }
                                 },
+                                onStartTrip = { itinerary ->
+                                    val origName = itinerary.legs.firstOrNull()?.fromName
+                                        ?: if (appLanguage == AppLanguage.ES) "Tu ubicación" else "La teua ubicació"
+                                    val destName = itinerary.legs.lastOrNull()?.toName
+                                        ?: if (appLanguage == AppLanguage.ES) "Destino" else "Destinació"
+                                    isViewingPlannerItineraryOnMap = false
+                                    userDismissedActiveMapItinerary = false
+                                    if (activeTrip != null) {
+                                        pendingTripToStart = Triple(itinerary, origName, destName)
+                                    } else {
+                                        viewModel.startActiveTrip(itinerary, origName, destName)
+                                        activeMapItinerary = itinerary
+                                        isPlannerVisible = false
+                                        activeTab = DashboardTab.Mapa
+                                    }
+                                },
                                 activeTripBottomPadding = dynamicBottomTripPadding,
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -624,7 +640,7 @@ fun DashboardScreen(
                                 activeMapItinerary = null
                             }
                         },
-                        onAdvanceLeg = { newIdx -> viewModel.advanceActiveTripLeg(newIdx) },
+                        onAdvanceLeg = { newIdx -> viewModel.confirmBoarding(newIdx) },
                         onRecalculateTransfer = { viewModel.recalculateMissedTransfer() },
                         onDismissRecalculateError = { viewModel.dismissRecalculateError() },
                         onOpenRouteOnMap = {

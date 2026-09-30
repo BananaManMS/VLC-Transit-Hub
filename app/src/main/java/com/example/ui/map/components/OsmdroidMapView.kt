@@ -83,6 +83,7 @@ fun OsmdroidMapView(
     metrobusStops: List<com.example.data.database.MetrobusStopEntity> = emptyList(),
     metroStations: List<MetroStation> = emptyList(),
     cercaniasStations: List<com.example.data.database.CercaniasStationEntity> = emptyList(),
+    liveCercaniasVehicles: List<com.example.ui.cercanias.LiveVehicleInfo> = emptyList(),
     valenbisiStations: List<com.example.ui.map.components.ValenbisiStation> = emptyList(),
     customFavorites: List<RecentSearch> = emptyList(),
     homeLocation: RecentSearch? = null,
@@ -191,6 +192,17 @@ fun OsmdroidMapView(
     val handler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     val coroutineScope = rememberCoroutineScope()
 
+    val cercaniasTrainOverlayManager = remember(mapView) {
+        com.example.ui.map.CercaniasTrainOverlayManager(
+            context = context,
+            mapView = mapView,
+            onTrainSelected = { vehicle ->
+                onSelectItem(SelectedMapItem.LiveTrain(vehicle))
+            }
+        )
+    }
+    val cercaniasTrainOverlayManagerRef by rememberUpdatedState(cercaniasTrainOverlayManager)
+
     // Lifecycle handling for mapView and sensors
     DisposableEffect(lifecycleOwner, mapView) {
         val observer = LifecycleEventObserver { _, event ->
@@ -226,6 +238,7 @@ fun OsmdroidMapView(
             LiveTrainMarkerManager.clearLiveTrain(mapView)
             MapMarkersManager.clearReferences(mapView)
             MetroStationFootprintsOverlayManager.clearFromMap(mapView)
+            cercaniasTrainOverlayManagerRef?.clear()
         }
     }
 
@@ -352,14 +365,36 @@ fun OsmdroidMapView(
         }
     }
 
-    // Bind real-time animated Cercanías train marker during route preview
-    LaunchedEffect(selectedItinerary, isDarkMode) {
-        LiveTrainMarkerManager.bindLiveTrain(
-            context = context,
-            mapView = mapView,
-            itinerary = selectedItinerary,
-            coroutineScope = coroutineScope,
-            isDarkMode = isDarkMode
+    val isCercaniasOnlyFilter = mapFilter.showCercanias && !mapFilter.showBus && !mapFilter.showMetrobus && !mapFilter.showMetro && !mapFilter.showValenbisi && !mapFilter.isFavorites
+
+    val selectedStation = selectedMapItem as? SelectedMapItem.Cercanias
+    val selectedLines = selectedStation?.station?.lines
+
+    val trainsToRender = remember(liveCercaniasVehicles, isCercaniasOnlyFilter, selectedStation) {
+        if (isCercaniasOnlyFilter) {
+            liveCercaniasVehicles
+        } else if (selectedStation != null) {
+            liveCercaniasVehicles.filter { vehicle ->
+                com.example.ui.cercanias.CercaniasRouteUtils.getStationScheduledTime(
+                    tripId = vehicle.tripId,
+                    stationId = selectedStation.station.stop_id,
+                    stationName = selectedStation.station.nombre
+                ) != null
+            }
+        } else {
+            emptyList()
+        }
+    }
+
+    val currentTrainsToRenderState = rememberUpdatedState(trainsToRender)
+    val currentIsCercaniasOnlyFilterState = rememberUpdatedState(isCercaniasOnlyFilter)
+    val currentSelectedLinesState = rememberUpdatedState(selectedLines)
+
+    LaunchedEffect(trainsToRender, isCercaniasOnlyFilter, selectedLines) {
+        cercaniasTrainOverlayManager.updateLiveTrains(
+            trains = trainsToRender,
+            isCercaniasOnlyFilter = isCercaniasOnlyFilter,
+            selectedLines = selectedLines
         )
     }
 
@@ -437,6 +472,12 @@ fun OsmdroidMapView(
                     onMapClick = currentOnMapClick,
                     onShowDisambiguationMenu = currentOnShowDisambiguationMenu,
                     onMapLongClick = currentOnMapLongClick
+                )
+                // Redraw live trains on zoom or pan so they do not get cleared by composeOverlays
+                cercaniasTrainOverlayManager.updateLiveTrains(
+                    trains = currentTrainsToRenderState.value,
+                    isCercaniasOnlyFilter = currentIsCercaniasOnlyFilterState.value,
+                    selectedLines = currentSelectedLinesState.value
                 )
             }
             pendingUpdateRunnable = runnable

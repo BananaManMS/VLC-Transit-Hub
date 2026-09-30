@@ -122,9 +122,9 @@ class BoardingAndStopsProgressionTest {
     fun testMovingAwayFromStopAtTransitSpeedConfirmsBoarding() {
         val busLeg = createBusLeg()
 
-        // User is now 170m north of the bus stop, moving at 22 km/h (~6.1 m/s) with bearing north
+        // User is now ~233m north of the bus stop, moving at 22 km/h (~6.1 m/s) with bearing north
         val location = Location("gps").apply {
-            latitude = 39.4715 // ~170m away
+            latitude = 39.4720 // ~233m away (outside 200m waiting zone)
             longitude = -0.3763
             speed = 6.1f
             bearing = 0.0f // Heading north along route

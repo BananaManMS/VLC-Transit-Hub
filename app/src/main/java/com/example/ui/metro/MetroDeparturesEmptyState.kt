@@ -231,42 +231,12 @@ fun MetroDeparturesEmptyState(
                                     modifier = Modifier.size(16.dp)
                                 )
 
-                                val incidentLines = remember(incident.lineaFgv) {
-                                    incident.lineaFgv?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
-                                }
-
-                                if (incidentLines.isNotEmpty()) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        incidentLines.forEach { rawLine ->
-                                            val lineId = if (rawLine.startsWith("L", ignoreCase = true)) rawLine else "L$rawLine"
-                                            val metroLine = remember(lineId) {
-                                                ValenciaMetroData.lines.find { it.id.equals(lineId, ignoreCase = true) }
-                                            }
-                                            val lineBgColor = remember(metroLine?.colorHex) {
-                                                try {
-                                                    metroLine?.colorHex?.toColorInt() ?: 0xFF64748B.toInt()
-                                                } catch (e: Exception) {
-                                                    0xFF64748B.toInt()
-                                                }
-                                            }
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(18.dp)
-                                                    .background(Color(lineBgColor), CircleShape),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = lineId.replace("L", ""),
-                                                    fontWeight = FontWeight.Black,
-                                                    fontSize = 9.sp,
-                                                    color = Color.White
-                                                )
-                                            }
-                                        }
-                                    }
+                                if (!incident.lineaFgv.isNullOrBlank()) {
+                                    MetroLineBadgesRow(
+                                        lineasStr = incident.lineaFgv,
+                                        badgeSize = 18.dp,
+                                        fontSize = 10.sp
+                                    )
                                 } else {
                                     val lineLabel = if (appLanguage == AppLanguage.CA) "Incidència de circulació" else "Incidencia de circulación"
                                     Text(

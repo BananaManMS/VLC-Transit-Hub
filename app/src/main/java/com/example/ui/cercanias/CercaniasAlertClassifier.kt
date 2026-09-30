@@ -20,7 +20,21 @@ object CercaniasAlertClassifier {
                 lower.contains("adaptado")
     }
 
+    fun isObras(headerEs: String, descriptionEs: String): Boolean {
+        val fullText = "$headerEs $descriptionEs".lowercase(Locale.ROOT)
+        return fullText.contains("obra") ||
+                fullText.contains("obres") ||
+                fullText.contains("trabajos en vía") ||
+                fullText.contains("trabajos en via") ||
+                fullText.contains("trabajos de mejora") ||
+                fullText.contains("mantenimiento")
+    }
+
     fun isStrongCirculationIncident(headerEs: String, descriptionEs: String): Boolean {
+        if (isObras(headerEs, descriptionEs)) {
+            return false // Obras are placed in Avisos Especiales y Obras
+        }
+
         val fullText = "$headerEs $descriptionEs".lowercase(Locale.ROOT)
 
         // Informative, schedule announcements, promotional, or generic notices
@@ -45,13 +59,7 @@ object CercaniasAlertClassifier {
                 fullText.contains("renfe informa")
 
         // Strong circulation keywords required to be considered a disruptive priority alert
-        val hasStrongCirculationKeywords = fullText.contains("obra") ||
-                fullText.contains("obres") ||
-                fullText.contains("trabajos en vía") ||
-                fullText.contains("trabajos en via") ||
-                fullText.contains("trabajos de mejora") ||
-                fullText.contains("mantenimiento") ||
-                fullText.contains("corte") ||
+        val hasStrongCirculationKeywords = fullText.contains("corte") ||
                 fullText.contains("cortes") ||
                 fullText.contains("cortada") ||
                 fullText.contains("interrupción") ||

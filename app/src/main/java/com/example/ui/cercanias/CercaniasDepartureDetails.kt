@@ -50,17 +50,24 @@ fun CercaniasDepartureDetails(
 
     val affectedAlerts = remember(alerts, departure) {
         alerts.filter { alert ->
-            if (alert.isAccessibility || !alert.isCirculationIncident) return@filter false
-            val matchesRoute = alert.routeIds.any { rId ->
+            if (alert.isAccessibility) return@filter false
+            val matchesRoute = alert.routeIds.isEmpty() || alert.routeIds.any { rId ->
                 rId.equals(departure.routeId, ignoreCase = true) || 
                 rId.replace("-", "").equals(departure.routeId.replace("-", ""), ignoreCase = true)
             }
-            val matchesTrip = alert.tripIds.any { tId ->
-                tId.equals(departure.tripId, ignoreCase = true) || 
-                (departure.tripId.isNotBlank() && tId.contains(departure.tripId)) || 
-                (tId.isNotBlank() && departure.tripId.contains(tId))
+            if (alert.tripIds.isNotEmpty()) {
+                CercaniasRouteUtils.isTripMatchedByAlert(departure.tripId, departure.allTripIds, alert.tripIds)
+            } else {
+                val text = "${alert.headerEs} ${alert.descriptionEs}".lowercase()
+                val timeRegex = Regex("""\b(\d{1,2})[:.](\d{2})\s*h?\b""")
+                val timesInText = timeRegex.findAll(text).map { it.groupValues[1].padStart(2, '0') + ":" + it.groupValues[2] }.toList()
+                if (timesInText.isNotEmpty()) {
+                    val depTime = departure.departureTime.take(5)
+                    matchesRoute && timesInText.contains(depTime)
+                } else {
+                    matchesRoute && alert.isCirculationIncident
+                }
             }
-            matchesRoute || matchesTrip
         }
     }
 

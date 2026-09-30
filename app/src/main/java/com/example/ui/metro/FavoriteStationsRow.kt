@@ -52,8 +52,6 @@ fun FavoriteStationsRow(
         }
     }
 
-    val accessibilityIncidents by metroViewModel.accessibilityIncidents.collectAsState()
-
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
@@ -168,14 +166,6 @@ fun FavoriteStationsRow(
                                     overflow = TextOverflow.Ellipsis,
                                     color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else textColor,
                                     modifier = Modifier.weight(1f, fill = false)
-                                )
-                                val accInfo = remember(station.id, station.name, accessibilityIncidents) {
-                                    com.example.ui.components.computeMetroStationAccessibility(station.id, station.name, accessibilityIncidents)
-                                }
-                                com.example.ui.components.StationAccessibilityBadge(
-                                    accessibilityInfo = accInfo,
-                                    isDarkMode = isDarkMode,
-                                    iconSize = 13.dp
                                 )
                                 val distanceText = metroViewModel.getStationDistanceText(station)
                                 if (distanceText != null) {

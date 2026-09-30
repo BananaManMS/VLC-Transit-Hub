@@ -100,3 +100,49 @@ fun parseTimeAgo(dateTimeStr: String?, appLanguage: AppLanguage, isUpdated: Bool
         return null
     }
 }
+
+fun parseTimeAgo(timestampSeconds: Long, appLanguage: AppLanguage, isUpdated: Boolean = false): String? {
+    if (timestampSeconds <= 0) return null
+    val timestampMs = if (timestampSeconds < 100000000000L) timestampSeconds * 1000L else timestampSeconds
+    val now = System.currentTimeMillis()
+    val diffMs = now - timestampMs
+
+    val isCa = appLanguage == AppLanguage.CA
+
+    if (diffMs <= 0) {
+        return if (isUpdated) {
+            if (isCa) "Actualitzat fa uns moments" else "Actualizado hace unos momentos"
+        } else {
+            if (isCa) "Fa uns moments" else "Hace unos momentos"
+        }
+    }
+
+    val diffSec = diffMs / 1000
+    val diffMin = diffSec / 60
+    val diffHour = diffMin / 60
+    val diffDay = diffHour / 24
+    val diffMonth = diffDay / 30
+    val diffYear = diffDay / 365
+
+    val prefix = if (isUpdated) {
+        if (isCa) "Actualitzat fa " else "Actualizado hace "
+    } else {
+        if (isCa) "Fa " else "Hace "
+    }
+
+    val relativeText = when {
+        diffMin < 1 -> if (isCa) "uns moments" else "unos momentos"
+        diffMin == 1L -> if (isCa) "1 minut" else "1 minuto"
+        diffMin < 60 -> if (isCa) "$diffMin minuts" else "$diffMin minutos"
+        diffHour == 1L -> if (isCa) "1 hora" else "1 hora"
+        diffHour < 24 -> if (isCa) "$diffHour hores" else "$diffHour horas"
+        diffDay == 1L -> if (isCa) "1 dia" else "1 día"
+        diffDay < 30 -> if (isCa) "$diffDay dies" else "$diffDay días"
+        diffMonth == 1L -> if (isCa) "1 mes" else "1 mes"
+        diffMonth < 12 -> if (isCa) "$diffMonth mesos" else "$diffMonth meses"
+        diffYear == 1L -> if (isCa) "1 any" else "1 año"
+        else -> if (isCa) "$diffYear anys" else "$diffYear años"
+    }
+
+    return "$prefix$relativeText"
+}

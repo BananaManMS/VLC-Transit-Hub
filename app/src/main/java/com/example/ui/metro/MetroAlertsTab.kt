@@ -25,16 +25,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Newspaper
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -84,6 +88,7 @@ fun AvisosTab(
     val accessibilityIncidents by metroViewModel.accessibilityIncidents.collectAsState()
     val metroNews by metroViewModel.metroNews.collectAsState()
     val isMetroAlertsLoading by metroViewModel.isMetroAlertsLoading.collectAsState()
+    val hasMetroAlertsError by metroViewModel.hasMetroAlertsError.collectAsState()
     val isNewsLoading by metroViewModel.isNewsLoading.collectAsState()
     val allNetworkStations by metroViewModel.allNetworkStations.collectAsState()
     val uriHandler = LocalUriHandler.current
@@ -226,10 +231,70 @@ fun AvisosTab(
                                 )
                                 Text(
                                     text = if (appLanguage == AppLanguage.CA) 
-                                        "No s'han pogut sincronitzar les incidències en directe de Metrovalencia. Comprova la teua connexió."
-                                        else "No se han podido sincronizar las incidencias en directo de Metrovalencia. Comprueba tu conexión a internet.",
+                                        "Comprova la teua connexió per a actualitzar els avisos en directe."
+                                        else "Comprueba tu conexión para actualizar los avisos en directo.",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else if (hasMetroAlertsError) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDarkMode) Color(0xFF262422) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF78592A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudOff,
+                                    contentDescription = null,
+                                    tint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = if (appLanguage == AppLanguage.CA) "Informació no disponible" else "Información no disponible",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFB45309)
+                                    )
+                                    Text(
+                                        text = if (appLanguage == AppLanguage.CA) 
+                                            "No s'ha pogut connectar amb el servidor oficial."
+                                            else "No se ha podido conectar con el servidor oficial.",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            FilledTonalButton(
+                                onClick = { metroViewModel.fetchAllAlerts() },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Reintentar" else "Reintentar",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }
@@ -318,16 +383,6 @@ fun AvisosTab(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
-
-                        val displayTime = parseTimeAgo(incident.updatedAt, appLanguage, isUpdated = true)
-                        if (!displayTime.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = displayTime,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                     }
                 }
             }
@@ -398,7 +453,7 @@ fun AvisosTab(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.Start,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Surface(
@@ -424,15 +479,6 @@ fun AvisosTab(
                                         letterSpacing = 0.5.sp
                                     )
                                 }
-                            }
-
-                            val displayTime = parseTimeAgo(notice.publicationDate, appLanguage, isUpdated = false)
-                            if (!displayTime.isNullOrBlank()) {
-                                Text(
-                                    text = displayTime,
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                             }
                         }
 
@@ -624,16 +670,6 @@ fun AvisosTab(
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(bottom = 4.dp)
-                                        )
-                                    }
-
-                                    val displayTime = parseTimeAgo(incident.creadoEl, appLanguage, isUpdated = false)
-                                    if (!displayTime.isNullOrBlank()) {
-                                        Text(
-                                            text = displayTime,
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                            modifier = Modifier.padding(top = 4.dp)
                                         )
                                     }
                                 }

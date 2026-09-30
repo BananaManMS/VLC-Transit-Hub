@@ -64,6 +64,8 @@ fun IncidenciasWidget(
     modifier: Modifier = Modifier,
     isMetroLoading: Boolean = false,
     isCercaniasLoading: Boolean = false,
+    hasMetroError: Boolean = false,
+    hasCercaniasError: Boolean = false,
     isOnline: Boolean = true,
     preferredTransitModes: Set<String> = emptySet()
 ) {
@@ -293,6 +295,8 @@ fun IncidenciasWidget(
                     hasAllLines = metroHasAll,
                     isCa = isCa,
                     isLoading = isMetroLoading,
+                    hasError = hasMetroError,
+                    isDarkMode = isDarkMode,
                     textPrimary = textPrimary,
                     textSecondary = textSecondary,
                     onClick = onOpenMetroAvisos,
@@ -318,6 +322,8 @@ fun IncidenciasWidget(
                     hasAllLines = cercaniasHasAll,
                     isCa = isCa,
                     isLoading = isCercaniasLoading,
+                    hasError = hasCercaniasError,
+                    isDarkMode = isDarkMode,
                     textPrimary = textPrimary,
                     textSecondary = textSecondary,
                     onClick = onOpenCercaniasAvisos,
@@ -339,6 +345,8 @@ private fun OperatorIncidentsRow(
     hasAllLines: Boolean,
     isCa: Boolean,
     isLoading: Boolean,
+    hasError: Boolean = false,
+    isDarkMode: Boolean = false,
     textPrimary: Color,
     textSecondary: Color,
     onClick: () -> Unit,
@@ -390,6 +398,13 @@ private fun OperatorIncidentsRow(
                             text = if (isCa) "Sense connexió" else "Sin conexión",
                             style = MaterialTheme.typography.bodySmall,
                             color = textSecondary,
+                            fontSize = 12.sp
+                        )
+                    } else if (hasError) {
+                        Text(
+                            text = if (isCa) "Informació no disponible" else "Información no disponible",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
                             fontSize = 12.sp
                         )
                     } else {

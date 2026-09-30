@@ -86,10 +86,36 @@ object TripItineraryTimeSyncEngine {
             val matchedLine = status.vehicleLine
             val matchedDest = status.vehicleDestination
 
+            val isLineAllowed = if (!matchedLine.isNullOrBlank()) {
+                val allowed = com.example.data.repository.routing.TransitIdMapper.getAlternativeTransitLines(
+                    mode = targetLeg.mode,
+                    originalLine = targetLeg.routeShortName,
+                    fromName = targetLeg.fromName,
+                    toName = targetLeg.toName
+                )
+                val normMatched = matchedLine.trim().uppercase()
+                val digitsMatched = normMatched.filter { it.isDigit() }
+                val lineInAllowed = allowed.any { it.equals(normMatched, ignoreCase = true) || (digitsMatched.isNotBlank() && it.filter { c -> c.isDigit() } == digitsMatched) }
+
+                // Strictly ensure candidate destination reaches or passes leg toName without short-turns or topological leaps
+                val isDestinationValid = if (!matchedDest.isNullOrBlank()) {
+                    com.example.data.repository.routing.TransitIdMapper.isDestinationMatch(matchedDest, targetLeg, matchedLine)
+                } else true
+
+                lineInAllowed && isDestinationValid
+            } else false
+
+            val newRouteShortName = if (isLineAllowed && !matchedLine.isNullOrBlank()) matchedLine else targetLeg.routeShortName
+            val newHeadsign = if (isLineAllowed && !matchedDest.isNullOrBlank()) matchedDest else targetLeg.headsign
+            val newRouteColorHex = if (isLineAllowed && !matchedLine.isNullOrBlank() && matchedLine != targetLeg.routeShortName) {
+                com.example.util.LineColorResolver.resolveRouteColorHex(targetLeg.mode, matchedLine, targetLeg.routeColorHex, targetLeg.agencyName).removePrefix("#")
+            } else targetLeg.routeColorHex
+
             val newTargetLeg = targetLeg.copy(
-                routeShortName = if (!matchedLine.isNullOrBlank()) matchedLine else targetLeg.routeShortName,
-                routeLongName = if (!matchedLine.isNullOrBlank()) "Línea $matchedLine" else targetLeg.routeLongName,
-                headsign = if (!matchedDest.isNullOrBlank()) matchedDest else targetLeg.headsign,
+                routeShortName = newRouteShortName,
+                routeLongName = if (newRouteShortName != null && newRouteShortName.isNotBlank()) "Línea $newRouteShortName" else targetLeg.routeLongName,
+                routeColorHex = newRouteColorHex,
+                headsign = newHeadsign,
                 isRealTimeVerified = status.isLive,
                 realTimeDelayMinutes = intermediateDelayMins,
                 scheduledStartTime = origStart,
@@ -178,10 +204,41 @@ object TripItineraryTimeSyncEngine {
             "$durMins min"
         }
 
+        val updatedViabilityNotice = when {
+            status.isTransferAtRisk && !status.transferWarningEs.isNullOrBlank() -> status.transferWarningEs
+            !status.upcomingTransferInfoEs.isNullOrBlank() -> status.upcomingTransferInfoEs
+            status.isLive && status.delayMinutes > 0 -> {
+                val activeLeg = updatedLegs.getOrNull(targetTransitIdx ?: currentLegIndex)
+                val lineLabel = activeLeg?.routeShortName ?: status.vehicleLine ?: "Línea"
+                val modeLabel = when (activeLeg?.mode) {
+                    TransitMode.SUBWAY -> "Metro"
+                    TransitMode.BUS -> "Bus"
+                    TransitMode.TRAM -> "Tranvía"
+                    TransitMode.RAIL, TransitMode.CERCANIAS -> "Cercanías"
+                    else -> "Línea"
+                }
+                "$modeLabel $lineLabel con +${status.delayMinutes} min de retraso"
+            }
+            status.isLive -> {
+                val activeLeg = updatedLegs.getOrNull(targetTransitIdx ?: currentLegIndex)
+                val lineLabel = activeLeg?.routeShortName ?: status.vehicleLine ?: "Línea"
+                val modeLabel = when (activeLeg?.mode) {
+                    TransitMode.SUBWAY -> "Metro"
+                    TransitMode.BUS -> "Bus"
+                    TransitMode.TRAM -> "Tranvía"
+                    TransitMode.RAIL, TransitMode.CERCANIAS -> "Cercanías"
+                    else -> "Línea"
+                }
+                "$modeLabel $lineLabel en hora"
+            }
+            else -> itinerary.viabilityNotice
+        }
+
         if (!modified &&
             itinerary.formattedDepartureTime == firstLegStart &&
             itinerary.formattedArrivalTime == lastLegEnd &&
-            itinerary.formattedDuration == formattedDur
+            itinerary.formattedDuration == formattedDur &&
+            itinerary.viabilityNotice == updatedViabilityNotice
         ) {
             return itinerary
         }
@@ -191,7 +248,8 @@ object TripItineraryTimeSyncEngine {
             formattedDepartureTime = firstLegStart,
             formattedArrivalTime = lastLegEnd,
             formattedDuration = formattedDur,
-            totalDurationSeconds = durationSecs
+            totalDurationSeconds = durationSecs,
+            viabilityNotice = updatedViabilityNotice
         )
     }
 }

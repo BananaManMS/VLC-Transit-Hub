@@ -124,6 +124,16 @@ object CercaniasStationHighlightManager {
         highlightState: CercaniasHighlightState,
         isAnyOtherLayerHighlighted: Boolean
     ) {
+        addDimmedCercaniasPolylinesToMap(context, mapView, highlightState, isAnyOtherLayerHighlighted)
+        addActiveCercaniasPolylinesToMap(context, mapView, highlightState)
+    }
+
+    fun addDimmedCercaniasPolylinesToMap(
+        context: Context,
+        mapView: MapView,
+        highlightState: CercaniasHighlightState,
+        isAnyOtherLayerHighlighted: Boolean
+    ) {
         val loadedCercanias = CercaniasMapOverlayLoader.getLoadedPolylines(
             mapView = mapView,
             context = context,
@@ -163,9 +173,42 @@ object CercaniasStationHighlightManager {
             return
         }
 
-        // Cercanías station is highlighted: split polylines into active and dimmed
-        val activePolylines = mutableListOf<org.osmdroid.views.overlay.Polyline>()
-        val dimmedPolylines = mutableListOf<org.osmdroid.views.overlay.Polyline>()
+        // Cercanías station is highlighted: add dimmed lines only
+        loadedCercanias.forEach { polyline ->
+            val raw = polyline.relatedObject as? MetroMapOverlayLoader.RawPolyline
+            val lineRef = raw?.lineRef?.let { normalizeLineRef(it) }
+
+            val isActive = if (lineRef != null && lineRef.isNotEmpty()) {
+                highlightState.effectiveLines.contains(lineRef)
+            } else {
+                false
+            }
+
+            if (!isActive) {
+                val baseColor = raw?.color ?: polyline.outlinePaint.color
+                val r = Color.red(baseColor)
+                val g = Color.green(baseColor)
+                val b = Color.blue(baseColor)
+                polyline.outlinePaint.color = Color.argb(DIMMED_ALPHA_COLOR_INT, r, g, b)
+                polyline.outlinePaint.strokeWidth = (raw?.strokeWidth ?: 9f) * 0.85f
+                mapView.overlays.add(polyline)
+            }
+        }
+    }
+
+    fun addActiveCercaniasPolylinesToMap(
+        context: Context,
+        mapView: MapView,
+        highlightState: CercaniasHighlightState
+    ) {
+        if (!highlightState.isHighlighted) return
+        val loadedCercanias = CercaniasMapOverlayLoader.getLoadedPolylines(
+            mapView = mapView,
+            context = context,
+            zoomCategory = MetroMapOverlayLoader.getZoomCategory(),
+            useHighRes = MetroMapOverlayLoader.isUseHighRes(),
+            onLoaded = { mapView.postInvalidate() }
+        )
 
         loadedCercanias.forEach { polyline ->
             val raw = polyline.relatedObject as? MetroMapOverlayLoader.RawPolyline
@@ -174,7 +217,6 @@ object CercaniasStationHighlightManager {
             val isActive = if (lineRef != null && lineRef.isNotEmpty()) {
                 highlightState.effectiveLines.contains(lineRef)
             } else {
-                // If lineRef is not available, check color or include
                 false
             }
 
@@ -186,20 +228,8 @@ object CercaniasStationHighlightManager {
                     val c = polyline.outlinePaint.color
                     polyline.outlinePaint.color = Color.argb(255, Color.red(c), Color.green(c), Color.blue(c))
                 }
-                activePolylines.add(polyline)
-            } else {
-                val baseColor = raw?.color ?: polyline.outlinePaint.color
-                val r = Color.red(baseColor)
-                val g = Color.green(baseColor)
-                val b = Color.blue(baseColor)
-                polyline.outlinePaint.color = Color.argb(DIMMED_ALPHA_COLOR_INT, r, g, b)
-                polyline.outlinePaint.strokeWidth = (raw?.strokeWidth ?: 9f) * 0.85f
-                dimmedPolylines.add(polyline)
+                mapView.overlays.add(polyline)
             }
         }
-
-        // Add dimmed lines first (behind), then active lines on top
-        dimmedPolylines.forEach { mapView.overlays.add(it) }
-        activePolylines.forEach { mapView.overlays.add(it) }
     }
 }

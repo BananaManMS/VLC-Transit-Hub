@@ -346,27 +346,66 @@ fun BoxScope.MapDetailBottomSheetsHost(
             )
         }
         is SelectedMapItem.Address -> {
+            val homeLoc by mapViewModel.homeLocation.collectAsState()
+            val workLoc by mapViewModel.workLocation.collectAsState()
+
+            val isHome = (homeLoc != null &&
+                    Math.abs(homeLoc!!.latitude - item.result.latitude) < 0.0001 &&
+                    Math.abs(homeLoc!!.longitude - item.result.longitude) < 0.0001) ||
+                    item.result.type.equals("home", ignoreCase = true)
+
+            val isWork = (workLoc != null &&
+                    Math.abs(workLoc!!.latitude - item.result.latitude) < 0.0001 &&
+                    Math.abs(workLoc!!.longitude - item.result.longitude) < 0.0001) ||
+                    item.result.type.equals("work", ignoreCase = true)
+
             val matchingFav = customFavorites.find {
                 Math.abs(it.latitude - item.result.latitude) < 0.0001 &&
                 Math.abs(it.longitude - item.result.longitude) < 0.0001
             }
-            val isFav = matchingFav != null
-            val displayAddress = if (matchingFav != null) {
-                item.result.copy(
-                    displayName = if (matchingFav.subtitle.isNotEmpty()) "${matchingFav.title}, ${matchingFav.subtitle}" else matchingFav.title,
-                    category = "favorite",
-                    type = "favorite",
-                    placeCategory = PlaceCategory.FAVORITE,
-                    placeName = matchingFav.title
-                )
-            } else item.result
+            val isFav = matchingFav != null || isHome || isWork
+
+            val displayAddress = when {
+                isHome -> {
+                    val title = homeLoc?.title?.ifBlank { "Casa" } ?: "Casa"
+                    val sub = homeLoc?.subtitle ?: item.result.displayName
+                    item.result.copy(
+                        displayName = if (sub.isNotEmpty() && !sub.equals(title, ignoreCase = true)) "$title, $sub" else title,
+                        category = "favorite",
+                        type = "home",
+                        placeCategory = PlaceCategory.FAVORITE,
+                        placeName = title
+                    )
+                }
+                isWork -> {
+                    val title = workLoc?.title?.ifBlank { if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo" } ?: if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo"
+                    val sub = workLoc?.subtitle ?: item.result.displayName
+                    item.result.copy(
+                        displayName = if (sub.isNotEmpty() && !sub.equals(title, ignoreCase = true)) "$title, $sub" else title,
+                        category = "favorite",
+                        type = "work",
+                        placeCategory = PlaceCategory.FAVORITE,
+                        placeName = title
+                    )
+                }
+                matchingFav != null -> {
+                    item.result.copy(
+                        displayName = if (matchingFav.subtitle.isNotEmpty()) "${matchingFav.title}, ${matchingFav.subtitle}" else matchingFav.title,
+                        category = "favorite",
+                        type = "favorite",
+                        placeCategory = PlaceCategory.FAVORITE,
+                        placeName = matchingFav.title
+                    )
+                }
+                else -> item.result
+            }
 
             AddressDestinationBottomSheet(
                 address = displayAddress,
                 isDarkMode = isDarkMode,
                 appLanguage = appLanguage,
                 isFavorite = isFav,
-                favoriteColorHex = matchingFav?.colorHex,
+                favoriteColorHex = if (isHome) (homeLoc?.colorHex ?: "#4F8CFF") else if (isWork) (workLoc?.colorHex ?: "#F59E0B") else matchingFav?.colorHex,
                 onSaveFavorite = {
                     onSaveFavoriteAddress(item.result)
                 },
@@ -390,6 +429,21 @@ fun BoxScope.MapDetailBottomSheetsHost(
                 onSheetStateChanged = onDetailSheetStateChanged,
                 onHeightPxChanged = onAddressDetailHeightPxChanged,
                 activeTripBottomPadding = activeTripBottomPadding,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+        is SelectedMapItem.LiveTrain -> {
+            val allCercaniasStations = cercaniasViewModel?.allCercaniasStations?.collectAsState()?.value ?: emptyList()
+            val stationNameMap = remember(allCercaniasStations) { allCercaniasStations.associate { it.stop_id to it.nombre } }
+            com.example.ui.cercanias.LiveTrainBottomSheet(
+                vehicle = item.vehicle,
+                stationNameMap = stationNameMap,
+                isDarkMode = isDarkMode,
+                onDismiss = {
+                    onDismissItem()
+                },
+                sheetState = detailSheetState,
+                onSheetStateChanged = onDetailSheetStateChanged,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }

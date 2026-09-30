@@ -15,35 +15,39 @@ object CercaniasDepartureMapper {
      * Normaliza los nombres de estación para comparaciones insensibles a mayúsculas, acentos y espacios,
      * e iguala variantes de nombres de la red de Cercanías Valencia a claves canónicas.
      */
+    private val normalizationCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     fun normalizeStationName(name: String): String {
         if (name.isBlank()) return ""
-        val normalized = Normalizer.normalize(name, Normalizer.Form.NFD)
-            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
-            .lowercase(Locale.ROOT)
-            .trim()
-            .replace("estacion", "estacio")
-            .replace("norte", "nord")
-            .replace("nord", "nord")
-        
-        return when {
-            normalized.contains("nord") || normalized.contains("valencia nord") || normalized.contains("estacio del nord") || normalized.contains("norte") -> "valencia nord"
-            normalized.contains("sant isidre") || normalized.contains("st. isidre") -> "valencia st. isidre"
-            normalized.contains("cabanyal") -> "cabanyal"
-            normalized.contains("font de sant lluis") || normalized.contains("sant lluis") || normalized.contains("f. s. lluis") -> "valencia f. s. lluis"
-            normalized.contains("vinaros") -> "vinaros"
-            normalized.contains("cullera") -> "cullera"
-            normalized.contains("benicarlo") || normalized.contains("peniscola") -> "benicarlo"
-            normalized.contains("castello") -> "castello de la plana"
-            normalized.contains("xativa") -> "xativa"
-            normalized.contains("moixent") || normalized.contains("mogente") -> "moixent"
-            normalized.contains("platja") && normalized.contains("gandia") -> "platja i grau de gandia"
-            normalized.contains("gandia") -> "gandia"
-            normalized.contains("siete aguas") || normalized.contains("venta mina") -> "venta mina-siete aguas"
-            normalized.contains("utiel") -> "utiel"
-            normalized.contains("bunol") || normalized.contains("bua") || normalized.contains("buñ") || normalized.contains("bunyol") || (normalized.contains("bu") && normalized.contains("ol")) -> "bunol"
-            normalized.contains("caudiel") -> "caudiel"
-            normalized.contains("alcudia") || normalized.contains("crespins") -> "l'alcudia de crespins"
-            else -> normalized
+        return normalizationCache.getOrPut(name) {
+            val normalized = Normalizer.normalize(name, Normalizer.Form.NFD)
+                .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+                .lowercase(Locale.ROOT)
+                .trim()
+                .replace("estacion", "estacio")
+                .replace("norte", "nord")
+                .replace("nord", "nord")
+            
+            when {
+                normalized.contains("nord") || normalized.contains("valencia nord") || normalized.contains("estacio del nord") || normalized.contains("norte") -> "valencia nord"
+                normalized.contains("sant isidre") || normalized.contains("st. isidre") -> "valencia st. isidre"
+                normalized.contains("cabanyal") -> "cabanyal"
+                normalized.contains("font de sant lluis") || normalized.contains("sant lluis") || normalized.contains("f. s. lluis") -> "valencia f. s. lluis"
+                normalized.contains("vinaros") -> "vinaros"
+                normalized.contains("cullera") -> "cullera"
+                normalized.contains("benicarlo") || normalized.contains("peniscola") -> "benicarlo"
+                normalized.contains("castello") -> "castello de la plana"
+                normalized.contains("xativa") -> "xativa"
+                normalized.contains("moixent") || normalized.contains("mogente") -> "moixent"
+                normalized.contains("platja") && normalized.contains("gandia") -> "platja i grau de gandia"
+                normalized.contains("gandia") -> "gandia"
+                normalized.contains("siete aguas") || normalized.contains("venta mina") -> "venta mina-siete aguas"
+                normalized.contains("utiel") -> "utiel"
+                normalized.contains("bunol") || normalized.contains("bua") || normalized.contains("buñ") || normalized.contains("bunyol") || (normalized.contains("bu") && normalized.contains("ol")) -> "bunol"
+                normalized.contains("caudiel") -> "caudiel"
+                normalized.contains("alcudia") || normalized.contains("crespins") -> "l'alcudia de crespins"
+                else -> normalized
+            }
         }
     }
 
@@ -71,8 +75,8 @@ object CercaniasDepartureMapper {
      * Si la estación consultada es igual a la estación de destino, se considera una llegada término
      * y debe descartarse de la lista de salidas.
      */
-    fun isTerminalArrival(currentStationName: String, destinationName: String): Boolean {
-        val normCurrent = normalizeStationName(currentStationName)
+    fun isTerminalArrival(currentStationName: String, destinationName: String, preNormalizedCurrent: String? = null): Boolean {
+        val normCurrent = preNormalizedCurrent ?: normalizeStationName(currentStationName)
         val normDest = normalizeStationName(destinationName)
         
         if (normCurrent.isBlank() || normDest.isBlank()) return false

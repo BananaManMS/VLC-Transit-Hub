@@ -56,7 +56,7 @@ fun QuickTransportModesRow(
         TransportModeButton(
             iconDrawable = com.example.R.drawable.logo_metrobus,
             label = "Metrobús",
-            color = Color(0xFFD97706),
+            color = com.example.util.MetrobusLineColorResolver.BRAND_COLOR,
             onClick = { onSelectMode(DashboardTab.Bus, 1) },
             modifier = Modifier.weight(1f)
         )

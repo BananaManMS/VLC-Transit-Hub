@@ -20,14 +20,17 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import android.content.Context
+
 class MapSearchManager(
     private val scope: CoroutineScope,
     private val dashboardRepository: DashboardRepository,
     private val geocodingRepository: GeocodingRepository,
     private val database: AppDatabase,
-    private val gson: Gson = Gson()
+    private val gson: Gson = Gson(),
+    private val context: Context? = null
 ) {
-    val unifiedSearchEngine = UnifiedSearchEngine(database = database, geocodingRepository = geocodingRepository)
+    val unifiedSearchEngine = UnifiedSearchEngine(context = context, database = database, geocodingRepository = geocodingRepository)
 
     // Recent Searches StateFlow
     val recentSearches: StateFlow<List<RecentSearch>> = dashboardRepository.getPreferenceFlow("recent_searches", "[]")
@@ -51,7 +54,7 @@ class MapSearchManager(
                     null
                 }
             }
-        }.stateIn(scope, SharingStarted.WhileSubscribed(5000), null)
+        }.stateIn(scope, SharingStarted.Eagerly, null)
 
     // Work Location StateFlow
     val workLocation: StateFlow<RecentSearch?> = dashboardRepository.getPreferenceFlow("work_location", "")
@@ -64,7 +67,7 @@ class MapSearchManager(
                     null
                 }
             }
-        }.stateIn(scope, SharingStarted.WhileSubscribed(5000), null)
+        }.stateIn(scope, SharingStarted.Eagerly, null)
 
     // Custom Favorites StateFlow
     val customFavorites: StateFlow<List<RecentSearch>> = dashboardRepository.getPreferenceFlow("custom_favorites", "[]")
@@ -75,7 +78,7 @@ class MapSearchManager(
             } catch (e: Exception) {
                 emptyList()
             }
-        }.stateIn(scope, SharingStarted.WhileSubscribed(5000), emptyList())
+        }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     fun performSearch(
         query: String,
@@ -87,12 +90,17 @@ class MapSearchManager(
         metrobusStops: List<MetrobusStopEntity> = emptyList(),
         busStopAliases: Map<String, String>,
         metrobusStopAliases: Map<String, String> = emptyMap(),
-        customFavorites: List<RecentSearch>,
-        favoriteBusStops: Set<String>,
-        favoriteMetroStations: Set<String>,
-        favoriteCercaniasStations: Set<String>,
+        customFavorites: List<RecentSearch> = emptyList(),
+        homeLocation: RecentSearch? = null,
+        workLocation: RecentSearch? = null,
+        favoriteBusStops: Set<String> = emptySet(),
+        favoriteMetroStations: Set<String> = emptySet(),
+        favoriteCercaniasStations: Set<String> = emptySet(),
         favoriteMetrobusStops: Set<String> = emptySet()
     ): Flow<List<MapSearchResult>> {
+        val effectiveCustomFavs = if (customFavorites.isNotEmpty()) customFavorites else this.customFavorites.value
+        val effectiveHome = homeLocation ?: this.homeLocation.value
+        val effectiveWork = workLocation ?: this.workLocation.value
         return unifiedSearchEngine.performSearch(
             query = query,
             userLat = userLat,
@@ -103,7 +111,9 @@ class MapSearchManager(
             metrobusStops = metrobusStops,
             busStopAliases = busStopAliases,
             metrobusStopAliases = metrobusStopAliases,
-            customFavorites = customFavorites,
+            customFavorites = effectiveCustomFavs,
+            homeLocation = effectiveHome,
+            workLocation = effectiveWork,
             favoriteBusStops = favoriteBusStops,
             favoriteMetroStations = favoriteMetroStations,
             favoriteCercaniasStations = favoriteCercaniasStations,

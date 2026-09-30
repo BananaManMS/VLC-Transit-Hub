@@ -207,12 +207,11 @@ fun MetroStationBottomSheet(
 
     LaunchedEffect(listState.isScrollInProgress) {
         if (!listState.isScrollInProgress && !heightAnimatable.isRunning) {
-            val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
             val currentHeight = heightAnimatable.value
             val isStable = kotlin.math.abs(currentHeight - collapsedPx) < 2f ||
                            kotlin.math.abs(currentHeight - halfExpandedPx) < 2f ||
                            kotlin.math.abs(currentHeight - fullyExpandedPx) < 2f
-            if (!isStable && currentHeight > 0f && isAtTop) {
+            if (!isStable && currentHeight > 0f) {
                 settleSheetState(0f)
             }
         }
@@ -296,7 +295,16 @@ fun MetroStationBottomSheet(
                 available: Offset,
                 source: NestedScrollSource
             ): Offset {
-                // Do not shrink the sheet from inner list scroll; collapsing is only via intentional drag on handle/header
+                val delta = available.y
+                // Si movemos el dedo hacia abajo (delta > 0) y la lista ya ha alcanzado el tope superior -> contraer panel
+                if (delta > 0f && heightAnimatable.value > collapsedPx) {
+                    val newHeightToSet = (heightAnimatable.value - delta).coerceIn(collapsedPx, fullyExpandedPx)
+                    val consumedHeight = heightAnimatable.value - newHeightToSet
+                    coroutineScope.launch {
+                        heightAnimatable.snapTo(newHeightToSet)
+                    }
+                    return Offset(0f, consumedHeight)
+                }
                 return Offset.Zero
             }
 
@@ -309,12 +317,22 @@ fun MetroStationBottomSheet(
                     settleSheetState(velocityY)
                     return available
                 }
+                // Fling DOWN cuando el panel no está completamente expandido
+                if (velocityY > 0f && currentHeight < fullyExpandedPx - 1f) {
+                    settleSheetState(velocityY)
+                    return available
+                }
 
                 return Velocity.Zero
             }
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                // Never collapse or settle down from internal list fling inertia
+                val velocityY = available.y
+                val currentHeight = heightAnimatable.value
+                if (velocityY > 0f && currentHeight > collapsedPx) {
+                    settleSheetState(velocityY)
+                    return available
+                }
                 return Velocity.Zero
             }
         }

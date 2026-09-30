@@ -454,7 +454,7 @@ fun NearbyDeparturesWidget(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFFD97706).copy(alpha = 0.12f)),
+                                    .background(com.example.util.MetrobusLineColorResolver.BRAND_COLOR.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Image(
@@ -491,7 +491,7 @@ fun NearbyDeparturesWidget(
                             }
                         }
 
-                        // Line Chips for Metrobus (Orange / Amber #D97706)
+                        // Line Chips for Metrobus (Amber #F59E0B)
                         if (lines.isNotEmpty()) {
                             val maxMetrobusLines = 3
                             val visibleMetrobusLines = lines.take(maxMetrobusLines)
@@ -503,7 +503,7 @@ fun NearbyDeparturesWidget(
                                 visibleMetrobusLines.forEach { line ->
                                     Surface(
                                         shape = RoundedCornerShape(6.dp),
-                                        color = Color(0xFFD97706)
+                                        color = com.example.util.MetrobusLineColorResolver.BRAND_COLOR
                                     ) {
                                         Text(
                                             text = line,
@@ -517,11 +517,11 @@ fun NearbyDeparturesWidget(
                                 if (remainingMetrobusLines > 0) {
                                     Surface(
                                         shape = RoundedCornerShape(6.dp),
-                                        color = Color(0xFFD97706).copy(alpha = 0.15f)
+                                        color = com.example.util.MetrobusLineColorResolver.BRAND_COLOR.copy(alpha = 0.15f)
                                     ) {
                                         Text(
                                             text = "...",
-                                            color = Color(0xFFD97706),
+                                            color = com.example.util.MetrobusLineColorResolver.BRAND_COLOR,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)

@@ -314,66 +314,84 @@ fun ValenbisiTab(
 
             // Filtered stations list logic
             val filteredList = remember(valenbisiStations, favoriteValenbisi, filterSource, searchQuery, selectedMetroStationId, userLocation, valenbisiAliases) {
-                var list = if (userLocation != null) {
-                    valenbisiStations.map { st ->
-                        val dist = LocationUtils.calculateDistanceMeters(
-                            st.latitude, st.longitude,
-                            userLocation.first, userLocation.second
-                        )
-                        st.copy(
-                            distanceMeters = dist,
-                            distanceText = LocationUtils.formatDistance(dist)
-                        )
-                    }
-                } else {
-                    valenbisiStations
+                val refLocation = userLocation ?: Pair(39.46975, -0.37739)
+                val list = valenbisiStations.map { st ->
+                    val dist = LocationUtils.calculateDistanceMeters(
+                        st.latitude, st.longitude,
+                        refLocation.first, refLocation.second
+                    )
+                    st.copy(
+                        distanceMeters = dist,
+                        distanceText = LocationUtils.formatDistance(dist)
+                    )
                 }
 
-                if (searchQuery.isNotBlank()) {
-                    list.mapNotNull { st ->
-                        val alias = valenbisiAliases[st.number.toString()]
-                        val score = computeSearchScore(st.number.toString(), "${st.name} ${st.address}", searchQuery, alias)
-                        if (score > 0.0) Pair(st, score) else null
-                    }.sortedWith(
-                        compareByDescending<Pair<ValenbisiStation, Double>> { favoriteValenbisi.contains(it.first.number.toString()) }
-                            .thenByDescending { it.second }
-                            .thenBy { it.first.distanceMeters }
-                    ).map { it.first }
-                } else {
-                    when (filterSource) {
-                        ValenbisiFilterSource.FAVORITES -> {
-                            list.filter { favoriteValenbisi.contains(it.number.toString()) }
-                                .sortedBy { it.distanceMeters }
+                when (filterSource) {
+                    ValenbisiFilterSource.FAVORITES -> {
+                        val favList = list.filter { favoriteValenbisi.contains(it.number.toString()) }
+                        if (searchQuery.isNotBlank()) {
+                            list.mapNotNull { st ->
+                                val alias = valenbisiAliases[st.number.toString()]
+                                val score = computeSearchScore(st.number.toString(), "${st.name} ${st.address}", searchQuery, alias)
+                                if (score > 0.0) Pair(st, score) else null
+                            }.map { it.first }
+                             .sortedBy { it.distanceMeters }
+                        } else {
+                            favList.sortedBy { it.distanceMeters }
                         }
-                        ValenbisiFilterSource.NEARBY -> {
+                    }
+                    ValenbisiFilterSource.NEARBY -> {
+                        if (searchQuery.isNotBlank()) {
+                            list.mapNotNull { st ->
+                                val alias = valenbisiAliases[st.number.toString()]
+                                val score = computeSearchScore(st.number.toString(), "${st.name} ${st.address}", searchQuery, alias)
+                                if (score > 0.0) Pair(st, score) else null
+                            }.sortedWith(
+                                compareByDescending<Pair<ValenbisiStation, Double>> { favoriteValenbisi.contains(it.first.number.toString()) }
+                                    .thenByDescending { it.second }
+                                    .thenBy { it.first.distanceMeters }
+                            ).map { it.first }
+                        } else {
                             list.sortedWith(
                                 compareByDescending<ValenbisiStation> { favoriteValenbisi.contains(it.number.toString()) }
                                     .thenBy { it.distanceMeters }
                             ).take(25)
                         }
-                        ValenbisiFilterSource.METRO_STATION -> {
-                            val mStation = metroStationsList.find { it.id == selectedMetroStationId }
-                                ?: allMetroStations.find { it.id == selectedMetroStationId }
-                                ?: ValenciaMetroData.mainMetroStations.find { it.id == selectedMetroStationId }
-                            if (mStation != null) {
-                                list.map { st ->
-                                    val dist = LocationUtils.calculateDistanceMeters(
-                                        st.latitude, st.longitude,
-                                        mStation.latitude, mStation.longitude
-                                    )
-                                    st.copy(
-                                        distanceMeters = dist,
-                                        distanceText = LocationUtils.formatDistance(dist)
-                                    )
-                                }
-                                .filter { it.distanceMeters <= 600.0 }
-                                .sortedWith(
-                                    compareByDescending<ValenbisiStation> { favoriteValenbisi.contains(it.number.toString()) }
-                                        .thenBy { it.distanceMeters }
+                    }
+                    ValenbisiFilterSource.METRO_STATION -> {
+                        val mStation = metroStationsList.find { it.id == selectedMetroStationId }
+                            ?: allMetroStations.find { it.id == selectedMetroStationId }
+                            ?: ValenciaMetroData.mainMetroStations.find { it.id == selectedMetroStationId }
+                        val stationList = if (mStation != null) {
+                            list.map { st ->
+                                val dist = LocationUtils.calculateDistanceMeters(
+                                    st.latitude, st.longitude,
+                                    mStation.latitude, mStation.longitude
                                 )
-                            } else {
-                                list
-                            }
+                                st.copy(
+                                    distanceMeters = dist,
+                                    distanceText = LocationUtils.formatDistance(dist)
+                                )
+                            }.filter { it.distanceMeters <= 600.0 }
+                        } else {
+                            list
+                        }
+
+                        if (searchQuery.isNotBlank()) {
+                            stationList.mapNotNull { st ->
+                                val alias = valenbisiAliases[st.number.toString()]
+                                val score = computeSearchScore(st.number.toString(), "${st.name} ${st.address}", searchQuery, alias)
+                                if (score > 0.0) Pair(st, score) else null
+                            }.sortedWith(
+                                compareByDescending<Pair<ValenbisiStation, Double>> { favoriteValenbisi.contains(it.first.number.toString()) }
+                                    .thenByDescending { it.second }
+                                    .thenBy { it.first.distanceMeters }
+                            ).map { it.first }
+                        } else {
+                            stationList.sortedWith(
+                                compareByDescending<ValenbisiStation> { favoriteValenbisi.contains(it.number.toString()) }
+                                    .thenBy { it.distanceMeters }
+                            )
                         }
                     }
                 }

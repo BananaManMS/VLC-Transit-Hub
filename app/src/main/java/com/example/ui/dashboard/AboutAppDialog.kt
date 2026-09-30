@@ -226,6 +226,7 @@ fun AboutAppDialog(
                                     text = pair.second,
                                     textColor = subtextColor,
                                     fontSize = 12.sp,
+                                    linkText = null,
                                     modifier = Modifier.padding(start = 12.dp)
                                 )
                             }

@@ -371,7 +371,7 @@ fun OperatorLogo(
                 modifier = modifier.clip(CircleShape)
             )
         }
-        is SelectedMapItem.Cercanias -> {
+        is SelectedMapItem.Cercanias, is SelectedMapItem.LiveTrain -> {
             Image(
                 painter = painterResource(id = R.drawable.logo_cercanias),
                 contentDescription = "Cercanías",

@@ -105,7 +105,9 @@ object SingleTransitLegReconciler {
                         }
                     }
 
-                    val destMatches = matchingDepartures.filter { TripVehicleMatcher.isDestinationMatch(it.destination, leg) }
+                    val destMatches = matchingDepartures.filter { dep ->
+                        TripVehicleMatcher.isDestinationMatch(dep.destination, leg, dep.line)
+                    }
                     val bestDepCandidate = TripVehicleMatcher.matchBestCandidate(
                         candidates = destMatches,
                         nowMs = nowMs,

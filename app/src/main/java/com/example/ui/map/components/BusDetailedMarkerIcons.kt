@@ -291,7 +291,7 @@ private fun createBusDetailedMarkerIcon(
         val badgeBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 1.2f
-            color = if (busType == "MB") Color.parseColor("#D97706") else Color.parseColor("#B91C1C")
+            color = if (busType == "MB") Color.parseColor(com.example.util.MetrobusLineColorResolver.BRAND_HEX) else Color.parseColor("#B91C1C")
         }
 
         val badgeFontMetrics = badgeTextPaint.fontMetrics
@@ -352,7 +352,7 @@ private fun drawBusIconAt(
         canvas.drawRoundRect(squareRect, 10f, 10f, paint)
 
         // Amber border
-        paint.color = Color.parseColor("#D97706")
+        paint.color = Color.parseColor(com.example.util.MetrobusLineColorResolver.BRAND_HEX)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2.5f
         canvas.drawRoundRect(squareRect, 10f, 10f, paint)
@@ -687,7 +687,7 @@ private fun createMergedDetailedMarkerIcon(
         val mbBadgeBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 1.2f
-            color = Color.parseColor("#D97706")
+            color = Color.parseColor(com.example.util.MetrobusLineColorResolver.BRAND_HEX)
         }
 
         val badgeFontMetrics = badgeTextPaint.fontMetrics

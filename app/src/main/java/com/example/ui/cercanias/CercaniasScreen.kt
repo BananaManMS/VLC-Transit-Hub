@@ -7,8 +7,12 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Map
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -46,6 +50,7 @@ fun CercaniasScreen(
     val selectedDeparture by viewModel.selectedCercaniasDeparture.collectAsState()
     val cercaniasAlerts by viewModel.cercaniasAlerts.collectAsState()
     val isCercaniasAlertsLoading by viewModel.isCercaniasAlertsLoading.collectAsState()
+    val hasCercaniasAlertsError by viewModel.hasCercaniasAlertsError.collectAsState()
     val activeAlerts by viewModel.activeCercaniasAlerts.collectAsState()
     val generalNotices by viewModel.generalCercaniasNotices.collectAsState()
     val accessibilityAlerts by viewModel.accessibilityCercaniasAlerts.collectAsState()
@@ -90,57 +95,88 @@ fun CercaniasScreen(
         }
     }
 
-    Column(
+    var showLiveMap by remember { mutableStateOf(false) }
+
+    Box(
         modifier = modifier.fillMaxSize()
     ) {
-        // TabRow Unificado (Material 3 con tipografía titleSmall y Capitalizado)
-        UnifiedTabRow(
-            selectedTabIndex = pagerState.currentPage,
-            tabs = if (appLanguage == AppLanguage.CA) listOf("Eixides", "Avisos") else listOf("Salidas", "Avisos"),
-            onTabSelected = { index ->
-                scope.launch { pagerState.animateScrollToPage(index) }
-            },
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // TabRow Unificado (Material 3 con tipografía titleSmall y Capitalizado)
+            UnifiedTabRow(
+                selectedTabIndex = pagerState.currentPage,
+                tabs = if (appLanguage == AppLanguage.CA) listOf("Eixides", "Avisos") else listOf("Salidas", "Avisos"),
+                onTabSelected = { index ->
+                    scope.launch { pagerState.animateScrollToPage(index) }
+                },
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f).fillMaxWidth()
-        ) { page ->
-            when (page) {
-                0 -> {
-                    CercaniasDeparturesTab(
-                        viewModel = viewModel,
-                        selectedStationId = selectedStationId,
-                        departures = departures,
-                        isLoading = isLoading,
-                        error = error,
-                        favoriteStations = favoriteStations,
-                        allCercaniasStations = allCercaniasStations,
-                        cercaniasAlerts = cercaniasAlerts,
-                        accessibilityAlerts = accessibilityAlerts,
-                        isOnline = isOnline,
-                        isDarkMode = isDarkMode,
-                        appLanguage = appLanguage,
-                        texts = texts,
-                        activeTripBottomPadding = activeTripBottomPadding,
-                        onOpenSearchDialog = { showSearchDialog = true },
-                        onSelectDeparture = { viewModel.selectCercaniasDepartureDetails(it) }
-                    )
-                }
-                1 -> {
-                    CercaniasAlertsTab(
-                        activeAlerts = activeAlerts,
-                        generalNotices = generalNotices,
-                        groupedAccessibilityAlerts = groupedAccessibilityAlerts,
-                        isCercaniasAlertsLoading = isCercaniasAlertsLoading,
-                        isOnline = isOnline,
-                        isDarkMode = isDarkMode,
-                        appLanguage = appLanguage,
-                        activeTripBottomPadding = activeTripBottomPadding
-                    )
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            ) { page ->
+                when (page) {
+                    0 -> {
+                        CercaniasDeparturesTab(
+                            viewModel = viewModel,
+                            selectedStationId = selectedStationId,
+                            departures = departures,
+                            isLoading = isLoading,
+                            error = error,
+                            favoriteStations = favoriteStations,
+                            allCercaniasStations = allCercaniasStations,
+                            cercaniasAlerts = cercaniasAlerts,
+                            accessibilityAlerts = accessibilityAlerts,
+                            isOnline = isOnline,
+                            isDarkMode = isDarkMode,
+                            appLanguage = appLanguage,
+                            texts = texts,
+                            activeTripBottomPadding = activeTripBottomPadding,
+                            onOpenSearchDialog = { showSearchDialog = true },
+                            onSelectDeparture = { viewModel.selectCercaniasDepartureDetails(it) }
+                        )
+                    }
+                    1 -> {
+                        CercaniasAlertsTab(
+                            activeAlerts = activeAlerts,
+                            generalNotices = generalNotices,
+                            groupedAccessibilityAlerts = groupedAccessibilityAlerts,
+                            allCercaniasStations = allCercaniasStations,
+                            isCercaniasAlertsLoading = isCercaniasAlertsLoading,
+                            isOnline = isOnline,
+                            isDarkMode = isDarkMode,
+                            appLanguage = appLanguage,
+                            activeTripBottomPadding = activeTripBottomPadding,
+                            hasCercaniasAlertsError = hasCercaniasAlertsError,
+                            onRetry = { viewModel.fetchCercaniasRealTimeAlerts() },
+                            onNavigateToStation = { stationId ->
+                                viewModel.selectCercaniasStation(stationId)
+                                scope.launch {
+                                    pagerState.animateScrollToPage(0)
+                                }
+                            }
+                        )
+                    }
                 }
             }
+        }
+
+        // Dedicated Live Train Tracking Floating Action Button (FAB)
+        FloatingActionButton(
+            onClick = { showLiveMap = true },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = activeTripBottomPadding + 24.dp, end = 8.dp)
+                .testTag("cercanias_live_map_fab")
+        ) {
+            Icon(
+                imageVector = Icons.Default.Map,
+                contentDescription = if (appLanguage == AppLanguage.CA) "Veure mapa en viu" else "Ver mapa en vivo"
+            )
         }
     }
 
@@ -175,5 +211,14 @@ fun CercaniasScreen(
                 originStationName = currentStationName
             )
         }
+    }
+
+    // Standalone Live Train Map Overlay Dialog
+    if (showLiveMap) {
+        CercaniasLiveMapDialog(
+            viewModel = viewModel,
+            isDarkMode = isDarkMode,
+            onDismiss = { showLiveMap = false }
+        )
     }
 }

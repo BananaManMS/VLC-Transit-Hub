@@ -26,6 +26,17 @@ class TripOriginRealTimeCache {
     var lastMatchedOriginVehicleId: String? = null
     var lastMatchedOriginArrivalEpochMs: Long? = null
 
+    // Tracked vehicle state (the vehicle currently approaching or at the station)
+    var trackedVehicleKey: String? = null
+    var trackedVehicleId: String? = null
+    var trackedVehicleLine: String? = null
+    var trackedVehicleDest: String? = null
+    var trackedVehicleDelay: Int = 0
+    var trackedVehicleAdjustedDep: String? = null
+    var trackedLiveDepartureEpochMs: Long? = null
+    var trackedLastSeenLiveMinutes: Int? = null
+    var trackedWasAtStationOrImminent: Boolean = false
+
     private var consecutiveEmptyOriginPolls = 0
     private var lastKnownOriginLiveMinutes: Int? = null
     private var lastKnownOriginLiveSeconds: Int? = null
@@ -33,13 +44,16 @@ class TripOriginRealTimeCache {
     private var lastKnownOriginDelayMinutes: Int = 0
     private var lastKnownOriginAdjustedDepTime: String? = null
 
-    // 2-minute departure courtesy state: holds departed vehicle at 0m so user can confirm boarding
+    // 2-minute departure courtesy state: holds departed vehicle at 0m based on live departure time
     var departedVehicleGraceUntilMs: Long? = null
     var departedVehicleStartMs: Long? = null
+    var departedVehicleLiveDepartureEpochMs: Long? = null
     var departedVehicleLine: String? = null
     var departedVehicleDest: String? = null
     var departedVehicleDelay: Int = 0
     var departedVehicleAdjustedDep: String? = null
+    var departedVehicleKey: String? = null
+    var departedVehicleId: String? = null
 
     fun reset() {
         lastMatchedOriginVehicleKey = null
@@ -51,25 +65,65 @@ class TripOriginRealTimeCache {
         lastKnownOriginLiveDestination = null
         lastKnownOriginDelayMinutes = 0
         lastKnownOriginAdjustedDepTime = null
-        departedVehicleGraceUntilMs = null
-        departedVehicleStartMs = null
-        departedVehicleLine = null
-        departedVehicleDest = null
-        departedVehicleDelay = 0
-        departedVehicleAdjustedDep = null
+        clearTrackedState()
+        clearDepartedState()
     }
 
     fun clearMatchedOrigin() {
         lastMatchedOriginVehicleKey = null
         lastMatchedOriginVehicleId = null
         lastMatchedOriginArrivalEpochMs = null
+        clearTrackedState()
+        clearDepartedState()
+    }
+
+    private fun clearTrackedState() {
+        trackedVehicleKey = null
+        trackedVehicleId = null
+        trackedVehicleLine = null
+        trackedVehicleDest = null
+        trackedVehicleDelay = 0
+        trackedVehicleAdjustedDep = null
+        trackedLiveDepartureEpochMs = null
+        trackedLastSeenLiveMinutes = null
+        trackedWasAtStationOrImminent = false
+    }
+
+    private fun clearDepartedState() {
         departedVehicleGraceUntilMs = null
         departedVehicleStartMs = null
+        departedVehicleLiveDepartureEpochMs = null
         departedVehicleLine = null
         departedVehicleDest = null
         departedVehicleDelay = 0
         departedVehicleAdjustedDep = null
+        departedVehicleKey = null
+        departedVehicleId = null
     }
+
+    fun recordMatchedCandidate(key: String, vehicleId: String?, arrivalEpochMs: Long) {
+        val nowMs = System.currentTimeMillis()
+        val graceUntil = departedVehicleGraceUntilMs
+        if (graceUntil != null && nowMs < graceUntil) {
+            // In courtesy grace period: retain departed vehicle identity
+            return
+        }
+        lastMatchedOriginVehicleKey = key
+        if (vehicleId != null) {
+            lastMatchedOriginVehicleId = vehicleId
+        }
+        lastMatchedOriginArrivalEpochMs = arrivalEpochMs
+    }
+
+    fun isGracePeriodActive(): Boolean {
+        val graceUntil = departedVehicleGraceUntilMs ?: return false
+        return System.currentTimeMillis() < graceUntil
+    }
+
+    fun getGracePeriodUntilMs(): Long? = departedVehicleGraceUntilMs
+    fun getGracePeriodStartTimeMs(): Long? = departedVehicleStartMs
+    fun getGracePeriodLiveDepartureEpochMs(): Long? = departedVehicleLiveDepartureEpochMs
+    fun getGracePeriodVehicleName(): String? = departedVehicleLine
 
     fun updateWithLiveResult(
         legLiveResult: LegReconciliationResult,
@@ -78,34 +132,15 @@ class TripOriginRealTimeCache {
     ): OriginCacheReconciliationResult {
         val nowMs = System.currentTimeMillis()
 
-        if (!isUserPhysicallyAtStation) {
-            // User is still in transit / far away from platform: clear any departed vehicle grace
-            departedVehicleGraceUntilMs = null
-            departedVehicleStartMs = null
-            departedVehicleLine = null
-            departedVehicleDest = null
-        }
-
-        if (legLiveResult.isLive) {
-            consecutiveEmptyOriginPolls = 0
-            val liveMins = legLiveResult.liveMinutes
-
-            // If a matched vehicle reaches platform/departure (<= 1 min or <= 0 min) AND user is at station, initiate 2-minute courtesy window
-            if (isUserPhysicallyAtStation && liveMins != null && liveMins <= 1) {
-                if (departedVehicleGraceUntilMs == null) {
-                    departedVehicleStartMs = nowMs
-                }
-                departedVehicleGraceUntilMs = nowMs + (2 * 60 * 1000L)
-                departedVehicleLine = legLiveResult.matchedLineShortName ?: legLiveResult.normalizedLine
-                departedVehicleDest = legLiveResult.liveDestination
-                departedVehicleDelay = legLiveResult.delayMinutes
-                departedVehicleAdjustedDep = legLiveResult.adjustedDepartureTime
-            }
-
-            // Check if the API jumped to a subsequent vehicle (e.g. >= 4 min) while user is at station within the 2-minute courtesy
-            val graceUntil = departedVehicleGraceUntilMs
-            if (isUserPhysicallyAtStation && graceUntil != null && nowMs < graceUntil && liveMins != null && liveMins >= 4) {
-                // Hold the departed vehicle at 0 min ("En andén / Saliendo") so boarding confirmation remains available
+        // 1. If currently inside the 2-minute courtesy window, hold the departed vehicle at 0 min
+        val graceUntil = departedVehicleGraceUntilMs
+        if (graceUntil != null) {
+            if (nowMs >= graceUntil) {
+                // Courtesy period expired after 2 minutes
+                android.util.Log.i("TripOriginRealTimeCache", "Courtesy window of 2 minutes expired for $departedVehicleLine. Rolling over.")
+                clearDepartedState()
+            } else {
+                // Courtesy is active: hold vehicle at 0 min ("En andén / Saliendo") so boarding confirmation remains available
                 return OriginCacheReconciliationResult(
                     isLive = true,
                     liveMinutes = 0,
@@ -116,12 +151,84 @@ class TripOriginRealTimeCache {
                     adjustedDepTime = departedVehicleAdjustedDep ?: legLiveResult.adjustedDepartureTime,
                     normalizedLine = departedVehicleLine ?: (legLiveResult.matchedLineShortName ?: legLiveResult.normalizedLine)
                 )
-            } else if (graceUntil != null && (!isUserPhysicallyAtStation || nowMs >= graceUntil)) {
-                // Courtesy expired or user not at station -> roll over to next vehicle
-                departedVehicleGraceUntilMs = null
-                departedVehicleStartMs = null
-                departedVehicleLine = null
-                departedVehicleDest = null
+            }
+        }
+
+        if (legLiveResult.isLive) {
+            consecutiveEmptyOriginPolls = 0
+            val liveMins = legLiveResult.liveMinutes
+            val incomingLine = legLiveResult.matchedLineShortName ?: legLiveResult.normalizedLine
+            val incomingDest = legLiveResult.liveDestination
+            val incomingKey = lastMatchedOriginVehicleKey
+
+            val incomingLiveDepEpochMs = if (liveMins != null) {
+                nowMs + (liveMins * 60 * 1000L)
+            } else {
+                nowMs
+            }
+
+            // Check if a previously tracked vehicle has just departed and disappeared from the panel:
+            val hadTrackedVehicle = trackedVehicleLine != null || trackedVehicleKey != null
+            val wasImminentOrAtPlatform = trackedWasAtStationOrImminent ||
+                    (trackedLastSeenLiveMinutes != null && trackedLastSeenLiveMinutes!! <= 1) ||
+                    (trackedLiveDepartureEpochMs != null && nowMs >= (trackedLiveDepartureEpochMs!! - 45_000L))
+
+            // A jump to a subsequent vehicle occurs when the feed now returns a train >= 1 min (or >= 2 min)
+            // after the tracked train was already in its departure window (0 or 1 min)
+            val isCandidateJumpToSubsequent = hadTrackedVehicle && wasImminentOrAtPlatform && liveMins != null && (
+                (liveMins >= 2) ||
+                (liveMins >= 1 && trackedLastSeenLiveMinutes == 0) ||
+                (trackedLiveDepartureEpochMs != null && (incomingLiveDepEpochMs - trackedLiveDepartureEpochMs!!) >= 90_000L)
+            )
+
+            if (isUserPhysicallyAtStation && isCandidateJumpToSubsequent) {
+                // THE TRACKED VEHICLE HAS JUST DEPARTED!
+                // Start the 2-minute (120s) courtesy grace period strictly based on the vehicle's LIVE departure time:
+                val liveDepartureMs = trackedLiveDepartureEpochMs ?: nowMs
+                val courtesyWindowMs = 120_000L // 2 full minutes
+                val graceUntilMs = maxOf(liveDepartureMs + courtesyWindowMs, nowMs + courtesyWindowMs)
+
+                departedVehicleGraceUntilMs = graceUntilMs
+                departedVehicleStartMs = nowMs
+                departedVehicleLiveDepartureEpochMs = liveDepartureMs
+                departedVehicleLine = trackedVehicleLine ?: incomingLine
+                departedVehicleDest = trackedVehicleDest ?: incomingDest
+                departedVehicleDelay = trackedVehicleDelay
+                departedVehicleAdjustedDep = trackedVehicleAdjustedDep ?: legLiveResult.adjustedDepartureTime
+                departedVehicleKey = trackedVehicleKey
+                departedVehicleId = trackedVehicleId
+
+                // Keep last matched vehicle keys locked to the departed vehicle during courtesy
+                lastMatchedOriginVehicleKey = trackedVehicleKey
+                lastMatchedOriginVehicleId = trackedVehicleId
+                lastMatchedOriginArrivalEpochMs = liveDepartureMs
+
+                android.util.Log.i("TripOriginRealTimeCache", "🚗💨 Transit vehicle departed ($departedVehicleLine). Activated 2 min courtesy based on live departure (until ${graceUntilMs - nowMs}ms from now)")
+
+                return OriginCacheReconciliationResult(
+                    isLive = true,
+                    liveMinutes = 0,
+                    liveSeconds = 0,
+                    liveDestination = departedVehicleDest ?: incomingDest,
+                    delayMinutes = departedVehicleDelay,
+                    scheduledDepTime = nextTransitLeg.formattedStartTime.ifBlank { null },
+                    adjustedDepTime = departedVehicleAdjustedDep ?: legLiveResult.adjustedDepartureTime,
+                    normalizedLine = departedVehicleLine ?: incomingLine
+                )
+            }
+
+            // Normal tracking update of the active vehicle approaching / at station:
+            trackedVehicleKey = incomingKey
+            trackedVehicleId = lastMatchedOriginVehicleId
+            trackedVehicleLine = incomingLine
+            trackedVehicleDest = incomingDest
+            trackedVehicleDelay = legLiveResult.delayMinutes
+            trackedVehicleAdjustedDep = legLiveResult.adjustedDepartureTime
+            trackedLastSeenLiveMinutes = liveMins
+            trackedLiveDepartureEpochMs = incomingLiveDepEpochMs
+
+            if (liveMins != null && liveMins <= 1) {
+                trackedWasAtStationOrImminent = true
             }
 
             lastKnownOriginLiveMinutes = legLiveResult.liveMinutes
@@ -138,12 +245,38 @@ class TripOriginRealTimeCache {
                 delayMinutes = legLiveResult.delayMinutes,
                 scheduledDepTime = nextTransitLeg.formattedStartTime.ifBlank { null },
                 adjustedDepTime = legLiveResult.adjustedDepartureTime,
-                normalizedLine = legLiveResult.matchedLineShortName ?: legLiveResult.normalizedLine
+                normalizedLine = incomingLine
             )
         } else {
-            // Check 2-minute departure courtesy if API returned empty/no live candidates
-            val graceUntil = departedVehicleGraceUntilMs
-            if (graceUntil != null && nowMs < graceUntil) {
+            // API returned empty/no live candidates for this stop/line
+            val hadTrackedVehicle = trackedVehicleLine != null || trackedVehicleKey != null
+            val wasImminentOrAtPlatform = trackedWasAtStationOrImminent ||
+                    (trackedLastSeenLiveMinutes != null && trackedLastSeenLiveMinutes!! <= 1) ||
+                    (trackedLiveDepartureEpochMs != null && nowMs >= (trackedLiveDepartureEpochMs!! - 45_000L))
+
+            if (isUserPhysicallyAtStation && hadTrackedVehicle && wasImminentOrAtPlatform) {
+                // The vehicle was at platform or imminent and disappeared completely from the feed:
+                // It just departed!
+                val liveDepartureMs = trackedLiveDepartureEpochMs ?: nowMs
+                val courtesyWindowMs = 120_000L // 2 full minutes
+                val graceUntilMs = maxOf(liveDepartureMs + courtesyWindowMs, nowMs + courtesyWindowMs)
+
+                departedVehicleGraceUntilMs = graceUntilMs
+                departedVehicleStartMs = nowMs
+                departedVehicleLiveDepartureEpochMs = liveDepartureMs
+                departedVehicleLine = trackedVehicleLine
+                departedVehicleDest = trackedVehicleDest
+                departedVehicleDelay = trackedVehicleDelay
+                departedVehicleAdjustedDep = trackedVehicleAdjustedDep
+                departedVehicleKey = trackedVehicleKey
+                departedVehicleId = trackedVehicleId
+
+                lastMatchedOriginVehicleKey = trackedVehicleKey
+                lastMatchedOriginVehicleId = trackedVehicleId
+                lastMatchedOriginArrivalEpochMs = liveDepartureMs
+
+                android.util.Log.i("TripOriginRealTimeCache", "🚗💨 Transit vehicle disappeared from feed ($departedVehicleLine). Activated 2 min courtesy based on live departure")
+
                 return OriginCacheReconciliationResult(
                     isLive = true,
                     liveMinutes = 0,
@@ -171,7 +304,6 @@ class TripOriginRealTimeCache {
                     normalizedLine = legLiveResult.matchedLineShortName ?: legLiveResult.normalizedLine
                 )
             } else {
-                // After 4 consecutive failed polls, drop to scheduled/static
                 if (consecutiveEmptyOriginPolls >= 4) {
                     clearMatchedOrigin()
                     lastKnownOriginLiveMinutes = null

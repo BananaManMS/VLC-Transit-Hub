@@ -7,6 +7,7 @@ import com.example.data.model.MetroStation
 import com.example.data.model.NominatimResult
 import com.example.ui.bus.EmtBusStop
 import com.example.ui.bus.MetrobusStop
+import com.example.ui.cercanias.LiveVehicleInfo
 import com.example.ui.map.components.ValenbisiStation
 
 enum class MapFilterType {
@@ -37,7 +38,6 @@ data class MapFilter(
         val SHOW_ALL = MapFilter(isFavorites = false, showBus = true, showMetrobus = true, showMetro = true, showCercanias = true, showValenbisi = true)
     }
 }
-
 sealed class SelectedMapItem {
     data class BusStop(val stop: GeoportalStopEntity, val emtStopModel: EmtBusStop) : SelectedMapItem()
     data class MetrobusStopItem(val stop: MetrobusStopEntity, val metrobusModel: MetrobusStop) : SelectedMapItem()
@@ -45,15 +45,16 @@ sealed class SelectedMapItem {
     data class Cercanias(val station: CercaniasStationEntity) : SelectedMapItem()
     data class Valenbisi(val station: ValenbisiStation) : SelectedMapItem()
     data class Address(val result: NominatimResult) : SelectedMapItem()
+    data class LiveTrain(val vehicle: LiveVehicleInfo) : SelectedMapItem()
 }
 
 sealed class MapSearchResult {
     abstract val score: Double
-    data class BusStop(val stop: GeoportalStopEntity, val alias: String?, override val score: Double) : MapSearchResult()
-    data class MetrobusStop(val stop: MetrobusStopEntity, val alias: String?, override val score: Double) : MapSearchResult()
-    data class Metro(val station: MetroStation, override val score: Double) : MapSearchResult()
-    data class Cercanias(val station: CercaniasStationEntity, override val score: Double) : MapSearchResult()
-    data class Address(val result: NominatimResult, override val score: Double) : MapSearchResult()
+    data class BusStop(val stop: GeoportalStopEntity, val alias: String? = null, override val score: Double = 0.0, val isFavorite: Boolean = false) : MapSearchResult()
+    data class MetrobusStop(val stop: MetrobusStopEntity, val alias: String? = null, override val score: Double = 0.0, val isFavorite: Boolean = false) : MapSearchResult()
+    data class Metro(val station: MetroStation, override val score: Double = 0.0, val isFavorite: Boolean = false) : MapSearchResult()
+    data class Cercanias(val station: CercaniasStationEntity, override val score: Double = 0.0, val isFavorite: Boolean = false) : MapSearchResult()
+    data class Address(val result: NominatimResult, override val score: Double = 0.0, val isFavorite: Boolean = false, val customTitle: String? = null) : MapSearchResult()
 }
 
 enum class MapSelectionMode {

@@ -267,28 +267,43 @@ class ActiveTripTrackingService : Service() {
                                 lastLocationTimeMillis = loc?.time ?: System.currentTimeMillis()
                             )
                             updateSnapshotAndNotification(trip)
+                        }
 
-                            // Grace period monitoring for departed/disappeared transit vehicle
-                            if (tripReconciler.isGracePeriodActive()) {
-                                val graceStartMs = tripReconciler.getGracePeriodStartTimeMs()
-                                if (graceStartMs != null) {
-                                    val elapsedSec = (System.currentTimeMillis() - graceStartMs) / 1000L
-                                    val vehicleName = tripReconciler.getGracePeriodVehicleName() ?: currentLeg?.routeShortName ?: "Transporte"
+                        // Grace period monitoring for departed/disappeared transit vehicle
+                        if (tripReconciler.isGracePeriodActive()) {
+                            val now = System.currentTimeMillis()
+                            val graceUntilMs = tripReconciler.getGracePeriodUntilMs() ?: (now + 120_000L)
+                            val targetTransitLegIndex = if (currentLeg?.mode == TransitMode.WALK && trip.currentLegIndex + 1 < trip.itinerary.legs.size) {
+                                trip.currentLegIndex + 1
+                            } else {
+                                trip.currentLegIndex
+                            }
+                            val targetMode = trip.itinerary.legs.getOrNull(targetTransitLegIndex)?.mode ?: TransitMode.SUBWAY
+                            val rawVehicleName = tripReconciler.getGracePeriodVehicleName()
+                                ?: trip.itinerary.legs.getOrNull(targetTransitLegIndex)?.routeShortName
+                                ?: "Metro"
+                            val vehicleName = formatVehicleNameForNotification(rawVehicleName, targetMode)
 
-                                    if (elapsedSec >= 60 && !hasAlertedBoardingConfirmation) {
-                                        android.util.Log.i(TAG, "Grace period: 1 minute passed, prompting user for boarding confirmation: $vehicleName")
-                                        hasAlertedBoardingConfirmation = true
-                                        tripNotificationManager.showBoardingConfirmationNotification(vehicleName, trip.currentLegIndex)
-                                    }
+                            // Prompt user via notification immediately when vehicle departs/disappears from departures board
+                            if (!hasAlertedBoardingConfirmation) {
+                                android.util.Log.i(TAG, "Grace period: vehicle departed/disappeared from board, prompting user for boarding confirmation: $vehicleName (leg $targetTransitLegIndex)")
+                                hasAlertedBoardingConfirmation = true
+                                tripNotificationManager.showBoardingConfirmationNotification(vehicleName, targetTransitLegIndex)
+                            }
 
-                                    if (elapsedSec >= 120) {
-                                        android.util.Log.i(TAG, "Grace period: 2 minutes expired without confirmation or motion. Rollover/Recalculate now!")
-                                        tripNotificationManager.dismissBoardingConfirmationNotification()
-                                        tripReconciler.clearGracePeriod()
-                                        hasAlertedBoardingConfirmation = false
-                                        UnifiedActiveTripStateTracker.triggerImmediateReconcile()
-                                    }
-                                }
+                            // 2 minutes of courtesy strictly based on live departure time expired without confirmation or motion
+                            if (now >= graceUntilMs) {
+                                android.util.Log.i(TAG, "Grace period: 2 minutes based on live departure time expired without confirmation or motion. Rollover/Recalculate now!")
+                                tripNotificationManager.dismissBoardingConfirmationNotification()
+                                tripReconciler.clearGracePeriod()
+                                hasAlertedBoardingConfirmation = false
+                                UnifiedActiveTripStateTracker.triggerImmediateReconcile()
+                            }
+                        } else if (hasAlertedBoardingConfirmation) {
+                            val progressState = ActiveTripProgressTracker.progressState.value
+                            if (progressState.isBoarded) {
+                                tripNotificationManager.dismissBoardingConfirmationNotification()
+                                hasAlertedBoardingConfirmation = false
                             }
                         }
                     }
@@ -317,12 +332,6 @@ class ActiveTripTrackingService : Service() {
                 val trip = currentActiveTrip ?: return@collectLatest
                 val legs = trip.itinerary.legs
                 val currentLeg = legs.getOrNull(trip.currentLegIndex)
-
-                // If grace period is active and we capture movement (speed > 1.8 m/s), auto-board!
-                if (tripReconciler.isGracePeriodActive() && location.hasSpeed() && location.speed > 1.8f) {
-                    android.util.Log.i(TAG, "Grace period active & movement captured: speed is ${location.speed} m/s (> 1.8 m/s). Auto-boarding!")
-                    handleManualBoarding(trip.currentLegIndex)
-                }
 
                 // Feed Sensor Fusion Engine with latest GPS, kinematic and real-time feed data
                 sensorFusionEngine.evaluate(
@@ -438,6 +447,30 @@ class ActiveTripTrackingService : Service() {
             snapshot = snapshot,
             distanceToTarget = distanceToTarget
         )
+    }
+
+    private fun formatVehicleNameForNotification(name: String, mode: TransitMode): String {
+        val clean = name.trim()
+        return when (mode) {
+            TransitMode.SUBWAY -> {
+                if (clean.startsWith("Metro", ignoreCase = true)) clean
+                else if (clean.startsWith("L", ignoreCase = true) || clean.all { it.isDigit() }) "Metro $clean"
+                else "Metro $clean"
+            }
+            TransitMode.BUS -> {
+                if (clean.startsWith("Bus", ignoreCase = true) || clean.startsWith("EMT", ignoreCase = true)) clean
+                else "Autobús $clean"
+            }
+            TransitMode.TRAM -> {
+                if (clean.startsWith("Tranv", ignoreCase = true) || clean.startsWith("Tram", ignoreCase = true)) clean
+                else "Tranvía $clean"
+            }
+            TransitMode.RAIL -> {
+                if (clean.startsWith("Cercan", ignoreCase = true) || clean.startsWith("Tren", ignoreCase = true) || clean.startsWith("Rodalia", ignoreCase = true)) clean
+                else "Tren $clean"
+            }
+            else -> clean.ifBlank { "Transporte" }
+        }
     }
 
     private fun stopForegroundTracking() {

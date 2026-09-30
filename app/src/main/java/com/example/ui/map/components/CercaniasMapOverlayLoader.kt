@@ -376,4 +376,22 @@ object CercaniasMapOverlayLoader {
         val den = Math.sqrt(dy * dy + dx * dx)
         return if (den == 0.0) 0.0 else num / den
     }
+
+    fun getLinePoints(lineCode: String): List<List<GeoPoint>> {
+        val clean = lineCode.uppercase().replace("C-", "").replace("C_", "").replace("C", "").trim()
+        val targetRef = when (clean) {
+            "1", "10" -> "C1"
+            "2", "20" -> "C2"
+            "3", "30" -> "C3"
+            "4", "40" -> "C4"
+            "5", "50" -> "C5"
+            "6", "60" -> "C6"
+            else -> "C$clean"
+        }
+        val rawPolylines = polylineSets.highResClose.filter { 
+            val refClean = it.lineRef.uppercase().replace("C-", "").replace("C_", "").replace("C", "").trim()
+            it.lineRef.uppercase().trim() == targetRef || refClean == clean
+        }
+        return rawPolylines.map { it.points }
+    }
 }

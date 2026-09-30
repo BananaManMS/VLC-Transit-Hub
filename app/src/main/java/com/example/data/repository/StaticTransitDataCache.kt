@@ -44,6 +44,16 @@ object StaticTransitDataCache {
     @Synchronized
     fun getOrLoadEmtStops(context: Context): List<GeoportalStopEntity> {
         cachedEmtStops?.let { return it }
+        val db = com.example.data.database.AppDatabase.getDatabase(context)
+        val fromDb = try {
+            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                db.geoportalStopDao().getAllActiveStops()
+            }
+        } catch (_: Exception) { emptyList() }
+        if (fromDb.isNotEmpty() && fromDb.size >= 50) {
+            cachedEmtStops = fromDb
+            return fromDb
+        }
         val stops = BusMapper.parseStopsFromJsonDirect(context)
         cachedEmtStops = stops
         return stops

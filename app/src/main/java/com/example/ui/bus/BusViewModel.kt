@@ -152,6 +152,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         _lastLocation.value = Pair(lat, lon)
         if (_currentBusFilterSource.value == BusFilterSource.FAVORITES_BUS || _currentBusFilterSource.value == BusFilterSource.GPS_USER) {
             loadBusStops()
+            loadMetrobusStops()
         }
     }
 
@@ -172,7 +173,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val isOnboardingCompleted = repository.getPreference("has_completed_onboarding", "false") == "true"
             if (isOnboardingCompleted) {
-                com.example.data.repository.emt.EmtDataSyncManager(application).syncEmtData()
+                com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(application.applicationContext)
                 com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(application.applicationContext)
             }
         }
@@ -450,6 +451,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         _favoriteBusStops.value = current
         viewModelScope.launch {
             repository.savePreference("favorite_bus_stops", current.joinToString(","))
+            loadBusStops()
         }
     }
 
@@ -499,7 +501,14 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     ): List<EmtBusStop> {
         val stopsToProcess = if (filterIds != null) {
             val stopMap = baseStops.associateBy { it.id_parada }
-            filterIds.mapNotNull { stopMap[it] ?: database.geoportalStopDao().getStopById(it) }
+            val favStops = filterIds.mapNotNull { stopMap[it] ?: database.geoportalStopDao().getStopById(it) }
+            if (query.isNotEmpty()) {
+                favStops.filter { stop ->
+                    computeSearchScore(stop.id_parada, stop.denominacion, query, aliases[stop.id_parada]) > 0.0
+                }
+            } else {
+                favStops
+            }
         } else if (query.isNotEmpty()) {
             baseStops.mapNotNull { stop ->
                 val score = computeSearchScore(stop.id_parada, stop.denominacion, query, aliases[stop.id_parada])
@@ -587,7 +596,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                                     refLon = refLon,
                                     maxDistanceMeters = null,
                                     filterIds = favs,
-                                    sortByDistance = false
+                                    sortByDistance = true
                                 )
                             }
                         } else {
@@ -598,7 +607,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                                 refLat = refLat,
                                 refLon = refLon,
                                 maxDistanceMeters = null,
-                                filterIds = if (favs.isNotEmpty()) favs else null,
+                                filterIds = null,
                                 sortByDistance = true
                             )
                         }
@@ -812,7 +821,15 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     ): List<MetrobusStop> {
         val stopsToProcess = if (filterIds != null) {
             val stopMap = dbStops.associateBy { it.id_parada }
-            filterIds.mapNotNull { stopMap[it] }
+            val favStops = filterIds.mapNotNull { stopMap[it] }
+            if (query.isNotEmpty()) {
+                favStops.filter { stop ->
+                    val linesList = stop.lineas?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+                    computeSearchScore(stop.id_parada, stop.denominacion, query, aliases[stop.id_parada], linesList) > 0.0
+                }
+            } else {
+                favStops
+            }
         } else if (query.isNotEmpty()) {
             dbStops.mapNotNull { stop ->
                 val linesList = stop.lineas?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
@@ -854,7 +871,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
-        return if (query.isEmpty()) {
+        return if (filterIds != null || query.isEmpty()) {
             mapped.sortedBy { it.second }.map { it.first }
         } else {
             mapped.map { it.first }
@@ -911,7 +928,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                                 refLat = refLat,
                                 refLon = refLon,
                                 maxDistanceMeters = null,
-                                filterIds = if (favs.isNotEmpty()) favs.toSet() else null
+                                filterIds = null
                             )
                         }
                     }

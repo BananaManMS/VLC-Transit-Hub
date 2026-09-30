@@ -301,7 +301,7 @@ object TripStepProgressionEngine {
             val stationCoords = getLegOriginCoordinates(transitLeg) ?: getLegTargetCoordinates(legs[0])
             if (stationCoords != null) {
                 val distToStation = calculateDistanceMeters(userLat, userLon, stationCoords.first, stationCoords.second)
-                if (distToStation <= 75.0) {
+                if (distToStation <= 120.0) {
                     boardedLegIndices.remove(0)
                     boardedLegIndices.remove(1)
                     ActiveTripProgressTracker.resetForNewLeg(1)
@@ -407,29 +407,43 @@ object TripStepProgressionEngine {
             val minDepartureDist = when (currentLeg.mode) {
                 TransitMode.SUBWAY, TransitMode.RAIL -> 150.0
                 TransitMode.TRAM -> 80.0
-                TransitMode.BUS -> 70.0
+                TransitMode.BUS -> 200.0
                 else -> 80.0
             }
 
-            // Check if user has passed intermediate stops (e.g. at stop 2, 3...)
+            // Check if user has passed or reached intermediate/subsequent stops (via cell towers, Wi-Fi or GPS)
             var hasPassedAnyIntermediateStop = false
             if (currentLeg.intermediateStops.isNotEmpty() && userLat != 0.0 && userLon != 0.0) {
+                // Adaptive tolerance for underground cellular repeaters / microcells and coarse location:
+                val stopTolerance = maxOf(140.0, (locationAccuracyMeters ?: 40.0f).toDouble() * 1.3)
                 for (stop in currentLeg.intermediateStops) {
                     val distToStop = calculateDistanceMeters(userLat, userLon, stop.lat, stop.lon)
-                    if (distToStop <= 100.0) {
+                    if (distToStop <= stopTolerance && distanceToOrigin > (minDepartureDist * 0.8)) {
                         hasPassedAnyIntermediateStop = true
                         break
                     }
                 }
             }
 
-            val hasMovedAwayByGps = (distanceToOrigin > minDepartureDist && (totalLegDist <= 10.0 || distanceToTarget < (totalLegDist - 50.0))) || hasPassedAnyIntermediateStop
+            // Gradual displacement away from origin towards destination / subsequent stops
+            val effectiveMinDepartureDist = maxOf(minDepartureDist, (locationAccuracyMeters ?: 30.0f).toDouble() * 1.3)
+            val hasGraduallyMovedAway = distanceToOrigin > effectiveMinDepartureDist &&
+                    totalLegDist > effectiveMinDepartureDist &&
+                    distanceToTarget < (totalLegDist - 80.0)
+
+            // When user is detected at an intermediate stop or clearly displaced along the corridor towards the destination:
+            // This is a definitive confirmation of boarding, safely applied even with coarse cell tower fixes!
+            val hasMovedAwayByGpsOrNetwork = hasPassedAnyIntermediateStop || hasGraduallyMovedAway
+
             val isManuallyBoarded = boardedLegIndices.contains(currentIndex)
             val isTrackerBoarded = currentProgressInfo.isBoarded && currentProgressInfo.trackedLegIndex == currentIndex
-            val isCurrentlyBoarded = isManuallyBoarded || isTrackerBoarded || hasMovedAwayByGps
+            val isCurrentlyBoarded = isManuallyBoarded || isTrackerBoarded || hasMovedAwayByGpsOrNetwork
 
             if (isCurrentlyBoarded) {
                 boardedLegIndices.add(currentIndex)
+                if (!currentProgressInfo.isBoarded) {
+                    ActiveTripProgressTracker.markAsBoarded(currentIndex)
+                }
             }
 
             if (!isCurrentlyBoarded) {
@@ -466,13 +480,30 @@ object TripStepProgressionEngine {
                 val totalStopsInLeg = (currentLeg.intermediateStops.size + 1).coerceAtLeast(1)
                 val intermediateStops = currentLeg.intermediateStops
 
+                val previouslyPassedStops = if (currentProgressInfo.trackedLegIndex == currentIndex && currentProgressInfo.remainingStopsCount != null) {
+                    (totalStopsInLeg - currentProgressInfo.remainingStopsCount).coerceIn(0, intermediateStops.size)
+                } else 0
+
                 if (isGpsInaccurate) {
                     // Underground tunnel / weak GPS: Time-based Dead Reckoning FROM ACTUAL DEPARTURE TIME
                     val legDuration = currentLeg.durationSeconds.coerceAtLeast(60).toFloat()
                     val elapsedSec = ((now - departureTimeMs) / 1000).coerceAtLeast(0).toFloat()
                     val deadReckoningProgress = (elapsedSec / legDuration).coerceIn(0.05f, 0.98f)
 
-                    val passedStops = (deadReckoningProgress * totalStopsInLeg).toInt().coerceIn(0, intermediateStops.size)
+                    var passedStops = previouslyPassedStops
+                    if (intermediateStops.isNotEmpty()) {
+                        for (i in intermediateStops.indices) {
+                            val stopProgressThreshold = (i + 1.0f) / totalStopsInLeg
+                            if (deadReckoningProgress >= stopProgressThreshold + 0.05f && i <= passedStops) {
+                                passedStops = maxOf(passedStops, i + 1)
+                            }
+                        }
+                    } else {
+                        passedStops = (deadReckoningProgress * totalStopsInLeg).toInt().coerceIn(0, intermediateStops.size)
+                    }
+
+                    passedStops = maxOf(previouslyPassedStops, passedStops).coerceIn(0, intermediateStops.size)
+
                     val remainingStops = if (distanceToTarget <= captureRadius || deadReckoningProgress >= 0.98f) {
                         0
                     } else {
@@ -494,21 +525,27 @@ object TripStepProgressionEngine {
                         (1.0 - (distanceToTarget / totalLegDist)).toFloat().coerceIn(0.05f, 0.98f)
                     } else 0.5f
 
-                    var passedStops = 0
-                    if (intermediateStops.isNotEmpty() && userLat != 0.0 && userLon != 0.0) {
+                    var passedStops = previouslyPassedStops
+                    if (intermediateStops.isNotEmpty()) {
                         for (i in intermediateStops.indices) {
                             val stop = intermediateStops[i]
-                            val distToStop = calculateDistanceMeters(userLat, userLon, stop.lat, stop.lon)
-                            val distFromStopToTarget = if (targetCoords != null) {
-                                calculateDistanceMeters(stop.lat, stop.lon, targetCoords.first, targetCoords.second)
-                            } else 0.0
-                            if (distToStop <= 90.0 || (distanceToTarget < distFromStopToTarget - 40.0)) {
-                                passedStops = i + 1
+                            val distToStop = if (userLat != 0.0 && userLon != 0.0) {
+                                calculateDistanceMeters(userLat, userLon, stop.lat, stop.lon)
+                            } else null
+
+                            val stopProgressThreshold = (i + 1.0f) / totalStopsInLeg
+                            val isStopReached = (distToStop != null && distToStop <= 100.0) ||
+                                    (progress >= stopProgressThreshold + 0.05f)
+
+                            if (isStopReached && i <= passedStops) {
+                                passedStops = maxOf(passedStops, i + 1)
                             }
                         }
                     } else {
                         passedStops = (progress * totalStopsInLeg).toInt().coerceIn(0, intermediateStops.size)
                     }
+
+                    passedStops = maxOf(previouslyPassedStops, passedStops).coerceIn(0, intermediateStops.size)
 
                     val remainingStops = if (distanceToTarget <= captureRadius || progress >= 0.98f) {
                         0

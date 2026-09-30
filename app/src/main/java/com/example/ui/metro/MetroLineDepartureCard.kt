@@ -141,33 +141,6 @@ fun MetroLineDepartureCard(
                         onExpired = onExpired
                     )
                 }
-
-                // Avisos de la línea si los hubiera
-                if (lineIncidents.isNotEmpty()) {
-                    val text = if (lineIncidents.size == 1) {
-                        if (appLanguage == AppLanguage.CA) "1 avís de línia" else "1 aviso de línea"
-                    } else {
-                        if (appLanguage == AppLanguage.CA) "${lineIncidents.size} avisos de línia" else "${lineIncidents.size} avisos de línea"
-                    }
-                    Row(
-                        modifier = Modifier.padding(start = 48.dp, top = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = text,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.error,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
             }
         }
     } else {
@@ -310,33 +283,6 @@ fun MetroLineDepartureCard(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                }
-
-                // Avisos de la línea si los hubiera
-                if (lineIncidents.isNotEmpty()) {
-                    val text = if (lineIncidents.size == 1) {
-                        if (appLanguage == AppLanguage.CA) "1 avís de línia" else "1 aviso de línea"
-                    } else {
-                        if (appLanguage == AppLanguage.CA) "${lineIncidents.size} avisos de línia" else "${lineIncidents.size} avisos de línea"
-                    }
-                    Row(
-                        modifier = Modifier.padding(start = 62.dp, end = 14.dp, top = 2.dp, bottom = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = text,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.error,
-                            fontWeight = FontWeight.SemiBold
-                        )
                     }
                 }
             }

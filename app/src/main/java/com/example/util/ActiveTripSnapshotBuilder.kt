@@ -51,7 +51,7 @@ object ActiveTripSnapshotBuilder {
                     legs[currentLegIndex + 1].mode in listOf(TransitMode.SUBWAY, TransitMode.BUS, TransitMode.TRAM, TransitMode.RAIL) -> {
                 val distToStation = progressInfo.distanceToTargetMeters
                 val walkMins = progressInfo.dynamicWalkMinutesRemaining
-                val isAtStation = (distToStation != null && distToStation <= 60.0) || (walkMins != null && walkMins <= 1)
+                val isAtStation = (distToStation != null && distToStation <= 120.0) || (walkMins != null && walkMins <= 2) || (distToStation == null)
                 if (isAtStation) Pair(legs[currentLegIndex + 1], currentLegIndex + 1) else Pair(null, -1)
             }
             else -> Pair(null, -1)
@@ -97,11 +97,17 @@ object ActiveTripSnapshotBuilder {
         // Prevent debark alert right at boarding or when user hasn't departed origin station yet
         val hasDepartedOrigin = progressFraction >= 0.20f
 
-        val isImminentDebark = isBoarded && hasDepartedOrigin && (
-                (progressFraction >= 0.70f) ||
-                (distToTarget != null && distToTarget <= 250.0) ||
-                (remainingStops != null && remainingStops == 1 && currentLeg?.intermediateStops?.isNotEmpty() == true && progressFraction >= 0.35f) ||
-                (arrivalMins != null && arrivalMins <= 2 && progressFraction >= 0.30f)
+        val hasIntermediateStops = currentLeg?.intermediateStops?.isNotEmpty() == true
+        val isAtFinalStopApproach = if (hasIntermediateStops) {
+            remainingStops == 1 || (remainingStops == null && progressFraction >= 0.88f)
+        } else {
+            progressFraction >= 0.65f
+        }
+
+        val isImminentDebark = isBoarded && hasDepartedOrigin && isAtFinalStopApproach && (
+                (distToTarget != null && distToTarget <= 350.0) ||
+                (arrivalMins != null && arrivalMins <= 2) ||
+                (progressFraction >= 0.90f)
         )
 
         return UnifiedActiveTripSnapshot(

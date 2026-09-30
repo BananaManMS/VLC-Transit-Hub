@@ -35,11 +35,15 @@ class MetroAlertsRepository {
     private val _isAlertsLoading = MutableStateFlow(true)
     val isAlertsLoading = _isAlertsLoading.asStateFlow()
 
+    private val _hasAlertsError = MutableStateFlow(false)
+    val hasAlertsError = _hasAlertsError.asStateFlow()
+
     private val _isNewsLoading = MutableStateFlow(false)
     val isNewsLoading = _isNewsLoading.asStateFlow()
 
     suspend fun fetchAllAlerts() = withContext(Dispatchers.IO) {
         _isAlertsLoading.value = true
+        _hasAlertsError.value = false
         try {
             val url = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/avisos"
             val request = okhttp3.Request.Builder()
@@ -210,6 +214,7 @@ class MetroAlertsRepository {
                 }
             }
         } catch (e: Exception) {
+            _hasAlertsError.value = true
             Log.w("MetroAlertsRepository", "Notice: Unified alerts unavailable or timed out: ${e.message}")
         } finally {
             _isAlertsLoading.value = false

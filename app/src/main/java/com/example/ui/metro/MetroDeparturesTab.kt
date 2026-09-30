@@ -196,6 +196,18 @@ fun ProximosTrenesScreen(
             }.distinctBy { it.id }
         }
     }
+    val stationIncidentLines = remember(selectedStation, stationIncidents) {
+        if (selectedStation == null || stationIncidents.isEmpty()) emptyList<String>()
+        else {
+            val set = mutableSetOf<String>()
+            for (lineId in selectedStation.lines) {
+                if (metroViewModel.getIncidentsForLine(lineId).isNotEmpty()) {
+                    set.add(lineId.replace("L", "", ignoreCase = true).trim())
+                }
+            }
+            set.toList().sorted()
+        }
+    }
     val stationDisplayName = selectedStation?.name ?: "Selecciona una estación"
     val isStationInfoExpanded by metroViewModel.isStationInfoExpanded.collectAsState()
 
@@ -331,7 +343,7 @@ fun ProximosTrenesScreen(
                 Row(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         text = stationDisplayName,
@@ -348,6 +360,16 @@ fun ProximosTrenesScreen(
                         appLanguage = appLanguage,
                         isDarkMode = isDarkMode
                     )
+
+                    if (stationIncidentLines.isNotEmpty()) {
+                        StationCirculationAlertBadge(
+                            stationName = stationDisplayName,
+                            affectedLines = stationIncidentLines,
+                            incidents = stationIncidents,
+                            appLanguage = appLanguage,
+                            isDarkMode = isDarkMode
+                        )
+                    }
                 }
                 IconButton(
                     onClick = {

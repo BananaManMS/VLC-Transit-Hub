@@ -78,6 +78,7 @@ fun MapScreen(
     selectedItinerary: PlannedItinerary? = null,
     onClearItinerary: (() -> Unit)? = null,
     onOpenRouteDetail: (() -> Unit)? = null,
+    onStartTrip: ((PlannedItinerary) -> Unit)? = null,
     activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val context = LocalContext.current
@@ -86,6 +87,7 @@ fun MapScreen(
     val visibleMetrobusStops by mapViewModel.visibleMetrobusStops.collectAsState()
     val visibleMetroStations by mapViewModel.visibleMetroStations.collectAsState()
     val visibleCercaniasStations by mapViewModel.visibleCercaniasStations.collectAsState()
+    val liveCercaniasVehicles by mapViewModel.liveCercaniasVehicles.collectAsState()
     val selectedItem by mapViewModel.selectedMapItem.collectAsState()
     val selectedBusLineFilters by mapViewModel.selectedBusLineFilters.collectAsState()
     val selectedDirectionFilter by mapViewModel.selectedDirectionFilter.collectAsState()
@@ -295,6 +297,7 @@ fun MapScreen(
             metrobusStops = visibleMetrobusStops,
             metroStations = visibleMetroStations,
             cercaniasStations = visibleCercaniasStations,
+            liveCercaniasVehicles = liveCercaniasVehicles,
             valenbisiStations = valenbisiStations,
             customFavorites = customFavorites,
             homeLocation = homeLocation,
@@ -431,7 +434,10 @@ fun MapScreen(
                 onOpenRouteDetail = {
                     showRouteDetailSheet = true
                     onOpenRouteDetail?.invoke()
-                }
+                },
+                onStartTrip = if (onStartTrip != null) {
+                    { onStartTrip(selectedItinerary) }
+                } else null
             )
         }
 
@@ -489,6 +495,7 @@ fun MapScreen(
                             is SelectedMapItem.Cercanias -> Triple(item.station.lat, item.station.lon, "Estación ${item.station.displayName}")
                             is SelectedMapItem.Valenbisi -> Triple(item.station.latitude, item.station.longitude, "Valenbisi ${item.station.name}")
                             is SelectedMapItem.Address -> Triple(item.result.latitude, item.result.longitude, item.result.displayName.split(",").firstOrNull()?.trim() ?: item.result.displayName)
+                            is SelectedMapItem.LiveTrain -> Triple(item.vehicle.latitude ?: 0.0, item.vehicle.longitude ?: 0.0, "Tren ${item.vehicle.trainNum.ifBlank { item.vehicle.routeId }}")
                         }
                         mapViewModel.selectItem(null)
                         onNavigateToRoutePlanner?.invoke(
@@ -657,6 +664,7 @@ fun MapScreen(
                         is SelectedMapItem.Cercanias -> favoriteCercaniasStations.contains(item.station.stop_id)
                         is SelectedMapItem.Valenbisi -> false
                         is SelectedMapItem.Address -> false
+                        is SelectedMapItem.LiveTrain -> false
                     }
                 }
             }
@@ -733,8 +741,20 @@ fun MapScreen(
         if (selectedItinerary != null && showRouteDetailSheet) {
             RouteDetailBottomSheet(
                 itinerary = selectedItinerary,
+                userLocation = userLocation?.let { gp ->
+                    android.location.Location("gps").apply {
+                        latitude = gp.latitude
+                        longitude = gp.longitude
+                    }
+                },
                 onDismiss = { showRouteDetailSheet = false },
                 onViewOnMap = { showRouteDetailSheet = false },
+                onStartTrip = if (onStartTrip != null) {
+                    {
+                        showRouteDetailSheet = false
+                        onStartTrip(selectedItinerary)
+                    }
+                } else null,
                 appLanguage = appLanguage
             )
         }

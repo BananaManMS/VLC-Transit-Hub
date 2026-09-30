@@ -156,12 +156,11 @@ object MetroCardMapper {
     fun isCardFaded(meta: CardMetadata): Boolean {
         return isCardFaded(meta.defaultName, meta.titleLower, meta.classLower, meta.cardType, JSONObject(), meta.isMonthly, meta.isTuiN)
     }
-
     fun mapToUiModel(card: TransitCardEntity): TransitCardUiModel {
         val detailsObj = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
-        val showOnHome = detailsObj.optBoolean("show_on_home", true)
-        val customOrder = detailsObj.optInt("custom_order", 0)
-        val isManuallyInactive = detailsObj.optBoolean("manually_inactive", false)
+        val showOnHome = if (detailsObj.has("show_on_home")) detailsObj.optBoolean("show_on_home", card.showOnHome) else card.showOnHome
+        val customOrder = if (detailsObj.has("custom_order")) detailsObj.optInt("custom_order", card.customOrder) else card.customOrder
+        val isManuallyInactive = card.isManuallyInactive || detailsObj.optBoolean("manually_inactive", false)
         val title = detailsObj.optString("titulo", detailsObj.optString("nombre", card.defaultName)).ifEmpty { card.defaultName }
         val clase = detailsObj.optString("clase", card.cardType)
         val titleLower = title.lowercase()

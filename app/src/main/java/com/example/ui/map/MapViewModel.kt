@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.osmdroid.util.GeoPoint
 
@@ -55,7 +56,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     // Search and Recent Searches Manager
-    private val searchManager = MapSearchManager(viewModelScope, dashboardRepository, geocodingRepository, database, gson)
+    private val searchManager = MapSearchManager(viewModelScope, dashboardRepository, geocodingRepository, database, gson, context = application)
 
     // Filter Manager
     private val _mapFilter = MutableStateFlow(MapFilter.DEFAULT)
@@ -120,6 +121,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _cercaniasDeparturesLoading = MutableStateFlow(false)
     val cercaniasDeparturesLoading: StateFlow<Boolean> = _cercaniasDeparturesLoading.asStateFlow()
+
+    private val _liveCercaniasVehicles = MutableStateFlow<List<com.example.ui.cercanias.LiveVehicleInfo>>(emptyList())
+    val liveCercaniasVehicles: StateFlow<List<com.example.ui.cercanias.LiveVehicleInfo>> = _liveCercaniasVehicles.asStateFlow()
 
     // Favorites States
     private val _favoriteBusStops = MutableStateFlow<Set<String>>(emptySet())
@@ -278,6 +282,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     val homeLocation: StateFlow<RecentSearch?> = searchManager.homeLocation
     val workLocation: StateFlow<RecentSearch?> = searchManager.workLocation
     val customFavorites: StateFlow<List<RecentSearch>> = searchManager.customFavorites
+
+    init {
+        // Disabling live Cercanias train polling in the main map to prevent performance degradation and memory overhead.
+        // Live train tracking has been migrated to the dedicated, on-demand Cercanias Live Map Dialog.
+    }
 
     fun addRecentSearch(search: RecentSearch) = searchManager.addRecentSearch(search)
     fun clearRecentSearches() = searchManager.clearRecentSearches()
@@ -440,11 +449,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     @OptIn(kotlinx.coroutines.FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val searchResults: StateFlow<List<MapSearchResult>> = _searchQuery
-        .debounce(300L)
+        .debounce(250L)
         .distinctUntilChanged()
         .flatMapLatest { query: String ->
             val trimmed = query.trim()
-            if (trimmed.length < 2) {
+            if (trimmed.isEmpty()) {
                 selectionHandler.setIsSearching(false)
                 flowOf(emptyList<MapSearchResult>())
             } else {
@@ -461,6 +470,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     busStopAliases = _busStopAliases.value,
                     metrobusStopAliases = _metrobusStopAliases.value,
                     customFavorites = customFavorites.value,
+                    homeLocation = homeLocation.value,
+                    workLocation = workLocation.value,
                     favoriteBusStops = _favoriteBusStops.value,
                     favoriteMetroStations = _favoriteMetroStations.value,
                     favoriteCercaniasStations = _favoriteCercaniasStations.value,

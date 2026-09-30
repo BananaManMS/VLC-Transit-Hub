@@ -80,7 +80,8 @@ object TripVehicleMatcher {
     /**
      * Verifies if a given destination matches the planned leg destination or intermediate stops.
      */
-    fun isDestinationMatch(depDestination: String, leg: PlannedLeg): Boolean {
-        return TransitIdMapper.isDestinationMatch(depDestination, leg)
+    @JvmOverloads
+    fun isDestinationMatch(depDestination: String, leg: PlannedLeg, candidateLine: String? = null): Boolean {
+        return TransitIdMapper.isDestinationMatch(depDestination, leg, candidateLine)
     }
 }

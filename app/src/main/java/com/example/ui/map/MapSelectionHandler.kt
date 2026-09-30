@@ -102,6 +102,7 @@ class MapSelectionHandler(
                 is SelectedMapItem.Cercanias -> Pair(item.station.lat, item.station.lon)
                 is SelectedMapItem.Valenbisi -> Pair(item.station.latitude, item.station.longitude)
                 is SelectedMapItem.Address -> Pair(item.result.latitude, item.result.longitude)
+                is SelectedMapItem.LiveTrain -> Pair(item.vehicle.latitude ?: 0.0, item.vehicle.longitude ?: 0.0)
             }
             val currentZoom = locationCoordinator.cameraZoom.value
             val targetZoom = if (currentZoom < 17.0) 17.0 else currentZoom

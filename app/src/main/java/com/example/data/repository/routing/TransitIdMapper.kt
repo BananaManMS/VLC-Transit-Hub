@@ -523,9 +523,9 @@ object TransitIdMapper {
         "L2" to listOf("lliria", "fondo de benaguasil", "benaguasil", "la pobla de vallbona", "gallipont - torre del virrei", "l'eliana", "leliana", "montesol", "entrepins", "la vallesa", "la canyada", "fuente del jarro", "paterna", "campament", "les carolines - fira", "les carolines fira", "benimamet", "cantereria", "empalme", "beniferri", "campanar", "turia", "angel guimera", "pl. espanya", "plaza espana", "jesus", "patraix", "safranar", "sant isidre", "valencia sud", "paiporta", "picanya", "torrent", "torrent avinguda"),
         "L3" to listOf("rafelbunyol", "la pobla de farnals", "massamagrell", "museros", "albalat dels sorells", "foios", "meliana", "almassera", "alboraia peris arago", "alboraia palmaret", "machado", "benimaclet", "facultats", "alameda", "colon", "xativa", "angel guimera", "av. del cid", "avenida del cid", "nou d'octubre", "nou doctubre", "mislata", "mislata almassil", "faitanar", "quart de poblet", "salt de l'aigua", "salt de laigua", "manises", "roses", "rosas", "aeroport", "aeropuerto"),
         "L4" to listOf("mas del rosari", "la coma", "tomas y valiente", "parc cientific", "ll. llarga - terramelar", "terramelar", "vicent andres estelles", "campus", "sant joan", "la granja", "palau de congressos", "florista", "garbi", "benicalap", "transits", "reus", "sagunt", "pont de fusta", "trinitat", "benimaclet", "vicente zaragoza", "vicent zaragoza", "universitat politecnica", "la carrasca", "tarongers - ernest lluch", "tarongers ernest lluch", "betero", "la cadena", "platja malva-rosa", "platja malvarrosa", "platja les arenes", "dr. lluch", "doctor lluch"),
-        "L5" to listOf("maritim", "maritim - serreria", "maritim serreria", "ayora", "amistat", "amistat - conservatori", "arago", "aragon", "alameda", "facultats", "benimaclet", "machado", "colon", "xativa", "angel guimera", "av. del cid", "avenida del cid", "nou d'octubre", "nou doctubre", "mislata", "mislata almassil", "faitanar", "quart de poblet", "salt de l'aigua", "salt de laigua", "manises", "roses", "rosas", "aeroport", "aeropuerto"),
+        "L5" to listOf("maritim", "maritim - serreria", "maritim serreria", "ayora", "amistat", "amistat - conservatori", "arago", "aragon", "alameda", "colon", "xativa", "angel guimera", "av. del cid", "avenida del cid", "nou d'octubre", "nou doctubre", "mislata", "mislata almassil", "faitanar", "quart de poblet", "salt de l'aigua", "salt de laigua", "manises", "roses", "rosas", "aeroport", "aeropuerto"),
         "L6" to listOf("tossal del rei", "sant miquel dels reis", "estadi ciutat de valencia", "orriols", "alfauir", "benimaclet", "vicente zaragoza", "vicent zaragoza", "universitat politecnica", "la carrasca", "tarongers - ernest lluch", "tarongers ernest lluch", "betero", "la cadena", "cabanyal", "francesc cubells", "grau - la marina", "grau la marina", "maritim", "maritim - serreria", "maritim serreria"),
-        "L7" to listOf("maritim", "maritim - serreria", "maritim serreria", "ayora", "amistat", "amistat - conservatori", "arago", "aragon", "alameda", "facultats", "benimaclet", "machado", "colon", "bailen", "jesus", "patraix", "safranar", "sant isidre", "valencia sud", "paiporta", "picanya", "torrent", "torrent avinguda"),
+        "L7" to listOf("maritim", "maritim - serreria", "maritim serreria", "ayora", "amistat", "amistat - conservatori", "arago", "aragon", "alameda", "colon", "bailen", "jesus", "patraix", "safranar", "sant isidre", "valencia sud", "paiporta", "picanya", "torrent", "torrent avinguda"),
         "L8" to listOf("maritim", "maritim - serreria", "maritim serreria", "grau - la marina", "grau la marina", "neptu"),
         "L9" to listOf("alboraia peris arago", "alboraia palmaret", "machado", "benimaclet", "facultats", "alameda", "colon", "xativa", "angel guimera", "av. del cid", "avenida del cid", "nou d'octubre", "nou doctubre", "mislata", "mislata almassil", "faitanar", "quart de poblet", "salt de l'aigua", "salt de laigua", "manises", "roses", "rosas", "la cova", "la presa", "valencia la vella", "riba-roja de turia", "riba roja de turia"),
         "L10" to listOf("alacant", "alicante", "russafa", "ruzafa", "amado granell - montolivet", "amado granell montolivet", "quatre carreres", "ciutat arts i ciencies - justicia", "ciutat arts i ciencies justicia", "ciutat arts i ciencies", "oceanografic", "moreres", "natzaret"),
@@ -548,31 +548,35 @@ object TransitIdMapper {
     ): Set<String> {
         val result = mutableSetOf<String>()
         val normOrig = originalLine?.trim()?.uppercase() ?: ""
-        if (normOrig.isNotBlank()) {
-            result.add(normOrig)
-            val digitsOnly = normOrig.filter { it.isDigit() }
-            if (digitsOnly.isNotBlank()) {
-                if (mode == com.example.data.model.routing.TransitMode.SUBWAY || mode == com.example.data.model.routing.TransitMode.TRAM) {
-                    result.add("L$digitsOnly")
-                    result.add(digitsOnly)
-                } else if (mode == com.example.data.model.routing.TransitMode.RAIL) {
-                    result.add("C$digitsOnly")
-                    result.add(digitsOnly)
-                }
-            }
-        }
 
-        // Only apply alternative multi-line matching to Trains and Metros/Trams!
+        // Only apply alternative multi-line matching to Trains and Metros/Trams
         if (mode != com.example.data.model.routing.TransitMode.SUBWAY &&
             mode != com.example.data.model.routing.TransitMode.TRAM &&
             mode != com.example.data.model.routing.TransitMode.RAIL) {
+            if (normOrig.isNotBlank()) result.add(normOrig)
             return result
         }
 
         val fromNorm = normalizeStationName(fromName)
         val toNorm = normalizeStationName(toName)
-        if (fromNorm.isBlank() || toNorm.isBlank() || fromNorm == toNorm) return result
+        if (fromNorm.isBlank() || toNorm.isBlank() || fromNorm == toNorm) {
+            if (normOrig.isNotBlank()) {
+                result.add(normOrig)
+                val digitsOnly = normOrig.filter { it.isDigit() }
+                if (digitsOnly.isNotBlank()) {
+                    if (mode == com.example.data.model.routing.TransitMode.SUBWAY || mode == com.example.data.model.routing.TransitMode.TRAM) {
+                        result.add("L$digitsOnly")
+                        result.add(digitsOnly)
+                    } else if (mode == com.example.data.model.routing.TransitMode.RAIL) {
+                        result.add("C$digitsOnly")
+                        result.add(digitsOnly)
+                    }
+                }
+            }
+            return result
+        }
 
+        // Strictly verify that the real physical line route connects both fromIndex and toIndex
         for ((lineKey, stationList) in RAIL_SUBWAY_LINE_STATIONS) {
             val fromIndex = stationList.indexOfFirst { it == fromNorm || it.contains(fromNorm) || fromNorm.contains(it) }
             val toIndex = stationList.indexOfFirst { it == toNorm || it.contains(toNorm) || toNorm.contains(it) }
@@ -593,6 +597,21 @@ object TransitIdMapper {
             }
         }
 
+        // If no topological lines match the requested stations, fall back to original line only if non-blank
+        if (result.isEmpty() && normOrig.isNotBlank()) {
+            result.add(normOrig)
+            val digitsOnly = normOrig.filter { it.isDigit() }
+            if (digitsOnly.isNotBlank()) {
+                if (mode == com.example.data.model.routing.TransitMode.SUBWAY || mode == com.example.data.model.routing.TransitMode.TRAM) {
+                    result.add("L$digitsOnly")
+                    result.add(digitsOnly)
+                } else if (mode == com.example.data.model.routing.TransitMode.RAIL) {
+                    result.add("C$digitsOnly")
+                    result.add(digitsOnly)
+                }
+            }
+        }
+
         return result
     }
 
@@ -602,26 +621,41 @@ object TransitIdMapper {
     fun isRailOrSubwayDownstreamDestination(
         depDestination: String,
         fromName: String,
-        toName: String
+        toName: String,
+        candidateLine: String? = null
     ): Boolean {
-        if (depDestination.isBlank()) return true
+        if (depDestination.isBlank()) return false
         val destNorm = normalizeStationName(depDestination)
         val fromNorm = normalizeStationName(fromName)
         val toNorm = normalizeStationName(toName)
 
-        if (fromNorm.isBlank() || toNorm.isBlank()) return false
+        if (fromNorm.isBlank() || toNorm.isBlank() || fromNorm == destNorm) return false
 
-        for ((_, stationList) in RAIL_SUBWAY_LINE_STATIONS) {
+        val linesToCheck = if (!candidateLine.isNullOrBlank()) {
+            val lineNorm = candidateLine.uppercase(Locale.ROOT).trim()
+            val digits = lineNorm.filter { it.isDigit() }
+            val filtered = RAIL_SUBWAY_LINE_STATIONS.filter { (k, _) ->
+                k.equals(lineNorm, ignoreCase = true) ||
+                (digits.isNotEmpty() && k.filter { it.isDigit() } == digits)
+            }
+            if (filtered.isNotEmpty()) filtered else return false // Reject candidate line if not found in topology
+        } else {
+            RAIL_SUBWAY_LINE_STATIONS
+        }
+
+        for ((_, stationList) in linesToCheck) {
             val fromIdx = stationList.indexOfFirst { it == fromNorm || it.contains(fromNorm) || fromNorm.contains(it) }
             val toIdx = stationList.indexOfFirst { it == toNorm || it.contains(toNorm) || toNorm.contains(it) }
             val destIdx = stationList.indexOfFirst { it == destNorm || it.contains(destNorm) || destNorm.contains(it) }
 
-            if (fromIdx != -1 && toIdx != -1 && destIdx != -1) {
+            if (fromIdx != -1 && toIdx != -1 && destIdx != -1 && fromIdx != toIdx) {
+                // Forward travel along increasing index: from < to <= dest
                 if (fromIdx < toIdx && toIdx <= destIdx) {
-                    return true // Forward travel along increasing index
+                    return true
                 }
+                // Forward travel along decreasing index: from > to >= dest
                 if (fromIdx > toIdx && toIdx >= destIdx) {
-                    return true // Forward travel along decreasing index
+                    return true
                 }
             }
         }
@@ -632,60 +666,58 @@ object TransitIdMapper {
      * Centralized matching function to determine if a real-time candidate destination
      * corresponds to the planned leg direction.
      */
-    fun isDestinationMatch(depDestination: String, leg: com.example.data.model.routing.PlannedLeg): Boolean {
+    @JvmOverloads
+    fun isDestinationMatch(
+        depDestination: String,
+        leg: com.example.data.model.routing.PlannedLeg,
+        candidateLine: String? = null
+    ): Boolean {
         if (depDestination.isBlank()) return true
         val depNorm = normalizeStationName(depDestination)
         val headsignNorm = normalizeStationName(leg.headsign ?: "")
         val toNameNorm = normalizeStationName(leg.toName)
         val fromNameNorm = normalizeStationName(leg.fromName)
 
-        // 1. Direct or bidirectional match with headsign
+        // 1. Explicitly reject if departure matches origin stop name (heading backwards towards start or terminating at start)
+        if (fromNameNorm.isNotBlank() && (depNorm == fromNameNorm || depNorm.contains(fromNameNorm))) {
+            return false
+        }
+
+        // 2. Direct or bidirectional match with headsign
         if (headsignNorm.isNotBlank()) {
             if (depNorm == headsignNorm || depNorm.contains(headsignNorm) || headsignNorm.contains(depNorm)) {
                 return true
             }
         }
 
-        // 2. Direct or bidirectional match with leg destination name
+        // 3. Direct or bidirectional match with leg destination name
         if (toNameNorm.isNotBlank()) {
             if (depNorm == toNameNorm || depNorm.contains(toNameNorm) || toNameNorm.contains(depNorm)) {
                 return true
             }
         }
 
-        // 3. Match against any intermediate stop along the leg
-        for (stop in leg.intermediateStops) {
-            val stopNorm = normalizeStationName(stop.name)
-            if (stopNorm.isNotBlank() && (depNorm == stopNorm || depNorm.contains(stopNorm) || stopNorm.contains(depNorm))) {
-                return true
-            }
-        }
+        // 4. Token-level matching for compound destination names (e.g. "Marítim - Serrería" vs "Marítim", "Aeroport" vs "Aeropuerto")
+        val depWords = depNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 4 }
+        val headsignWords = headsignNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 4 }
+        val toWords = toNameNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 4 }
 
-        // 4. Token-level matching for compound destination names (e.g. "Marítim - Serrería" vs "Marítim")
-        val depWords = depNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 3 }
-        val headsignWords = headsignNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 3 }
-        val toWords = toNameNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 3 }
-
-        if (headsignWords.isNotEmpty() && depWords.any { dw -> headsignWords.any { hw -> dw == hw || dw.contains(hw) || hw.contains(dw) } }) {
+        if (headsignWords.isNotEmpty() && depWords.any { dw -> headsignWords.any { hw -> dw == hw } }) {
             return true
         }
 
-        if (toWords.isNotEmpty() && depWords.any { dw -> toWords.any { tw -> dw == tw || dw.contains(tw) || tw.contains(dw) } }) {
+        if (toWords.isNotEmpty() && depWords.any { dw -> toWords.any { tw -> dw == tw } }) {
             return true
         }
 
-        // 5. Downstream sequence check for trains and metros
+        // 5. Downstream sequence check for trains and metros (destination is further down the line than toName)
         if (leg.mode == com.example.data.model.routing.TransitMode.SUBWAY ||
             leg.mode == com.example.data.model.routing.TransitMode.TRAM ||
             leg.mode == com.example.data.model.routing.TransitMode.RAIL) {
-            if (isRailOrSubwayDownstreamDestination(depDestination, leg.fromName, leg.toName)) {
+            val lineToUse = candidateLine ?: leg.routeShortName
+            if (isRailOrSubwayDownstreamDestination(depDestination, leg.fromName, leg.toName, lineToUse)) {
                 return true
             }
-        }
-
-        // 6. If departure matches origin stop name (heading backwards towards start), explicitly reject
-        if (fromNameNorm.isNotBlank() && (depNorm == fromNameNorm || depNorm.contains(fromNameNorm))) {
-            return false
         }
 
         return false

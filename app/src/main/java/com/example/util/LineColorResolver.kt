@@ -115,7 +115,7 @@ object LineColorResolver {
                     (shortName.startsWith("1") && shortName.filter { it.isDigit() }.length >= 3)
             )
             if (isMetrobus) {
-                return "#D97706" // Darker Metrobus orange-yellow for better text contrast
+                return MetrobusLineColorResolver.BRAND_HEX // Official Metrobús brand color (#F59E0B) from logo_metrobus.xml
             }
             return "#E52320" // Standard Valencia EMT Red
         }

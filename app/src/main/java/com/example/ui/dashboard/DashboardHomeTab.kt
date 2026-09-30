@@ -117,8 +117,7 @@ fun DashboardHomeTab(
     val transitCards by metroViewModel.transitCardsFlow.collectAsState()
     val homeVisibleCards = remember(transitCards) {
         transitCards.filter { it.showOnHome }.sortedWith(
-            compareBy<TransitCardUiModel> { it.isFaded }
-                .thenBy { it.customOrder }
+            compareBy<TransitCardUiModel> { it.customOrder }
                 .thenBy { try { com.example.ui.metro.CardCategory.valueOf(it.category).orderIndex } catch (_: Exception) { 99 } }
                 .thenBy { it.cardNumber }
         )
@@ -129,6 +128,8 @@ fun DashboardHomeTab(
     val metroLocation by metroViewModel.lastLocation.collectAsState()
     val allMetroStations by metroViewModel.allNetworkStations.collectAsState()
     val allCercaniasStations by cercaniasViewModel.allCercaniasStations.collectAsState()
+    val hasMetroAlertsError by metroViewModel.hasMetroAlertsError.collectAsState()
+    val hasCercaniasAlertsError by cercaniasViewModel.hasCercaniasAlertsError.collectAsState()
 
     // Favorites & Custom Aliases
     val favoriteMetroStations by metroViewModel.favoriteStations.collectAsState()
@@ -418,6 +419,8 @@ fun DashboardHomeTab(
                                 cercaniasAlerts = cercaniasAlerts,
                                 isMetroLoading = isMetroAlertsLoading,
                                 isCercaniasLoading = isCercaniasAlertsLoading,
+                                hasMetroError = hasMetroAlertsError,
+                                hasCercaniasError = hasCercaniasAlertsError,
                                 onOpenMetroAvisos = onOpenMetroAvisos,
                                 onOpenCercaniasAvisos = onOpenCercaniasAvisos,
                                 isOnline = isOnline,
@@ -489,6 +492,8 @@ fun DashboardHomeTab(
                         cercaniasAlerts = cercaniasAlerts,
                         isMetroLoading = isMetroAlertsLoading,
                         isCercaniasLoading = isCercaniasAlertsLoading,
+                        hasMetroError = hasMetroAlertsError,
+                        hasCercaniasError = hasCercaniasAlertsError,
                         onOpenMetroAvisos = onOpenMetroAvisos,
                         onOpenCercaniasAvisos = onOpenCercaniasAvisos,
                         isOnline = isOnline,

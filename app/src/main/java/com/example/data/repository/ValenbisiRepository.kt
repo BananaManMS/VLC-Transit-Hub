@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.example.ui.map.components.ValenbisiStation
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -34,7 +36,12 @@ class ValenbisiRepository {
             return@withContext cachedStationsList
         }
 
-        val list = mutableListOf<ValenbisiStation>()
+        fetchMutex.withLock {
+            if (!force && cachedStationsList.isNotEmpty()) {
+                return@withLock cachedStationsList
+            }
+
+            val list = mutableListOf<ValenbisiStation>()
 
         // 1. Primary Source: Official Valencia Geoportal ArcGIS REST Endpoint (Trafico/MapServer/228) with outSR=4326
         try {
@@ -269,6 +276,7 @@ class ValenbisiRepository {
         val sortedList = list.distinctBy { it.number }.sortedBy { it.number }
         cachedStationsList = sortedList
         sortedList
+        }
     }
 
     suspend fun getStations(): List<String> {
@@ -280,6 +288,8 @@ class ValenbisiRepository {
     }
 
     companion object {
+        private val fetchMutex = Mutex()
+
         @Volatile
         private var cachedStationsList: List<ValenbisiStation> = emptyList()
 

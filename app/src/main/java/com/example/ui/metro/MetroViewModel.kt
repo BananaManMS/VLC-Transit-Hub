@@ -102,6 +102,7 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
 
     val activeIncidents = metroAlertsRepository.activeIncidents
     val isMetroAlertsLoading = metroAlertsRepository.isAlertsLoading
+    val hasMetroAlertsError = metroAlertsRepository.hasAlertsError
 
     val accessibilityIncidents = metroAlertsRepository.accessibilityIncidents
     val specialNotices = metroAlertsRepository.specialNotices

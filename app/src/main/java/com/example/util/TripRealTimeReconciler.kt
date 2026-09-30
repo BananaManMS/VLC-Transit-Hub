@@ -127,8 +127,16 @@ class TripRealTimeReconciler(
         return originCache.departedVehicleStartMs
     }
 
+    fun getGracePeriodUntilMs(): Long? {
+        return originCache.departedVehicleGraceUntilMs
+    }
+
+    fun getGracePeriodLiveDepartureEpochMs(): Long? {
+        return originCache.departedVehicleLiveDepartureEpochMs
+    }
+
     fun isGracePeriodActive(): Boolean {
-        return originCache.departedVehicleGraceUntilMs != null
+        return originCache.isGracePeriodActive()
     }
 
     fun clearGracePeriod() {
@@ -275,7 +283,7 @@ class TripRealTimeReconciler(
 
             delayMinutes = boardedResult.delayMinutes
             isLive = boardedResult.isLive
-            liveDestination = nextTransitLeg.toName
+            liveDestination = nextTransitLeg.headsign?.ifBlank { null } ?: nextTransitLeg.toName
             if (boardedResult.retainedTripId != null) {
                 lastKnownCercaniasTripId = boardedResult.retainedTripId
             }
@@ -299,9 +307,10 @@ class TripRealTimeReconciler(
                 )
             } else null
 
-            val isUserPhysicallyAtStation = (distToOriginStation != null && distToOriginStation <= 180.0) ||
-                    (!isCurrentWalk && currentIdx == (if (isCurrentWalk) currentIdx + 1 else currentIdx)) ||
-                    (dynamicWalkMinutesRemaining != null && dynamicWalkMinutesRemaining <= 1)
+            val isUserPhysicallyAtStation = (distToOriginStation != null && distToOriginStation <= 250.0) ||
+                    (!isCurrentWalk) ||
+                    (dynamicWalkMinutesRemaining != null && dynamicWalkMinutesRemaining <= 2) ||
+                    (userLat == null || userLat == 0.0) // In tunnels or stations with weak/no GPS, preserve station presence
 
             // 3. Reconcile Current Transit Leg (Bus, Metro, Cercanías) en origen
             val legLiveResult = reconcileSingleTransitLeg(
@@ -355,9 +364,13 @@ class TripRealTimeReconciler(
 
             val transferWalkMinutes = ((walkTransferLeg?.durationSeconds ?: 120L) / 60).toInt().coerceAtLeast(1)
             val currentLegRemainingMins = if (isAlreadyBoarded) {
-                val theoreticalEnd = SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.endTime)
-                    ?: SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.formattedEndTime)
-                (theoreticalEnd ?: (nextTransitLeg.durationSeconds / 60).toInt()).coerceAtLeast(1)
+                if (liveMinutes != null && liveMinutes > 0) {
+                    liveMinutes
+                } else {
+                    val theoreticalEnd = SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.endTime)
+                        ?: SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.formattedEndTime)
+                    (theoreticalEnd ?: (nextTransitLeg.durationSeconds / 60).toInt()).coerceAtLeast(1)
+                }
             } else if (isCurrentWalk) {
                 val walkToStartMins = dynamicWalkMinutesRemaining ?: ((currentLeg.durationSeconds / 60).toInt().coerceAtLeast(1))
                 val waitAtStop = (liveMinutes ?: 0).coerceAtLeast(0)
@@ -380,7 +393,7 @@ class TripRealTimeReconciler(
                 val transferLiveResult = reconcileSingleTransitLeg(
                     leg = nextTransferTransitLeg,
                     nowMs = nowMs,
-                    earliestReachableMs = userTransferArrivalEpochMs - 120_000L // 2 min leeway
+                    earliestReachableMs = userTransferArrivalEpochMs // Realistic platform arrival
                 )
 
                 val evalResult = TripRealTimeTransferEvaluator.evaluateTransferState(
@@ -507,11 +520,7 @@ class TripRealTimeReconciler(
             isBoarded = isBoarded,
             lastMatchedOriginVehicleKey = originCache.lastMatchedOriginVehicleKey,
             onMatchedOrigin = { key, vehicleId, epochMs ->
-                originCache.lastMatchedOriginVehicleKey = key
-                if (vehicleId != null) {
-                    originCache.lastMatchedOriginVehicleId = vehicleId
-                }
-                originCache.lastMatchedOriginArrivalEpochMs = epochMs
+                originCache.recordMatchedCandidate(key, vehicleId, epochMs)
             }
         )
     }

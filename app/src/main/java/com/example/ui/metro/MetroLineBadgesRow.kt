@@ -33,8 +33,8 @@ import androidx.compose.ui.unit.TextUnit
 fun MetroLineBadgesRow(
     lineasStr: String?,
     modifier: Modifier = Modifier,
-    badgeSize: Dp = 20.dp,
-    fontSize: TextUnit = 11.sp
+    badgeSize: Dp = 18.dp,
+    fontSize: TextUnit = 10.sp
 ) {
     if (lineasStr.isNullOrBlank()) return
     val lines = lineasStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
@@ -54,9 +54,9 @@ fun MetroLineBadgesRow(
                 modifier = Modifier
                     .height(badgeSize)
                     .widthIn(min = badgeSize)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(5.dp))
                     .background(lineBgColor)
-                    .padding(horizontal = 5.dp),
+                    .padding(horizontal = 4.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(

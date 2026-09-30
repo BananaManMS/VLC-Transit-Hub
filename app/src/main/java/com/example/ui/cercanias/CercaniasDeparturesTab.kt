@@ -32,7 +32,8 @@ import com.example.ui.components.CercaniasDepartureSkeletonCard
 import com.example.ui.components.TransitPullRefreshIndicator
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.dashboard.Translation
-import com.example.util.StationAccessibilityHelper
+
+private val TIME_REGEX = Regex("""\b(\d{1,2})[:.](\d{2})\s*h?\b""")
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -206,40 +207,20 @@ fun CercaniasDeparturesTab(
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.SpaceBetween
                         ) {
-                            val hasFavAccIssue = remember(station.id, station.nombre, station.displayName, accessibilityAlerts) {
-                                accessibilityAlerts.any { alert ->
-                                    StationAccessibilityHelper.isCercaniasStationAffected(station.stop_id, station.nombre, station.displayName, alert)
-                                }
-                            }
-
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = station.displayName,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else textColor,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    if (hasFavAccIssue) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.NotAccessible,
-                                            contentDescription = "No accesible",
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = station.displayName,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else textColor,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
                                 val distanceText = viewModel.getCercaniasStationDistanceText(station)
                                 if (distanceText != null) {
                                     Text(
@@ -371,15 +352,9 @@ fun CercaniasDeparturesTab(
                     contentPadding = PaddingValues(bottom = 16.dp + activeTripBottomPadding)
                 ) {
                     items(departures, key = { "${it.tripId}_${it.routeId}_${it.departureTime}" }) { departure ->
-                        val stationAlerts = remember(cercaniasAlerts, departure) {
-                            cercaniasAlerts.filter { alert ->
-                                alert.routeIds.any { r -> r.equals(departure.routeId, ignoreCase = true) }
-                            }
-                        }
-
                         CercaniasDepartureCard(
                             departure = departure,
-                            alerts = stationAlerts,
+                            alerts = cercaniasAlerts,
                             isDarkMode = isDarkMode,
                             appLanguage = appLanguage,
                             onClick = { onSelectDeparture(departure) }

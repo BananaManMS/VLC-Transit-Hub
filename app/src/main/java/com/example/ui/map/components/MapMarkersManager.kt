@@ -61,6 +61,8 @@ object MapMarkersManager {
     private var showValenbisi: Boolean = false
     private var currentZoomLevel: Double = 16.0
     private var currentCustomFavorites = emptyList<RecentSearch>()
+    private var currentHomeLocation: RecentSearch? = null
+    private var currentWorkLocation: RecentSearch? = null
     private var isOnlyMetroSelected: Boolean = false
     private var isOnlyCercaniasSelected: Boolean = false
     private var currentDestinationLocation: GeoPoint? = null
@@ -122,6 +124,8 @@ object MapMarkersManager {
             currentDestinationLocation = currentDestinationLocation,
             currentDestinationTitle = currentDestinationTitle,
             currentCustomFavorites = currentCustomFavorites,
+            currentHomeLocation = currentHomeLocation,
+            currentWorkLocation = currentWorkLocation,
             currentOnSelectItem = currentOnSelectItem,
             currentOnMapClick = currentOnMapClick,
             currentOnShowDisambiguationMenu = currentOnShowDisambiguationMenu
@@ -180,6 +184,8 @@ object MapMarkersManager {
         currentDestinationLocation = destinationLocation
         currentDestinationTitle = destinationTitle
         currentCustomFavorites = customFavorites
+        currentHomeLocation = homeLocation
+        currentWorkLocation = workLocation
         currentSelectedItinerary = selectedItinerary
         currentSelectedMapItem = selectedMapItem
 

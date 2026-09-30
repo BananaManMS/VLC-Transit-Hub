@@ -461,7 +461,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         return searchEngine.performSearch(
             query = query,
             userLat = _lastLocation.value?.first,
-            userLon = _lastLocation.value?.second
+            userLon = _lastLocation.value?.second,
+            customFavorites = customFavorites.value,
+            homeLocation = homeLocation.value,
+            workLocation = workLocation.value,
+            favoriteBusStops = favoriteBusStopsSet.value,
+            favoriteMetroStations = favoriteMetroStationsSet.value,
+            favoriteCercaniasStations = favoriteCercaniasStationsSet.value
         )
     }
 
@@ -556,8 +562,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
 
             // Periodic 24h/weekly data synchronization against GitHub (only if onboarding is already completed)
+            // Staggered by 2s to allow immediate frame rendering and weather cache resolution without network/disk contention
             if (!_shouldShowOnboarding.value) {
                 try {
+                    delay(2000L)
                     com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(getApplication())
                     com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(getApplication())
                     com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(getApplication())

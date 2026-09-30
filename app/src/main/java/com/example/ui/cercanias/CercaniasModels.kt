@@ -46,12 +46,16 @@ data class LiveVehicleInfo(
     val status: String,
     val platform: String,
     val speed: Double? = null,
+    val bearing: Float? = null,
     val currentStopId: String = "",
     val timestamp: Long = 0L,
     val nextStopId: String = "",
     val nextPlatform: String = "",
     val nextArrivalTime: String = "",
-    val delayMinutes: Int = 0
+    val delayMinutes: Int = 0,
+    val trainNum: String = "",
+    val originName: String = "",
+    val destinationName: String = ""
 )
 
 data class ScheduledDeparture(

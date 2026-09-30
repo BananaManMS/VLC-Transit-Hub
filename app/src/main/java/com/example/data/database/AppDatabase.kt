@@ -6,6 +6,9 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+
 @Database(
     entities = [
         StationEntity::class,
@@ -18,7 +21,7 @@ import androidx.room.TypeConverters
         CalendarItemEntity::class,
         PreferenceEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(CercaniasTypeConverters::class)
@@ -37,13 +40,31 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE transit_cards ADD COLUMN customOrder INTEGER NOT NULL DEFAULT 0")
+                } catch (_: Exception) {}
+                try {
+                    db.execSQL("ALTER TABLE transit_cards ADD COLUMN showOnHome INTEGER NOT NULL DEFAULT 1")
+                } catch (_: Exception) {}
+                try {
+                    db.execSQL("ALTER TABLE transit_cards ADD COLUMN isManuallyInactive INTEGER NOT NULL DEFAULT 0")
+                } catch (_: Exception) {}
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "valencia_transit.db"
-                ).fallbackToDestructiveMigration().fallbackToDestructiveMigrationOnDowngrade().build()
+                )
+                    .addMigrations(MIGRATION_2_3)
+                    .fallbackToDestructiveMigration(true)
+                    .fallbackToDestructiveMigrationOnDowngrade(true)
+                    .build()
                 INSTANCE = instance
                 instance
             }

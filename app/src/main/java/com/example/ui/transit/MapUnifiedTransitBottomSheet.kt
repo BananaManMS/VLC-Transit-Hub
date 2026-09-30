@@ -175,7 +175,7 @@ fun MapUnifiedTransitBottomSheet(
             val isStable = kotlin.math.abs(currentHeight - collapsedPx) < 2f ||
                     kotlin.math.abs(currentHeight - halfExpandedPx) < 2f ||
                     kotlin.math.abs(currentHeight - fullyExpandedPx) < 2f
-            if (!isStable && currentHeight > 0f && scrollState.value == 0) {
+            if (!isStable && currentHeight > 0f) {
                 settleSheetState(0f)
             }
         }
@@ -259,7 +259,16 @@ fun MapUnifiedTransitBottomSheet(
                 available: Offset,
                 source: NestedScrollSource
             ): Offset {
-                // Do not shrink the sheet from inner list scroll; collapsing is only via intentional drag on handle/header
+                val delta = available.y
+                // Dragging downwards (delta > 0) when inner list has reached the top -> shrink sheet down
+                if (delta > 0f && heightAnimatable.value > collapsedPx) {
+                    val newHeightToSet = (heightAnimatable.value - delta).coerceIn(collapsedPx, fullyExpandedPx)
+                    val consumedHeight = heightAnimatable.value - newHeightToSet
+                    coroutineScope.launch {
+                        heightAnimatable.snapTo(newHeightToSet)
+                    }
+                    return Offset(0f, consumedHeight)
+                }
                 return Offset.Zero
             }
 
@@ -272,12 +281,22 @@ fun MapUnifiedTransitBottomSheet(
                     settleSheetState(velocityY)
                     return available
                 }
+                // Fling DOWN when panel is not fully expanded
+                if (velocityY > 0f && currentHeight < fullyExpandedPx - 1f) {
+                    settleSheetState(velocityY)
+                    return available
+                }
 
                 return Velocity.Zero
             }
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                // Never collapse or settle down from internal list fling inertia
+                val velocityY = available.y
+                val currentHeight = heightAnimatable.value
+                if (velocityY > 0f && currentHeight > collapsedPx) {
+                    settleSheetState(velocityY)
+                    return available
+                }
                 return Velocity.Zero
             }
         }

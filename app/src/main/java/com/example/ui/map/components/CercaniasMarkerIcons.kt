@@ -331,25 +331,19 @@ internal fun createCercaniasMarkerIcon(
 }
 
 internal fun getCercaniasTinyDotIcon(context: Context, isDarkMode: Boolean): MarkerIconResult {
-    val key = "CERCANIAS_TINY_DOT_${isDarkMode}"
+    val key = "CERCANIAS_TINY_DOT_SOLID_WHITE"
     var cached = cercaniasStationIconCache.get(key)
     if (cached == null) {
-        val size = 20
+        val size = 14
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+        }
 
-        // 1. Outer dark stroke / shadow
-        paint.color = Color.argb(100, 0, 0, 0)
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
-
-        // 2. White outer circle
-        paint.color = Color.WHITE
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 1.5f, paint)
-
-        // 3. Inner filled Purple dot
-        paint.color = Color.parseColor("#702B7B")
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 3.5f, paint)
+        // Solid white station dot without outer circle or borders
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 1f, paint)
 
         val drawable = BitmapDrawable(context.resources, bitmap)
         cached = MarkerIconResult(drawable, 0.5f, 0.5f)

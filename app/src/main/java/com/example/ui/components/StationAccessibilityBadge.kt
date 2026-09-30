@@ -80,9 +80,9 @@ fun cleanAccessibilityText(rawText: String, stationName: String? = null): String
     var cleaned = rawText.trim()
 
     val patterns = listOf(
-        Regex("^(?:Afectaci[oó]n?|Av[ií]s|Aviso)\\s+(?:d['’]accessibilitat|de\\s+accesibilidad)\\s+(?:en|a)\\s+(?:la\\s+|l['’])?estaci[oó]n?\\s+[^:]+:\\s*", RegexOption.IGNORE_CASE),
-        Regex("^(?:Afectaci[oó]n?|Av[ií]s|Aviso)\\s+(?:d['’]accessibilitat|de\\s+accesibilidad)\\s+(?:en|a)\\s+(?:la\\s+|l['’])?estaci[oó]n?\\s+[^:\\.\\n]+[\\.\\:]?\\s*", RegexOption.IGNORE_CASE),
-        Regex("^(?:Afectaci[oó]n?|Av[ií]s|Aviso)\\s+(?:d['’]accessibilitat|de\\s+accesibilidad)\\s*:\\s*", RegexOption.IGNORE_CASE)
+        Regex("^(?:Afectaci[oó]n?|Incid[eè]ncia|Incidencia|Av[ií]s|Aviso)\\s+(?:d['’]accessibilitat|de\\s+accesibilidad)\\s+(?:en|a)\\s+(?:la\\s+|l['’])?estaci[oó]n?\\s+[^:]+:\\s*", RegexOption.IGNORE_CASE),
+        Regex("^(?:Afectaci[oó]n?|Incid[eè]ncia|Incidencia|Av[ií]s|Aviso)\\s+(?:d['’]accessibilitat|de\\s+accesibilidad)\\s+(?:en|a)\\s+(?:la\\s+|l['’])?estaci[oó]n?\\s+[^:\\.\\n]+[\\.\\:]?\\s*", RegexOption.IGNORE_CASE),
+        Regex("^(?:Afectaci[oó]n?|Incid[eè]ncia|Incidencia|Av[ií]s|Aviso)\\s+(?:d['’]accessibilitat|de\\s+accesibilidad)\\s*:\\s*", RegexOption.IGNORE_CASE)
     )
 
     for (pattern in patterns) {
@@ -264,7 +264,8 @@ fun StationAccessibilityBadge(
         if (showContainerBadge || !accessibilityInfo.isAccessible) {
             Surface(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(6.dp))
                     .then(
                         if (isClickable) {
                             Modifier.clickable { showBocadillo = true }
@@ -272,20 +273,20 @@ fun StationAccessibilityBadge(
                             Modifier
                         }
                     ),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(6.dp),
                 color = activeBg,
                 border = BorderStroke(1.dp, activeBorder)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp),
+                    modifier = Modifier.padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    horizontalArrangement = Arrangement.Center
                 ) {
                     Icon(
                         imageVector = if (accessibilityInfo.isAccessible) Icons.Default.Accessible else Icons.Default.NotAccessible,
                         contentDescription = contentDesc,
                         tint = activeColor,
-                        modifier = Modifier.size(iconSize)
+                        modifier = Modifier.size(15.dp)
                     )
                 }
             }

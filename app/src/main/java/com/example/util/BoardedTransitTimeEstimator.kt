@@ -40,6 +40,7 @@ object BoardedTransitTimeEstimator {
         var retainedTrip: String? = null
 
         var gtfsRtArrivalMinutes: Int? = null
+        var operatorLiveArrivalMinutes: Int? = null
 
         if (nextTransitLeg.mode == TransitMode.RAIL) {
             val toStopDigits = nextTransitLeg.toStopId?.filter { it.isDigit() }
@@ -79,8 +80,124 @@ object BoardedTransitTimeEstimator {
                 val remainingSec = ((epochToUse * 1000L) - nowMs) / 1000L
                 val mins = (remainingSec / 60L).toInt().coerceAtLeast(0)
                 gtfsRtArrivalMinutes = mins
+                operatorLiveArrivalMinutes = mins
                 isLive = true
                 delayMinutes = retainedDelay
+            }
+        } else if (nextTransitLeg.mode in listOf(TransitMode.SUBWAY, TransitMode.TRAM)) {
+            val normalizedLine = TransitIdMapper.normalizeRouteShortName(nextTransitLeg.mode, nextTransitLeg.routeShortName)
+            val allowedLines = TransitIdMapper.getAlternativeTransitLines(
+                mode = nextTransitLeg.mode,
+                originalLine = normalizedLine,
+                fromName = nextTransitLeg.fromName,
+                toName = nextTransitLeg.toName
+            )
+            val destStationId = TransitIdMapper.extractMetroStationId(nextTransitLeg.toStopId, nextTransitLeg.toName)?.toString()
+
+            var matchedMins: Int? = null
+
+            // 1. Check destination station departures (if not a terminal/cabecera or if active departures found)
+            if (!destStationId.isNullOrBlank()) {
+                val destDepartures = TransitOperatorArrivalProvider.fetchMetroDepartures(destStationId)
+                val destMatches = destDepartures.filter { dep ->
+                    val depDigits = dep.line.filter { it.isDigit() }
+                    val lineMatch = allowedLines.any { allowed ->
+                        val allowedDigits = allowed.filter { it.isDigit() }
+                        dep.line.equals(allowed, ignoreCase = true) ||
+                                (depDigits.isNotBlank() && depDigits == allowedDigits)
+                    }
+                    lineMatch && TripVehicleMatcher.isDestinationMatch(dep.destination, nextTransitLeg, dep.line)
+                }
+                if (destMatches.isNotEmpty()) {
+                    val best = destMatches.minByOrNull { it.seconds }
+                    if (best != null && best.seconds >= 0) {
+                        matchedMins = best.minutes
+                        isLive = best.isRealTime
+                    }
+                }
+            }
+
+            // 2. If destination is a cabecera/terminal (or returned 0 incoming departures), inspect penultimate stop or Alameda!
+            if (matchedMins == null) {
+                val intermediateStops = nextTransitLeg.intermediateStops
+                val penultimateStop = intermediateStops.lastOrNull()
+                val alamedaStop = intermediateStops.find { it.name.contains("Alameda", ignoreCase = true) }
+                val targetStopToCheck = alamedaStop ?: penultimateStop
+
+                val checkStationId = targetStopToCheck?.let {
+                    TransitIdMapper.extractMetroStationId(it.stopId, it.name)?.toString()
+                }
+
+                if (!checkStationId.isNullOrBlank()) {
+                    val penultDepartures = TransitOperatorArrivalProvider.fetchMetroDepartures(checkStationId)
+                    val penultMatches = penultDepartures.filter { dep ->
+                        val depDigits = dep.line.filter { it.isDigit() }
+                        val lineMatch = allowedLines.any { allowed ->
+                            val allowedDigits = allowed.filter { it.isDigit() }
+                            dep.line.equals(allowed, ignoreCase = true) ||
+                                    (depDigits.isNotBlank() && depDigits == allowedDigits)
+                        }
+                        lineMatch && TripVehicleMatcher.isDestinationMatch(dep.destination, nextTransitLeg, dep.line)
+                    }
+
+                    val bestPenult = penultMatches.minByOrNull { it.seconds }
+                    if (bestPenult != null && bestPenult.seconds >= 0) {
+                        val penultScheduled = targetStopToCheck.scheduledTime ?: targetStopToCheck.formattedTime
+                        val destScheduled = nextTransitLeg.scheduledEndTime ?: nextTransitLeg.formattedEndTime
+                        val penultMs = TripTimeParser.parseTimeToMillis(penultScheduled)
+                        val destMs = TripTimeParser.parseTimeToMillis(destScheduled)
+                        val deltaMins = if (penultMs != null && destMs != null && destMs >= penultMs) {
+                            ((destMs - penultMs) / 60000L).toInt().coerceIn(1, 8)
+                        } else {
+                            val remainingStopsFromCheck = if (targetStopToCheck == alamedaStop && alamedaStop != penultimateStop) {
+                                val idx = intermediateStops.indexOf(alamedaStop)
+                                (intermediateStops.size - idx).coerceAtLeast(1)
+                            } else 1
+                            (remainingStopsFromCheck * 2).coerceIn(1, 8)
+                        }
+                        matchedMins = (bestPenult.minutes + deltaMins).coerceAtLeast(1)
+                        isLive = bestPenult.isRealTime
+                    }
+                }
+            }
+
+            if (matchedMins != null) {
+                operatorLiveArrivalMinutes = matchedMins
+                val schedRemaining = SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.endTime)
+                    ?: SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.formattedEndTime)
+                if (schedRemaining != null) {
+                    delayMinutes = (matchedMins - schedRemaining).coerceAtLeast(0)
+                }
+            }
+        } else if (nextTransitLeg.mode == TransitMode.BUS) {
+            val isEmt = TransitIdMapper.isEmtBus(
+                agencyName = nextTransitLeg.agencyName,
+                routeShortName = nextTransitLeg.routeShortName,
+                routeLongName = nextTransitLeg.routeLongName,
+                fromStopId = nextTransitLeg.fromStopId,
+                fromName = nextTransitLeg.fromName
+            )
+            if (isEmt) {
+                val destStopNum = TransitIdMapper.extractEmtStopNumber(nextTransitLeg.toStopId, nextTransitLeg.toName)
+                if (destStopNum != null) {
+                    val rawLine = nextTransitLeg.routeShortName ?: ""
+                    val normalizedLine = TransitIdMapper.normalizeRouteShortName(TransitMode.BUS, rawLine)
+                    val arrivals = TransitOperatorArrivalProvider.fetchEmtArrivals(destStopNum)
+                    val matching = arrivals.filter { arr ->
+                        (TransitIdMapper.isSameEmtLine(arr.line, rawLine) || TransitIdMapper.isSameEmtLine(arr.line, normalizedLine)) &&
+                                TripVehicleMatcher.isDestinationMatch(arr.destination, nextTransitLeg)
+                    }
+                    val best = matching.minByOrNull { it.seconds }
+                    if (best != null && best.minutes >= 0) {
+                        operatorLiveArrivalMinutes = best.minutes
+                        isLive = best.isRealTime
+                        val schedRemaining = SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.endTime)
+                            ?: SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.formattedEndTime)
+                        if (schedRemaining != null) {
+                            delayMinutes = (best.minutes - schedRemaining).coerceAtLeast(0)
+                        }
+                    }
+                }
             }
         }
 
@@ -91,14 +208,10 @@ object BoardedTransitTimeEstimator {
         val rawGpsRemainingMins = (totalMins * (1f - legProgressFraction)).toInt().coerceAtLeast(1)
         val progressBasedMins = (rawGpsRemainingMins + delayMinutes.coerceAtLeast(0)).coerceAtLeast(1)
 
-        val rawEstimatedMinutes = if (gtfsRtArrivalMinutes != null) {
-            gtfsRtArrivalMinutes
+        val rawEstimatedMinutes = if (operatorLiveArrivalMinutes != null) {
+            operatorLiveArrivalMinutes
         } else if (legProgressFraction >= 0.70f || rawGpsRemainingMins <= 3) {
             rawGpsRemainingMins
-        } else if (endMinsTheoretical != null) {
-            val theoreticalWithDelay = (endMinsTheoretical + delayMinutes).coerceAtLeast(1)
-            val discrepancy = kotlin.math.abs(theoreticalWithDelay - progressBasedMins)
-            if (discrepancy <= 3) theoreticalWithDelay else progressBasedMins
         } else {
             progressBasedMins
         }
@@ -108,7 +221,9 @@ object BoardedTransitTimeEstimator {
             val elapsedMinutes = (elapsedSeconds / 60L).toInt()
             val decayedPreviousMins = (lastConfirmedBoardedMinsRemaining - elapsedMinutes).coerceAtLeast(1)
 
-            if (rawEstimatedMinutes > decayedPreviousMins + 2) {
+            if (operatorLiveArrivalMinutes != null) {
+                operatorLiveArrivalMinutes
+            } else if (rawEstimatedMinutes > decayedPreviousMins + 2) {
                 decayedPreviousMins
             } else {
                 rawEstimatedMinutes
