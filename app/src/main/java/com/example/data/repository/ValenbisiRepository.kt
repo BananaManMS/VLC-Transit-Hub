@@ -32,12 +32,14 @@ class ValenbisiRepository {
     }
 
     suspend fun fetchStations(force: Boolean = false): List<ValenbisiStation> = withContext(Dispatchers.IO) {
-        if (!force && cachedStationsList.isNotEmpty()) {
+        val now = System.currentTimeMillis()
+        if (!force && cachedStationsList.isNotEmpty() && (now - lastFetchTimestamp < CACHE_DURATION_MS)) {
             return@withContext cachedStationsList
         }
 
         fetchMutex.withLock {
-            if (!force && cachedStationsList.isNotEmpty()) {
+            val lockNow = System.currentTimeMillis()
+            if (!force && cachedStationsList.isNotEmpty() && (lockNow - lastFetchTimestamp < CACHE_DURATION_MS)) {
                 return@withLock cachedStationsList
             }
 
@@ -275,6 +277,7 @@ class ValenbisiRepository {
 
         val sortedList = list.distinctBy { it.number }.sortedBy { it.number }
         cachedStationsList = sortedList
+        lastFetchTimestamp = System.currentTimeMillis()
         sortedList
         }
     }
@@ -288,7 +291,11 @@ class ValenbisiRepository {
     }
 
     companion object {
+        private const val CACHE_DURATION_MS = 600_000L // 10 minutes cache
         private val fetchMutex = Mutex()
+
+        @Volatile
+        private var lastFetchTimestamp: Long = 0L
 
         @Volatile
         private var cachedStationsList: List<ValenbisiStation> = emptyList()

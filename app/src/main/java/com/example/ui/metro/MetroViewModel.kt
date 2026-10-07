@@ -19,6 +19,7 @@ import com.example.util.LocationUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -198,7 +199,6 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
         loadLineStationsData()
         loadPreferences()
         fetchAllAlerts()
-        startAlertsRefreshTicker()
         autoRefreshCardsIfNeeded()
 
         viewModelScope.launch {
@@ -398,6 +398,8 @@ fun getSortedStations(): List<MetroStation> {
                         capacidad = arrival.capacidad,
                         aforoBloqueado = arrival.aforoBloqueado,
                         vehicleId = arrival.vehicleId,
+                        originStationName = currentStation?.name,
+                        originStationId = stationId,
                         targetArrivalEpochMs = targetArrivalEpochMs,
                         isRealTime = arrival.isRealTime
                     )
@@ -556,19 +558,19 @@ fun autoSelectNearestMetroStationIfNeeded(force: Boolean = false) {
         }
     }
 
-private fun startAlertsRefreshTicker() {
-        alertsRefreshJob?.cancel()
-        alertsRefreshJob = viewModelScope.launch {
-            while (true) {
-                if (_isAppInForeground.value) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastAlertsFetchTime >= 15 * 60 * 1000L) { // 15 minutes
-                        fetchAllAlerts()
-                    }
-                }
-                delay(30000) // Check state/time every 30 seconds
-            }
+    fun onAppForegrounded() {
+        _isAppInForeground.value = true
+        val now = System.currentTimeMillis()
+        if (now - lastAlertsFetchTime >= 15 * 60 * 1000L) { // 15 minutes
+            fetchAllAlerts()
         }
+    }
+
+    fun onAppBackgrounded() {
+        _isAppInForeground.value = false
+        alertsRefreshJob?.cancel()
+        alertsRefreshJob = null
+        stopRealTimeRefreshTicker()
     }
 
     fun getStationInfo(stationId: String): MetroStation? {
@@ -648,9 +650,9 @@ private fun startAlertsRefreshTicker() {
         _isStationInfoExpanded.value = !_isStationInfoExpanded.value
     }
 
-    fun fetchAllAlerts() {
+    fun fetchAllAlerts(force: Boolean = false) {
         viewModelScope.launch {
-            metroAlertsRepository.fetchAllAlerts()
+            metroAlertsRepository.fetchAllAlerts(force = force)
             lastAlertsFetchTime = System.currentTimeMillis()
         }
     }

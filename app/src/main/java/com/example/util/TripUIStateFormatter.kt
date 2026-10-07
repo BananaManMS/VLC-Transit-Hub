@@ -48,7 +48,16 @@ data class TripFormattedUIState(
     val isDebarkNotice: Boolean = false,
     val targetStationName: String? = null,
     val nextTransitDepartureInfo: String? = null,
-    val nextTransitIcon: ImageVector? = null
+    val nextTransitIcon: ImageVector? = null,
+    val notificationHeadline: String? = null,
+    val notificationSubheadline: String? = null
+)
+
+data class BoardedPromptResult(
+    val headline: String,
+    val subheadline: String,
+    val urgency: TripUrgencyLevel,
+    val isDebarkNotice: Boolean = false
 )
 
 /**
@@ -235,18 +244,16 @@ object TripUIStateFormatter {
         } else null
 
         if (isSalYa) {
-            val line = currentLeg.routeShortName ?: realTimeStatus?.vehicleLine ?: "Bus"
+            val nextTransitLeg = if (currentLeg.mode == TransitMode.WALK || currentLeg.mode == TransitMode.BICYCLE) {
+                allLegs.subList((currentLegIndex + 1).coerceAtMost(allLegs.size), allLegs.size)
+                    .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE }
+            } else currentLeg
+
             val targetStation = currentLeg.toName
-            val walkMins = if (realTimeStatus?.dynamicWalkMinutesRemaining != null && realTimeStatus.dynamicWalkMinutesRemaining > 0) {
-                realTimeStatus.dynamicWalkMinutesRemaining
-            } else if (distanceToTargetMeters != null && distanceToTargetMeters > 0) {
-                TripStepProgressionEngine.calculateDynamicWalkMinutes(distanceToTargetMeters, currentLeg)
-            } else {
-                (currentLeg.durationSeconds / 60).coerceAtLeast(1).toInt()
-            }
-            val walkLabel = if (isEs) "$walkMins min a pie" else "$walkMins min a peu"
-            val h = if (isEs) "Sal ya hacia $targetStation" else "Ix ja cap a $targetStation"
-            val s = if (distText != null) "$distText · $walkLabel" else walkLabel
+            val h = if (isEs) "Sal ya a $targetStation" else "Ix ja a $targetStation"
+            val s = nextTransitDepartureInfo ?: (if (isEs) "Salida inminente" else "Eixida imminent")
+            val notifH = if (isEs) "Sal ya a la parada" else "Ix ja a la parada"
+
             return TripFormattedUIState(
                 headline = h,
                 subheadline = s,
@@ -258,31 +265,26 @@ object TripUIStateFormatter {
                 icon = Icons.Default.DirectionsRun,
                 isLive = isLive,
                 urgencyLevel = TripUrgencyLevel.CRITICAL,
-                lineBadge = line,
+                lineBadge = nextTransitLeg?.routeShortName ?: currentLeg.routeShortName ?: realTimeStatus?.vehicleLine,
                 distanceRemainingText = distText,
                 targetStationName = targetStation,
                 nextTransitDepartureInfo = nextTransitDepartureInfo,
-                nextTransitIcon = nextTransitIcon
+                nextTransitIcon = nextTransitIcon,
+                notificationHeadline = notifH,
+                notificationSubheadline = nextTransitDepartureInfo
             )
         }
 
         if (realTimeStatus?.leaveInMinutes != null && realTimeStatus.leaveInMinutes > 0 && currentLeg.mode == TransitMode.WALK && currentLegIndex == 0) {
             val leaveMins = realTimeStatus.leaveInMinutes
             val targetStation = currentLeg.toName
-            val walkMins = if (realTimeStatus.dynamicWalkMinutesRemaining != null && realTimeStatus.dynamicWalkMinutesRemaining > 0) {
-                realTimeStatus.dynamicWalkMinutesRemaining
-            } else if (distanceToTargetMeters != null && distanceToTargetMeters > 0) {
-                TripStepProgressionEngine.calculateDynamicWalkMinutes(distanceToTargetMeters, currentLeg)
-            } else {
-                (currentLeg.durationSeconds / 60).coerceAtLeast(1).toInt()
-            }
-            val walkLabel = if (isEs) "$walkMins min a pie" else "$walkMins min a peu"
-            val h = if (isEs) "Sal en $leaveMins min" else "Ix en $leaveMins min"
-            val s = if (isEs) {
-                "Camina a $targetStation${if (distText != null) " · $distText" else ""} · $walkLabel"
-            } else {
-                "Camina a $targetStation${if (distText != null) " · $distText" else ""} · $walkLabel"
-            }
+            val nextTransitLeg = allLegs.subList(1, allLegs.size)
+                .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE }
+
+            val h = if (isEs) "Sal en $leaveMins min a $targetStation" else "Ix en $leaveMins min a $targetStation"
+            val s = nextTransitDepartureInfo ?: ""
+            val notifH = if (isEs) "Sal en $leaveMins min a la parada" else "Ix en $leaveMins min a la parada"
+
             return TripFormattedUIState(
                 headline = h,
                 subheadline = s,
@@ -294,11 +296,13 @@ object TripUIStateFormatter {
                 icon = Icons.AutoMirrored.Filled.DirectionsWalk,
                 isLive = isLive,
                 urgencyLevel = TripUrgencyLevel.RELAXED,
-                lineBadge = currentLeg.routeShortName ?: realTimeStatus.vehicleLine,
+                lineBadge = nextTransitLeg?.routeShortName ?: currentLeg.routeShortName ?: realTimeStatus.vehicleLine,
                 distanceRemainingText = distText,
                 targetStationName = targetStation,
                 nextTransitDepartureInfo = nextTransitDepartureInfo,
-                nextTransitIcon = nextTransitIcon
+                nextTransitIcon = nextTransitIcon,
+                notificationHeadline = notifH,
+                notificationSubheadline = nextTransitDepartureInfo
             )
         }
 
@@ -307,46 +311,45 @@ object TripUIStateFormatter {
         val subheadline: String
         var lineBadge: String? = null
         var walkMinsBadge: Int? = null
+        var isDebarkNotice = false
+        var notifHeadline: String? = null
+        var notifSubheadline: String? = null
 
         when (currentLeg.mode) {
             TransitMode.WALK -> {
                 icon = Icons.AutoMirrored.Filled.DirectionsWalk
-                val walkMins = if (realTimeStatus?.dynamicWalkMinutesRemaining != null && realTimeStatus.dynamicWalkMinutesRemaining > 0) {
-                    realTimeStatus.dynamicWalkMinutesRemaining
-                } else if (distanceToTargetMeters != null && distanceToTargetMeters > 0) {
-                    TripStepProgressionEngine.calculateDynamicWalkMinutes(distanceToTargetMeters, currentLeg)
-                } else {
-                    (currentLeg.durationSeconds / 60).coerceAtLeast(1).toInt()
-                }
-                walkMinsBadge = walkMins
-
                 val targetStation = currentLeg.toName
-                val walkLabel = if (isEs) "$walkMins min a pie" else "$walkMins min a peu"
 
                 if (currentLegIndex == 0) {
-                    headline = if (isEs) "Camina a $targetStation" else "Camina a $targetStation"
-                    subheadline = if (distText != null) "$distText · $walkLabel" else walkLabel
+                    val nextTransitLeg = allLegs.subList(1, allLegs.size)
+                        .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE }
+
+                    if (nextTransitLeg != null) {
+                        headline = if (isEs) "Camina a $targetStation" else "Camina a $targetStation"
+                        subheadline = nextTransitDepartureInfo ?: (if (distText != null) distText else "")
+                        notifHeadline = if (isEs) "Ve a la parada" else "Ves a la parada"
+                        notifSubheadline = nextTransitDepartureInfo
+                        lineBadge = nextTransitLeg.routeShortName
+                    } else {
+                        headline = if (isEs) "Camina a $targetStation" else "Camina a $targetStation"
+                        subheadline = if (distText != null) distText else ""
+                        notifHeadline = if (isEs) "Camina a destino" else "Camina a destí"
+                        notifSubheadline = targetStation
+                    }
                 } else if (currentLegIndex == totalLegs - 1) {
                     headline = if (isEs) "Camina a destino" else "Camina a destí"
-                    subheadline = if (distText != null) "$distText · $walkLabel" else walkLabel
+                    subheadline = if (distText != null) "$targetStation · $distText" else targetStation
+                    notifHeadline = if (isEs) "Camina a destino" else "Camina a destí"
+                    notifSubheadline = targetStation
                 } else {
                     val nextTransitLeg = allLegs.subList((currentLegIndex + 1).coerceAtMost(allLegs.size), allLegs.size)
                         .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE }
-                    val nextTransitName = if (nextTransitLeg != null) {
-                        val mName = when (nextTransitLeg.mode) {
-                            TransitMode.BUS -> "Bus"
-                            TransitMode.TRAM -> if (isEs) "Tranvía" else "Tramvia"
-                            TransitMode.SUBWAY -> "Metro"
-                            TransitMode.RAIL -> if (isEs) "Cercanías" else "Rodalia"
-                            else -> if (isEs) "Línea" else "Línia"
-                        }
-                        val rName = nextTransitLeg.routeShortName ?: ""
-                        if (rName.isNotBlank()) "$mName $rName" else mName
-                    } else {
-                        if (isEs) "enlace" else "enllaç"
-                    }
-                    headline = if (isEs) "Enlace a $nextTransitName" else "Enllaç a $nextTransitName"
-                    subheadline = if (isEs) "Hacia $targetStation${if (distText != null) " · $distText" else ""}" else "Cap a $targetStation${if (distText != null) " · $distText" else ""}"
+
+                    headline = if (isEs) "Transbordo a $targetStation" else "Transbordament a $targetStation"
+                    subheadline = nextTransitDepartureInfo ?: ""
+                    notifHeadline = if (isEs) "Haz transbordo" else "Fes transbordament"
+                    notifSubheadline = nextTransitDepartureInfo
+                    lineBadge = nextTransitLeg?.routeShortName
                 }
             }
 
@@ -357,7 +360,7 @@ object TripUIStateFormatter {
                 lineBadge = lineName
 
                 if (isBoarded) {
-                    val (h, s, urg) = formatBoardedTransitPrompt(
+                    val res = formatBoardedTransitPrompt(
                         mode = currentLeg.mode,
                         modeName = "Bus",
                         lineName = lineName,
@@ -367,9 +370,10 @@ object TripUIStateFormatter {
                         distanceToTargetMeters = distanceToTargetMeters,
                         isEs = isEs
                     )
-                    headline = h
-                    subheadline = s
-                    computedUrgency = urg
+                    headline = res.headline
+                    subheadline = res.subheadline
+                    computedUrgency = res.urgency
+                    isDebarkNotice = res.isDebarkNotice
                 } else {
                     val (h, s) = formatWaitingTransitPrompt("Bus", lineName, currentLeg, realTimeStatus, isEs)
                     headline = h
@@ -387,7 +391,7 @@ object TripUIStateFormatter {
                 lineBadge = lineName
 
                 if (isBoarded) {
-                    val (h, s, urg) = formatBoardedTransitPrompt(
+                    val res = formatBoardedTransitPrompt(
                         mode = currentLeg.mode,
                         modeName = modeLabel,
                         lineName = lineName,
@@ -397,9 +401,10 @@ object TripUIStateFormatter {
                         distanceToTargetMeters = distanceToTargetMeters,
                         isEs = isEs
                     )
-                    headline = h
-                    subheadline = s
-                    computedUrgency = urg
+                    headline = res.headline
+                    subheadline = res.subheadline
+                    computedUrgency = res.urgency
+                    isDebarkNotice = res.isDebarkNotice
                 } else {
                     val (h, s) = formatWaitingTransitPrompt(modeLabel, lineName, currentLeg, realTimeStatus, isEs)
                     headline = h
@@ -415,7 +420,7 @@ object TripUIStateFormatter {
                 lineBadge = lineName
 
                 if (isBoarded) {
-                    val (h, s, urg) = formatBoardedTransitPrompt(
+                    val res = formatBoardedTransitPrompt(
                         mode = currentLeg.mode,
                         modeName = railTitle,
                         lineName = lineName,
@@ -425,9 +430,10 @@ object TripUIStateFormatter {
                         distanceToTargetMeters = distanceToTargetMeters,
                         isEs = isEs
                     )
-                    headline = h
-                    subheadline = s
-                    computedUrgency = urg
+                    headline = res.headline
+                    subheadline = res.subheadline
+                    computedUrgency = res.urgency
+                    isDebarkNotice = res.isDebarkNotice
                 } else {
                     val (h, s) = formatWaitingTransitPrompt(railTitle, lineName, currentLeg, realTimeStatus, isEs)
                     headline = h
@@ -450,7 +456,7 @@ object TripUIStateFormatter {
                 lineBadge = lineName
 
                 if (isBoarded) {
-                    val (h, s, urg) = formatBoardedTransitPrompt(
+                    val res = formatBoardedTransitPrompt(
                         mode = currentLeg.mode,
                         modeName = busTitle,
                         lineName = lineName,
@@ -460,9 +466,10 @@ object TripUIStateFormatter {
                         distanceToTargetMeters = distanceToTargetMeters,
                         isEs = isEs
                     )
-                    headline = h
-                    subheadline = s
-                    computedUrgency = urg
+                    headline = res.headline
+                    subheadline = res.subheadline
+                    computedUrgency = res.urgency
+                    isDebarkNotice = res.isDebarkNotice
                 } else {
                     val (h, s) = formatWaitingTransitPrompt(busTitle, lineName, currentLeg, realTimeStatus, isEs)
                     headline = h
@@ -478,7 +485,7 @@ object TripUIStateFormatter {
                 lineBadge = lineName
 
                 if (isBoarded) {
-                    val (h, s, urg) = formatBoardedTransitPrompt(
+                    val res = formatBoardedTransitPrompt(
                         mode = currentLeg.mode,
                         modeName = railTitle,
                         lineName = lineName,
@@ -488,9 +495,10 @@ object TripUIStateFormatter {
                         distanceToTargetMeters = distanceToTargetMeters,
                         isEs = isEs
                     )
-                    headline = h
-                    subheadline = s
-                    computedUrgency = urg
+                    headline = res.headline
+                    subheadline = res.subheadline
+                    computedUrgency = res.urgency
+                    isDebarkNotice = res.isDebarkNotice
                 } else {
                     val (h, s) = formatWaitingTransitPrompt(railTitle, lineName, currentLeg, realTimeStatus, isEs)
                     headline = h
@@ -520,9 +528,12 @@ object TripUIStateFormatter {
             lineBadge = lineBadge,
             walkBadgeMinutes = walkMinsBadge,
             distanceRemainingText = distText,
+            isDebarkNotice = isDebarkNotice,
             targetStationName = currentLeg.toName,
             nextTransitDepartureInfo = nextTransitDepartureInfo,
-            nextTransitIcon = nextTransitIcon
+            nextTransitIcon = nextTransitIcon,
+            notificationHeadline = notifHeadline,
+            notificationSubheadline = notifSubheadline
         )
     }
 
@@ -564,7 +575,7 @@ object TripUIStateFormatter {
         realTimeStatus: RealTimeTripStatus?,
         distanceToTargetMeters: Double?,
         isEs: Boolean
-    ): Triple<String, String, TripUrgencyLevel> {
+    ): BoardedPromptResult {
         val remainingMins = calculateBoardedRemainingMinutes(currentLeg, realTimeStatus)
         val progressInfo = ActiveTripProgressTracker.progressState.value
         val totalStopsInLeg = (currentLeg.intermediateStops.size + 1).coerceAtLeast(1)
@@ -586,26 +597,26 @@ object TripUIStateFormatter {
             isArrived -> {
                 val h = if (isEs) "Baja aquí" else "Baixa ací"
                 val s = destName
-                Triple(h, s, TripUrgencyLevel.CRITICAL)
+                BoardedPromptResult(h, s, TripUrgencyLevel.CRITICAL, isDebarkNotice = true)
             }
             remainingStops == 1 && isNearPenultimateOrTime -> {
                 val nextStopWord = if (isEs) "Próxima parada" else "Pròxima parada"
                 val h = "$modeName $lineName · $nextStopWord"
                 val s = if (isEs) "Baja en $destName · $remainingMins min" else "Baixa en $destName · $remainingMins min"
                 val urgency = if (remainingMins <= 2) TripUrgencyLevel.BRISK else TripUrgencyLevel.RELAXED
-                Triple(h, s, urgency)
+                BoardedPromptResult(h, s, urgency, isDebarkNotice = true)
             }
             remainingStops == 1 -> {
                 val inTransitWord = if (isEs) "En trayecto" else "En trajecte"
                 val h = "$modeName $lineName · $inTransitWord"
                 val s = if (isEs) "Baja en $destName · $remainingMins min" else "Baixa en $destName · $remainingMins min"
-                Triple(h, s, TripUrgencyLevel.RELAXED)
+                BoardedPromptResult(h, s, TripUrgencyLevel.RELAXED, isDebarkNotice = false)
             }
             else -> {
                 val stopWord = if (isEs) "paradas" else "parades"
                 val h = "$modeName $lineName · $remainingStops $stopWord"
                 val s = if (isEs) "Baja en $destName · $remainingMins min" else "Baixa en $destName · $remainingMins min"
-                Triple(h, s, TripUrgencyLevel.RELAXED)
+                BoardedPromptResult(h, s, TripUrgencyLevel.RELAXED, isDebarkNotice = false)
             }
         }
     }
@@ -620,17 +631,22 @@ object TripUIStateFormatter {
         if (delayMinutes <= 0) return trimmed
 
         val timePatterns = listOf("HH:mm:ss", "HH:mm", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss")
+        val madridTz = java.util.TimeZone.getTimeZone("Europe/Madrid")
 
         for (pattern in timePatterns) {
             try {
-                val sdf = SimpleDateFormat(pattern, Locale.getDefault())
+                val sdf = SimpleDateFormat(pattern, Locale.getDefault()).apply {
+                    timeZone = madridTz
+                }
                 val date = sdf.parse(trimmed)
                 if (date != null) {
-                    val cal = Calendar.getInstance().apply {
+                    val cal = Calendar.getInstance(madridTz).apply {
                         time = date
                         add(Calendar.MINUTE, delayMinutes)
                     }
-                    val outSdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                    val outSdf = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
+                        timeZone = madridTz
+                    }
                     return outSdf.format(cal.time)
                 }
             } catch (_: Exception) {}
@@ -645,29 +661,25 @@ object TripUIStateFormatter {
     fun calculateBoardedRemainingMinutes(leg: PlannedLeg, realTimeStatus: RealTimeTripStatus?): Int {
         val progressFraction = ActiveTripProgressTracker.progressState.value.progressWithinLeg.coerceIn(0f, 1f)
         val totalMins = (leg.durationSeconds / 60).toInt().coerceAtLeast(1)
-        val delay = realTimeStatus?.delayMinutes ?: 0
-        val progressBasedMins = ((totalMins * (1f - progressFraction)).toInt() + delay).coerceAtLeast(1)
+        val rawRemainingMins = (totalMins * (1f - progressFraction)).toInt().coerceAtLeast(1)
 
-        // Direct real-time vehicle ETA at destination stop (supports any delay size without capping)
-        val realTimeEta = getDynamicVehicleArrivalMinutes(realTimeStatus) ?: realTimeStatus?.checkpointEtaMinutes
+        // Direct real-time vehicle ETA at destination/checkpoint stop (e.g. live forward radar)
+        val realTimeEta = realTimeStatus?.checkpointEtaMinutes ?: getDynamicVehicleArrivalMinutes(realTimeStatus)
         if (realTimeEta != null && realTimeEta > 0) {
-            return realTimeEta
+            val minRealisticMins = (rawRemainingMins - 4).coerceAtLeast(1)
+            val maxRealisticMins = rawRemainingMins + 8
+            if (realTimeEta in minRealisticMins..maxRealisticMins) {
+                return realTimeEta
+            }
         }
 
-        // When boarded and moving (progressFraction >= 0.08f), progressBasedMins is the true live estimate
-        if (progressFraction >= 0.08f) {
-            return progressBasedMins
+        // When in the final approach (progress >= 70% or rawRemaining <= 3), remaining minutes strictly reflect remaining distance
+        if (progressFraction >= 0.70f || rawRemainingMins <= 3) {
+            return rawRemainingMins
         }
 
-        // Theoretical remaining based on scheduled leg end time only at the initial waiting/boarding moment
-        val endMinsTheoretical = calculateTheoreticalMinutesRemaining(leg.endTime)
-            ?: calculateTheoreticalMinutesRemaining(leg.formattedEndTime)
-
-        if (endMinsTheoretical != null) {
-            return (endMinsTheoretical + delay).coerceAtLeast(1)
-        }
-
-        return progressBasedMins
+        val delay = realTimeStatus?.delayMinutes?.coerceIn(0, 15) ?: 0
+        return (rawRemainingMins + delay).coerceAtLeast(1)
     }
 
     /**
@@ -750,7 +762,9 @@ object TripUIStateFormatter {
         if (remainingMinutes > 0) {
             val nowMs = System.currentTimeMillis()
             val arrivalMs = nowMs + (remainingMinutes * 60_000L)
-            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
+                timeZone = java.util.TimeZone.getTimeZone("Europe/Madrid")
+            }
             return sdf.format(java.util.Date(arrivalMs))
         }
         return calculateAdjustedArrivalTime(scheduledArrivalTime, delayMinutes)

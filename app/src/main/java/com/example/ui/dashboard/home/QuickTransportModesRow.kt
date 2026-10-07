@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.PedalBike
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -17,9 +16,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.dashboard.DashboardTab
 
@@ -33,28 +34,28 @@ fun QuickTransportModesRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         TransportModeButton(
-            iconDrawable = com.example.R.drawable.logo_metrovalencia,
-            label = "Metro",
+            iconDrawable = R.drawable.logo_metrovalencia,
+            label = stringResource(R.string.tab_metro),
             color = Color(0xFFEF4444),
             onClick = { onSelectMode(DashboardTab.Metro, 0) },
             modifier = Modifier.weight(1f)
         )
         TransportModeButton(
-            iconDrawable = com.example.R.drawable.logo_emt_valencia,
+            iconDrawable = R.drawable.logo_emt_valencia,
             label = "EMT",
             color = Color(0xFF0284C7),
             onClick = { onSelectMode(DashboardTab.Bus, 0) },
             modifier = Modifier.weight(1f)
         )
         TransportModeButton(
-            iconDrawable = com.example.R.drawable.logo_cercanias,
-            label = if (appLanguage == AppLanguage.CA) "Rodalia" else "Cercanías",
+            iconDrawable = R.drawable.logo_cercanias,
+            label = stringResource(R.string.tab_cercanias),
             color = Color(0xFF702B7B),
             onClick = { onSelectMode(DashboardTab.Cercanias, 0) },
             modifier = Modifier.weight(1f)
         )
         TransportModeButton(
-            iconDrawable = com.example.R.drawable.logo_metrobus,
+            iconDrawable = R.drawable.logo_metrobus,
             label = "Metrobús",
             color = com.example.util.MetrobusLineColorResolver.BRAND_COLOR,
             onClick = { onSelectMode(DashboardTab.Bus, 1) },

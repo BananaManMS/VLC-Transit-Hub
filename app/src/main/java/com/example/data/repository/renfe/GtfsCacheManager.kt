@@ -46,7 +46,7 @@ class GtfsCacheManager(private val context: Context) {
         .build()
 
     suspend fun getLiveTripUpdates(): Map<String, GtfsRtTripUpdate> = withContext(Dispatchers.IO) {
-        ensureCacheUpdated()
+        ensureTripUpdatesOnlyUpdated()
         cachedTripUpdates
     }
 
@@ -55,19 +55,93 @@ class GtfsCacheManager(private val context: Context) {
         cachedVehiclePositions
     }
 
+    /**
+     * Strictly verifies that a live vehicle belongs to Núcleo 40 (València).
+     * Discards trains from Madrid, Barcelona, Sevilla, etc. from nationwide GTFS-RT feeds.
+     */
+    fun isValenciaNucleus40(vehicle: LiveVehicleInfo): Boolean {
+        // 1. Explicit other nucleus check from routeId
+        val r = vehicle.routeId.trim()
+        if (r.isNotBlank()) {
+            if (r.startsWith("40")) return true
+            if (r.startsWith("10") || r.startsWith("20") || r.startsWith("30") ||
+                r.startsWith("31") || r.startsWith("32") || r.startsWith("41") ||
+                r.startsWith("50") || r.startsWith("60") || r.startsWith("70") ||
+                r.startsWith("80") || r.startsWith("90")) {
+                return false
+            }
+        }
+        val trip = vehicle.tripId.trim()
+        if (trip.isNotBlank()) {
+            if (trip.startsWith("40_") || trip.startsWith("40-")) return true
+            if (trip.startsWith("10_") || trip.startsWith("20_") || trip.startsWith("30_") ||
+                trip.startsWith("41_") || trip.startsWith("50_") || trip.startsWith("60_") ||
+                trip.startsWith("70_") || trip.startsWith("80_") || trip.startsWith("90_")) {
+                return false
+            }
+        }
+
+        // 2. Geographic bounding box check for Núcleo 40 (València Commuter Network):
+        // Covers Vinaròs, Castelló, Caudiel, Sagunt, València, Buñol, Utiel, Cullera, Gandia, Xàtiva, Moixent.
+        val lat = vehicle.latitude ?: return false
+        val lon = vehicle.longitude ?: return false
+        if (lat.isNaN() || lon.isNaN() || lat == 0.0 || lon == 0.0) return false
+
+        return lat in 38.65..40.65 && lon in -1.50..0.65
+    }
+
     suspend fun getUniqueLiveVehicles(): List<LiveVehicleInfo> = withContext(Dispatchers.IO) {
         ensureCacheUpdated()
         cachedVehiclePositions.values
-            .filter { it.latitude != null && it.longitude != null && !it.latitude.isNaN() && !it.longitude.isNaN() && it.latitude != 0.0 && it.longitude != 0.0 }
+            .filter { isValenciaNucleus40(it) }
             .distinctBy { it.tripId.ifBlank { it.trainNum } }
     }
 
     suspend fun getLiveVehiclesWithFreshness(forceFetch: Boolean = false): Pair<List<LiveVehicleInfo>, Boolean> = withContext(Dispatchers.IO) {
         val hasNewData = ensureCacheUpdated(force = forceFetch)
         val vehicles = cachedVehiclePositions.values
-            .filter { it.latitude != null && it.longitude != null && !it.latitude.isNaN() && !it.longitude.isNaN() && it.latitude != 0.0 && it.longitude != 0.0 }
+            .filter { isValenciaNucleus40(it) }
             .distinctBy { it.tripId.ifBlank { it.trainNum } }
         Pair(vehicles, hasNewData)
+    }
+
+    @Volatile
+    private var lastTripUpdatesFetchTimeMs = 0L
+
+    private suspend fun ensureTripUpdatesOnlyUpdated(force: Boolean = false): Boolean {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastTripUpdatesFetchTimeMs < cacheTtlMs && cachedTripUpdates.isNotEmpty()) {
+            return false
+        }
+        return mutex.withLock {
+            if (!force && now - lastTripUpdatesFetchTimeMs < cacheTtlMs && cachedTripUpdates.isNotEmpty()) {
+                return@withLock false
+            }
+            try {
+                val tripUpdatesMap = java.util.concurrent.ConcurrentHashMap<String, GtfsRtTripUpdate>()
+                val req = Request.Builder()
+                    .url("https://gtfsrt.renfe.com/trip_updates.json")
+                    .header("User-Agent", NetworkModule.USER_AGENT)
+                    .build()
+
+                fastClient.newCall(req).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string()
+                        if (!body.isNullOrBlank()) {
+                            parseTripUpdatesJson(body, tripUpdatesMap)
+                        }
+                    }
+                }
+                if (tripUpdatesMap.isNotEmpty()) {
+                    cachedTripUpdates = tripUpdatesMap
+                }
+                lastTripUpdatesFetchTimeMs = System.currentTimeMillis()
+                true
+            } catch (e: Exception) {
+                Log.w("GtfsCacheManager", "Error fetching trip_updates.json: ${e.message}")
+                false
+            }
+        }
     }
 
     private suspend fun ensureCacheUpdated(force: Boolean = false): Boolean {
@@ -180,12 +254,33 @@ class GtfsCacheManager(private val context: Context) {
 
         if (anyFeedUpdated.get()) {
             val nowSec = System.currentTimeMillis() / 1000L
-            val graceCutoffSec = nowSec - 30L // 30s retention (exactly 2 API polling cycles of 15s)
+            val madridCal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
+            val todayDateStr = String.format(
+                java.util.Locale.ROOT, "%04d%02d%02d",
+                madridCal.get(java.util.Calendar.YEAR),
+                madridCal.get(java.util.Calendar.MONTH) + 1,
+                madridCal.get(java.util.Calendar.DAY_OF_MONTH)
+            )
 
-            // Merge newly fetched data with still-valid cached data to bridge single-cycle Renfe feed dropouts
-            val mergedTripUpdates = cachedTripUpdates.filter { it.value.timestamp >= graceCutoffSec }.toMutableMap()
+            // Retain cached trip updates that:
+            // 1. Are future or multi-day notices (startDate >= todayDateStr)
+            // 2. Are advance cancellations (isCanceled == true) for today or upcoming days (retained for 24h)
+            // 3. Have not expired past their final estimated stop time by more than 1 hour (retained through last train of the day and night)
+            val mergedTripUpdates = cachedTripUpdates.filter { (_, update) ->
+                when {
+                    update.startDate.isNotBlank() && update.startDate >= todayDateStr -> true
+                    update.isCanceled -> update.timestamp >= (nowSec - 86400L)
+                    update.stopEstimatedTimes.isNotEmpty() -> {
+                        val maxEst = update.stopEstimatedTimes.values.maxOrNull() ?: 0L
+                        maxEst > (nowSec - 3600L)
+                    }
+                    else -> update.timestamp >= (nowSec - 3600L)
+                }
+            }.toMutableMap()
+
             mergedTripUpdates.putAll(tripUpdatesMap)
 
+            val graceCutoffSec = nowSec - 60L
             val mergedVehiclePositions = cachedVehiclePositions.filter { it.value.timestamp >= graceCutoffSec }.toMutableMap()
             mergeVehiclePositions(mergedVehiclePositions, vehiclePositionsMap)
 
@@ -262,23 +357,12 @@ class GtfsCacheManager(private val context: Context) {
             val t = trenes.optJSONObject(i) ?: continue
 
             // Filter strictly by Valencia nucleus (Nucleo 40)
-            val nucleo = t.optString("nucleo", "").trim()
-            val codNucleo = t.optString("codNucleo", "").trim()
-            val idNucleo = t.optString("idNucleo", "").trim()
-            val effectiveNucleo = when {
-                nucleo.isNotBlank() -> nucleo
-                codNucleo.isNotBlank() -> codNucleo
-                idNucleo.isNotBlank() -> idNucleo
-                else -> ""
+            val nucleo = t.optString("nucleo", "").trim().ifBlank {
+                t.optString("codNucleo", "").trim().ifBlank {
+                    t.optInt("nucleo", 0).takeIf { it > 0 }?.toString() ?: ""
+                }
             }
-            val codLinea = t.optString("codLinea", t.optString("linea", "")).trim()
-            val isValenciaNucleo = effectiveNucleo == "40" || effectiveNucleo == "040" || effectiveNucleo == "40.0"
-            val isValenciaLine = codLinea.matches(Regex("(?i)^(?:40|C-?)[1-6].*")) || codLinea.matches(Regex("^[1-6]$"))
-
-            if (effectiveNucleo.isNotBlank() && !isValenciaNucleo) {
-                continue
-            }
-            if (effectiveNucleo.isBlank() && !isValenciaLine) {
+            if (nucleo != "40" && nucleo != "040") {
                 continue
             }
 
@@ -404,9 +488,17 @@ class GtfsCacheManager(private val context: Context) {
             if (tripId.isBlank()) continue
 
             val routeId = tripObj.optString("route_id", "").ifBlank { tripObj.optString("routeId", "") }
-            if (routeId.isNotBlank() && routeId.first().isDigit() && !routeId.startsWith("40")) {
+            val isOtherNucleus = routeId.isNotBlank() && (
+                routeId.startsWith("10") || routeId.startsWith("20") || routeId.startsWith("30") ||
+                routeId.startsWith("50") || routeId.startsWith("60") || routeId.startsWith("70") ||
+                routeId.startsWith("80") || routeId.startsWith("90")
+            )
+            if (isOtherNucleus && !routeId.startsWith("40")) {
                 continue
             }
+
+            val startDate = tripObj.optString("start_date", tripObj.optString("startDate", "")).trim()
+            val startTime = tripObj.optString("start_time", tripObj.optString("startTime", "")).trim()
             val delaySec = tripUpdateObj.optLong("delay", 0L)
             val scheduleRel = tripObj.optString("schedule_relationship", tripObj.optString("scheduleRelationship", "SCHEDULED"))
             val isCanceled = scheduleRel.equals("CANCELED", ignoreCase = true)
@@ -414,6 +506,11 @@ class GtfsCacheManager(private val context: Context) {
             val vehObj = tripUpdateObj.optJSONObject("vehicle")
             val vehicleId = vehObj?.optString("id", "") ?: ""
             val vehicleLabel = vehObj?.optString("label", "") ?: ""
+            val labelPlatform = if (vehicleLabel.isNotBlank()) {
+                val platRegex = Regex("""PLATF\.\((\d+)\)|V[IÍ]A\s*(\d+)""", RegexOption.IGNORE_CASE)
+                val m = platRegex.find(vehicleLabel)
+                if (m != null) m.groupValues[1].ifBlank { m.groupValues[2] } else ""
+            } else ""
 
             val stopDelays = mutableMapOf<String, Long>()
             val stopEstTimes = mutableMapOf<String, Long>()
@@ -435,7 +532,8 @@ class GtfsCacheManager(private val context: Context) {
                     val depTime = depObj?.optLong("time") ?: arrObj?.optLong("time")
                     val arrDelay = arrObj?.optLong("delay")
 
-                    val platform = stu.optString("platform", depObj?.optString("platform", "") ?: "")
+                    val rawPlatform = stu.optString("platform", depObj?.optString("platform", "") ?: "")
+                    val platform = rawPlatform.ifBlank { labelPlatform }
                     if (platform.isNotBlank() && stopId.isNotBlank()) {
                         stopPlatforms[stopId] = platform
                     }
@@ -470,24 +568,29 @@ class GtfsCacheManager(private val context: Context) {
             val existingUpdate = outMap[tripId]
             val mergedPlatforms = (existingUpdate?.stopPlatforms ?: emptyMap()) + stopPlatforms
             val mergedDelays = (existingUpdate?.stopDelays ?: emptyMap()) + stopDelays
+            val mergedEstimatedTimes = (existingUpdate?.stopEstimatedTimes ?: emptyMap()) + stopEstTimes
 
             val update = GtfsRtTripUpdate(
                 tripId = tripId,
                 routeId = routeId.ifBlank { existingUpdate?.routeId ?: "" },
+                startDate = startDate.ifBlank { existingUpdate?.startDate ?: "" },
+                startTime = startTime.ifBlank { existingUpdate?.startTime ?: "" },
+                scheduleRelationship = scheduleRel,
                 delaySeconds = if (delaySec != 0L) delaySec else (existingUpdate?.delaySeconds ?: 0L),
                 stopDelays = mergedDelays,
-                stopEstimatedTimes = stopEstTimes,
+                stopEstimatedTimes = mergedEstimatedTimes,
                 stopPlatforms = mergedPlatforms,
-                stopTimes = stopTimesList,
+                stopTimes = if (stopTimesList.isNotEmpty()) stopTimesList else (existingUpdate?.stopTimes ?: emptyList()),
                 vehicleId = vehicleId.ifBlank { existingUpdate?.vehicleId ?: "" },
                 vehicleLabel = vehicleLabel.ifBlank { existingUpdate?.vehicleLabel ?: "" },
-                isIndeterminateDeparture = isIndeterminate,
+                isIndeterminateDeparture = isIndeterminate || (existingUpdate?.isIndeterminateDeparture == true),
                 isCanceled = isCanceled || (existingUpdate?.isCanceled == true),
                 timestamp = tripUpdateObj.optLong("timestamp", System.currentTimeMillis() / 1000L)
             )
 
             val keys = (
                 com.example.ui.cercanias.CercaniasRouteUtils.getTripKeys(tripId) +
+                (if (startDate.isNotBlank()) listOf("${startDate}_$tripId", "$startDate-$tripId") else emptyList()) +
                 com.example.ui.cercanias.CercaniasRouteUtils.getTripKeys(vehicleId) +
                 com.example.ui.cercanias.CercaniasRouteUtils.getTripKeys(vehicleLabel)
             ).distinct().filter { it.isNotBlank() }
@@ -519,13 +622,22 @@ class GtfsCacheManager(private val context: Context) {
 
             val tripId = tripObj?.optString("trip_id", "")?.ifBlank { tripObj.optString("tripId", "") } ?: ""
             val routeId = tripObj?.optString("route_id", "")?.ifBlank { tripObj.optString("routeId", "") } ?: ""
-            if (routeId.isNotBlank() && routeId.first().isDigit() && !routeId.startsWith("40")) {
+            val isOtherNucleus = routeId.isNotBlank() && (
+                routeId.startsWith("10") || routeId.startsWith("20") || routeId.startsWith("30") ||
+                routeId.startsWith("31") || routeId.startsWith("32") || routeId.startsWith("41") ||
+                routeId.startsWith("50") || routeId.startsWith("60") || routeId.startsWith("70") ||
+                routeId.startsWith("80") || routeId.startsWith("90")
+            )
+            if (isOtherNucleus && !routeId.startsWith("40")) {
                 continue
             }
 
             val posObj = vehEntity.optJSONObject("position")
             val lat = posObj?.optDouble("latitude", Double.NaN)?.takeIf { !it.isNaN() }
             val lon = posObj?.optDouble("longitude", Double.NaN)?.takeIf { !it.isNaN() }
+            if (lat != null && lon != null && (lat !in 38.65..40.65 || lon !in -1.50..0.65)) {
+                continue
+            }
             val speed = posObj?.optDouble("speed", Double.NaN)?.takeIf { !it.isNaN() }
 
             val status = vehEntity.optString("current_status", vehEntity.optString("currentStatus", "IN_TRANSIT_TO"))

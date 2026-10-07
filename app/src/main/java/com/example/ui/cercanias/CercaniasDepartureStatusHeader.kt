@@ -57,20 +57,27 @@ fun CercaniasDepartureStatusHeader(
         else -> Color(0xFFDC2626).copy(alpha = if (isDarkMode) 0.2f else 0.12f)
     }
 
+    val canceledLabel = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_canceled_service)
+    val noServiceLabel = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_status_no_service)
+    val programmedLabel = androidx.compose.ui.res.stringResource(com.example.R.string.metro_status_programado)
+    val onTimeLabel = androidx.compose.ui.res.stringResource(com.example.R.string.status_normal)
+
     val statusLabel = when {
-        isCanceled -> if (appLanguage == AppLanguage.CA) "CANCEL·LAT" else "CANCELADO"
-        departure.isSkippedAtStop -> if (appLanguage == AppLanguage.CA) "Sense servei" else "Sin servicio"
-        !departure.isLive -> if (appLanguage == AppLanguage.CA) "Programat" else "Programado"
+        isCanceled -> canceledLabel.take(10).uppercase()
+        departure.isSkippedAtStop -> noServiceLabel
+        !departure.isLive -> programmedLabel
         delay < 0 -> "$delay min"
-        delay == 0 -> "En hora"
+        delay == 0 -> onTimeLabel
         else -> "+$delay min"
     }
 
+    val immediateLabel = androidx.compose.ui.res.stringResource(com.example.R.string.immediate_value)
+    val moreThan1hLabel = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_more_than_1h)
     val remainingLabel = when {
-        isCanceled -> if (appLanguage == AppLanguage.CA) "Servei cancel·lat" else "Servicio cancelado"
-        departure.isStoppedAt || departure.minutesRemaining in -1..1 -> if (appLanguage == AppLanguage.CA) "Immediat" else "Inmediato"
-        departure.minutesRemaining > 60 -> if (appLanguage == AppLanguage.CA) "Més d'1 hora" else "Más de 1 hora"
-        departure.minutesRemaining > 1 -> "En ${departure.minutesRemaining} min"
+        isCanceled -> canceledLabel.take(17)
+        departure.isStoppedAt || departure.minutesRemaining in -1..1 -> immediateLabel
+        departure.minutesRemaining > 60 -> moreThan1hLabel
+        departure.minutesRemaining > 1 -> androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_in_x_min, departure.minutesRemaining)
         else -> ""
     }
 

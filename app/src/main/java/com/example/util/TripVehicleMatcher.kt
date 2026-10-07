@@ -38,11 +38,20 @@ object TripVehicleMatcher {
         lastMatchedOriginVehicleKey: String?,
         vehicleKeyPrefix: String
     ): Triple<TransitArrivalCandidate, Int, Int>? {
-        if (candidates.isEmpty()) return null
+        val previouslyMatched = if (lastMatchedOriginVehicleKey != null) {
+            candidates.find { candidate ->
+                "${vehicleKeyPrefix}_${candidate.rawStopId}_${candidate.line}_${candidate.destination}" == lastMatchedOriginVehicleKey
+            }
+        } else null
 
         val validCandidates = candidates.filter { arr ->
             val liveArrivalMs = nowMs + (arr.seconds * 1000L)
             val isReachable = if (isCurrentWalk) arr.seconds >= -60 else liveArrivalMs >= earliestReachableMs
+
+            // Prevent matching newly departing vehicles when the theoretical departure is in the past (> 10 min ago)
+            val isNotExpired = if (theoreticalMinutesRemaining != null && theoreticalMinutesRemaining < -10) {
+                previouslyMatched != null
+            } else true
 
             // Prevent automatically suggesting/matching earlier departures than scheduled
             // unless user is already confirmed boarded. A tolerance of -2 mins is allowed for clock variance.
@@ -50,18 +59,14 @@ object TripVehicleMatcher {
                 arr.minutes >= (theoreticalMinutesRemaining - 2)
             } else true
 
-            isReachable && isNotPremature
+            isReachable && isNotPremature && isNotExpired
         }
 
         if (validCandidates.isEmpty()) return null
 
-        val previouslyMatched = if (lastMatchedOriginVehicleKey != null) {
-            validCandidates.find { candidate ->
-                "${vehicleKeyPrefix}_${candidate.rawStopId}_${candidate.line}_${candidate.destination}" == lastMatchedOriginVehicleKey
-            }
-        } else null
-
-        val matched = previouslyMatched ?: if (theoreticalMinutesRemaining != null) {
+        val matched = if (previouslyMatched != null && validCandidates.contains(previouslyMatched)) {
+            previouslyMatched
+        } else if (theoreticalMinutesRemaining != null) {
             validCandidates.minByOrNull { arr ->
                 val diff = arr.minutes - theoreticalMinutesRemaining
                 if (diff >= -2) diff else (kotlin.math.abs(diff) + 50)
@@ -71,7 +76,7 @@ object TripVehicleMatcher {
         } ?: return null
 
         val delayM = if (theoreticalMinutesRemaining != null) {
-            (matched.minutes - theoreticalMinutesRemaining).coerceAtLeast(0)
+            (matched.minutes - theoreticalMinutesRemaining).coerceIn(0, 20)
         } else 0
 
         return Triple(matched, matched.minutes, delayM)

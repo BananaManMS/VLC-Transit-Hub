@@ -213,14 +213,16 @@ class MapSelectionHandler(
                 locationCoordinator.setCameraTarget(GeoPoint(result.station.latitude, result.station.longitude), 17.5)
                 selectItem(selectedItem, centerCamera = false)
 
+                val cleanZ = com.example.data.model.cleanZoneCode(result.station.zone)
                 searchManager.addRecentSearch(
                     RecentSearch(
                         type = "metro",
                         id = result.station.id,
                         title = result.station.name,
-                        subtitle = "Metrovalencia",
+                        subtitle = "Zona $cleanZ • Metrovalencia",
                         latitude = result.station.latitude,
-                        longitude = result.station.longitude
+                        longitude = result.station.longitude,
+                        extraData = result.station.lines.joinToString(",")
                     )
                 )
             }
@@ -242,50 +244,117 @@ class MapSelectionHandler(
                 )
             }
             is MapSearchResult.Address -> {
-                val geoPoint = GeoPoint(result.result.latitude, result.result.longitude)
-                setDestination(geoPoint, result.result.displayName)
-                selectItem(SelectedMapItem.Address(result.result), centerCamera = true)
+                val homeLoc = searchManager.homeLocation.value
+                val workLoc = searchManager.workLocation.value
 
-                val isFav = result.result.type == "favorite" || result.result.category == "favorite" ||
-                        customFavorites.any { it.latitude == result.result.latitude && it.longitude == result.result.longitude }
-                val favItem = customFavorites.find { it.latitude == result.result.latitude && it.longitude == result.result.longitude }
+                val isHome = result.result.type == "home" ||
+                        result.customTitle?.equals("Casa", ignoreCase = true) == true ||
+                        result.result.placeName?.equals("Casa", ignoreCase = true) == true ||
+                        (homeLoc != null && Math.abs(homeLoc.latitude - result.result.latitude) < 0.0001 && Math.abs(homeLoc.longitude - result.result.longitude) < 0.0001)
 
-                val mainTitle = favItem?.title ?: (result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName)
-                val subTitle = favItem?.subtitle ?: (result.result.displayName.split(",").drop(1).take(2).joinToString(", ").trim().ifEmpty { "Ubicación" })
+                val isWork = result.result.type == "work" ||
+                        result.customTitle?.equals("Trabajo", ignoreCase = true) == true ||
+                        result.customTitle?.equals("Feina", ignoreCase = true) == true ||
+                        result.result.placeName?.equals("Trabajo", ignoreCase = true) == true ||
+                        result.result.placeName?.equals("Feina", ignoreCase = true) == true ||
+                        (workLoc != null && Math.abs(workLoc.latitude - result.result.latitude) < 0.0001 && Math.abs(workLoc.longitude - result.result.longitude) < 0.0001)
 
-                val baseRecent = RecentSearch(
-                    type = if (isFav) "favorite" else "address",
-                    id = if (isFav) (favItem?.id ?: "fav_${result.result.latitude}_${result.result.longitude}") else "addr_${result.result.latitude}_${result.result.longitude}",
-                    title = mainTitle,
-                    subtitle = subTitle,
-                    latitude = result.result.latitude,
-                    longitude = result.result.longitude,
-                    categoryName = result.result.placeCategory.name,
-                    categoryType = "${result.result.category}:${result.result.type}",
-                    placeName = result.result.placeName,
-                    road = result.result.road,
-                    houseNumber = result.result.houseNumber,
-                    suburb = result.result.suburb,
-                    city = result.result.city,
-                    postcode = result.result.postcode,
-                    openingHours = result.result.openingHours,
-                    wheelchair = result.result.wheelchair,
-                    brand = result.result.brand,
-                    operator = result.result.operator,
-                    phone = result.result.phone,
-                    email = result.result.email,
-                    website = result.result.website,
-                    wikipedia = result.result.wikipedia,
-                    wikidata = result.result.wikidata,
-                    fee = result.result.fee,
-                    charge = result.result.charge,
-                    startDate = result.result.startDate,
-                    historicType = result.result.historicType
+                val matchingFav = customFavorites.find {
+                    Math.abs(it.latitude - result.result.latitude) < 0.0001 && Math.abs(it.longitude - result.result.longitude) < 0.0001
+                }
+                val isFav = isHome || isWork || result.isFavorite || result.result.type == "favorite" || result.result.category == "favorite" || matchingFav != null
+
+                val favItem = when {
+                    isHome -> homeLoc
+                    isWork -> workLoc
+                    else -> matchingFav
+                }
+
+                val mainTitle = when {
+                    isHome -> homeLoc?.title?.ifBlank { "Casa" } ?: "Casa"
+                    isWork -> workLoc?.title?.ifBlank { "Trabajo" } ?: "Trabajo"
+                    matchingFav != null -> matchingFav.title
+                    !result.customTitle.isNullOrBlank() -> result.customTitle
+                    !result.result.placeName.isNullOrBlank() -> result.result.placeName
+                    else -> result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName
+                }
+
+                val subTitle = when {
+                    favItem != null && favItem.subtitle.isNotBlank() && !favItem.subtitle.equals(mainTitle, ignoreCase = true) -> favItem.subtitle
+                    result.result.road != null -> {
+                        val hn = if (!result.result.houseNumber.isNullOrBlank()) " ${result.result.houseNumber}" else ""
+                        val area = result.result.suburb ?: result.result.city
+                        if (!area.isNullOrBlank() && !area.equals(result.result.road, ignoreCase = true)) {
+                            "${result.result.road}$hn • $area"
+                        } else {
+                            "${result.result.road}$hn"
+                        }
+                    }
+                    else -> result.result.displayName.split(",").drop(1).take(2).joinToString(", ").trim().ifEmpty { "Ubicación" }
+                }
+
+                val fullDisplayName = if (subTitle.isNotBlank() && !subTitle.equals(mainTitle, ignoreCase = true)) {
+                    "$mainTitle, $subTitle"
+                } else {
+                    mainTitle
+                }
+
+                val preservedNomResult = result.result.copy(
+                    displayName = fullDisplayName,
+                    type = when {
+                        isHome -> "home"
+                        isWork -> "work"
+                        isFav -> "favorite"
+                        else -> result.result.type
+                    },
+                    category = if (isFav) "favorite" else result.result.category,
+                    placeCategory = if (isFav) com.example.data.model.PlaceCategory.FAVORITE else result.result.placeCategory,
+                    placeName = mainTitle
                 )
-                searchManager.addRecentSearch(baseRecent)
+
+                val geoPoint = GeoPoint(result.result.latitude, result.result.longitude)
+                setDestination(geoPoint, mainTitle)
+                selectItem(SelectedMapItem.Address(preservedNomResult), centerCamera = true)
+
+                if (!isHome && !isWork && matchingFav == null) {
+                    val baseRecent = RecentSearch(
+                        type = if (isFav) "favorite" else "address",
+                        id = if (isFav) (favItem?.id ?: "fav_${result.result.latitude}_${result.result.longitude}") else "addr_${result.result.latitude}_${result.result.longitude}",
+                        title = mainTitle,
+                        subtitle = subTitle,
+                        latitude = result.result.latitude,
+                        longitude = result.result.longitude,
+                        categoryName = preservedNomResult.placeCategory.name,
+                        categoryType = "${preservedNomResult.category}:${preservedNomResult.type}",
+                        placeName = mainTitle,
+                        road = result.result.road,
+                        houseNumber = result.result.houseNumber,
+                        suburb = result.result.suburb,
+                        city = result.result.city,
+                        postcode = result.result.postcode,
+                        openingHours = result.result.openingHours,
+                        wheelchair = result.result.wheelchair,
+                        brand = result.result.brand,
+                        operator = result.result.operator,
+                        phone = result.result.phone,
+                        email = result.result.email,
+                        website = result.result.website,
+                        wikipedia = result.result.wikipedia,
+                        wikidata = result.result.wikidata,
+                        fee = result.result.fee,
+                        charge = result.result.charge,
+                        startDate = result.result.startDate,
+                        historicType = result.result.historicType
+                    )
+                    searchManager.addRecentSearch(baseRecent)
+                }
 
                 enrichmentJob?.cancel()
-                if (isNetworkAvailable(context)) {
+                enrichmentJob = null
+
+                // Only perform background reverse geocoding if it is a completely generic address / unpinned point.
+                // NEVER query or overwrite OSM Nominatim when user explicitly chose Casa, Trabajo, or a Favorite!
+                if (!isHome && !isWork && !isFav && isNetworkAvailable(context)) {
                     val targetLat = result.result.latitude
                     val targetLon = result.result.longitude
                     enrichmentJob = scope.launch {
@@ -297,37 +366,14 @@ class MapSelectionHandler(
                                     Math.abs(current.result.longitude - targetLon) < 0.0001
                                 ) {
                                     val updatedResult = detailed.copy(
-                                        displayName = if (isFav) result.result.displayName else detailed.displayName
+                                        displayName = detailed.displayName
                                     )
                                     _selectedMapItem.value = SelectedMapItem.Address(updatedResult)
-                                    searchManager.addRecentSearch(baseRecent.copy(
-                                        categoryName = updatedResult.placeCategory.name,
-                                        categoryType = "${updatedResult.category}:${updatedResult.type}",
-                                        placeName = updatedResult.placeName ?: baseRecent.placeName,
-                                        road = updatedResult.road ?: baseRecent.road,
-                                        houseNumber = updatedResult.houseNumber ?: baseRecent.houseNumber,
-                                        suburb = updatedResult.suburb ?: baseRecent.suburb,
-                                        city = updatedResult.city ?: baseRecent.city,
-                                        postcode = updatedResult.postcode ?: baseRecent.postcode,
-                                        openingHours = updatedResult.openingHours ?: baseRecent.openingHours,
-                                        wheelchair = updatedResult.wheelchair ?: baseRecent.wheelchair,
-                                        brand = updatedResult.brand ?: baseRecent.brand,
-                                        operator = updatedResult.operator ?: baseRecent.operator,
-                                        phone = updatedResult.phone ?: baseRecent.phone,
-                                        email = updatedResult.email ?: baseRecent.email,
-                                        website = updatedResult.website ?: baseRecent.website,
-                                        wikipedia = updatedResult.wikipedia ?: baseRecent.wikipedia,
-                                        wikidata = updatedResult.wikidata ?: baseRecent.wikidata,
-                                        fee = updatedResult.fee ?: baseRecent.fee,
-                                        charge = updatedResult.charge ?: baseRecent.charge,
-                                        startDate = updatedResult.startDate ?: baseRecent.startDate,
-                                         historicType = updatedResult.historicType ?: baseRecent.historicType
-                                     ))
-                                 }
-                             }
-                         }
-                     }
-                 }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -378,6 +424,10 @@ class MapSelectionHandler(
                     MapSelectionMode.SELECTING_WORK -> {
                         val workSearch = recentSearch.copy(title = "Trabajo", subtitle = finalAddress)
                         searchManager.saveWorkLocation(workSearch)
+                    }
+                    MapSelectionMode.SELECTING_PINNED -> {
+                        val pinnedSearch = recentSearch.copy(title = finalAddress.split(",").firstOrNull()?.trim() ?: "Destacado", subtitle = finalAddress)
+                        searchManager.savePinnedLocation(pinnedSearch)
                     }
                     MapSelectionMode.SELECTING_FOR_PLANNER_ORIGIN,
                     MapSelectionMode.SELECTING_FOR_PLANNER_DESTINATION -> {

@@ -6,7 +6,6 @@ import android.graphics.Paint
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Polyline
 import com.example.data.model.routing.PlannedItinerary
 import com.example.data.model.routing.TransitMode
 
@@ -77,7 +76,7 @@ object ItineraryMapRenderer {
 
             if (pts.isNotEmpty()) {
                 allPoints.addAll(pts)
-                val polyline = Polyline(mapView).apply {
+                val polyline = SafePolyline(mapView).apply {
                     setPoints(pts)
                     infoWindow = null
                     setOnClickListener { _, _, _ -> true }
@@ -265,11 +264,18 @@ object ItineraryMapRenderer {
             val maxLon = validPoints.maxOf { it.longitude }
             if (maxLat - minLat > 0.0001 && maxLon - minLon > 0.0001) {
                 val box = org.osmdroid.util.BoundingBox(maxLat + 0.002, maxLon + 0.002, minLat - 0.002, minLon - 0.002)
-                mapView.post {
+                val performZoom = {
                     try {
-                        mapView.zoomToBoundingBox(box, true, 80)
+                        mapView.zoomToBoundingBox(box, false, 90)
                     } catch (e: Exception) {
                         android.util.Log.w("ItineraryMapRenderer", "Could not zoom to itinerary bounding box", e)
+                    }
+                }
+                if (mapView.isLayoutOccurred) {
+                    mapView.post { performZoom() }
+                } else {
+                    mapView.addOnFirstLayoutListener { _, _, _, _, _ ->
+                        performZoom()
                     }
                 }
             }

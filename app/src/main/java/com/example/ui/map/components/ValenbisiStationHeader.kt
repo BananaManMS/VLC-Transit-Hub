@@ -87,7 +87,7 @@ fun ValenbisiStationHeader(
                         color = Color(0xFF10B981)
                     )
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Estació de lloguer" else "Estación de alquiler",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_rental_station_subtitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = subtextColor
                     )
@@ -113,7 +113,7 @@ fun ValenbisiStationHeader(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Directions,
-                                contentDescription = if (appLanguage == AppLanguage.CA) "Com arribar" else "Cómo llegar",
+                                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.bus_directions_btn),
                                 tint = Color(0xFF0284C7),
                                 modifier = Modifier.size(18.dp)
                             )

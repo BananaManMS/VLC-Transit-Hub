@@ -128,7 +128,10 @@ fun RouteDetailBottomSheet(
                     onClick = onDismiss,
                     modifier = Modifier.testTag("route_detail_close_button")
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close)
+                    )
                 }
             }
 
@@ -249,7 +252,7 @@ fun RouteDetailBottomSheet(
                                 ?: itinerary.viabilityNotice
                                 ?: if (itinerary.activeAlerts.isNotEmpty()) itinerary.activeAlerts.first()
                                 else if (itinerary.recommendedStartTime.isNotEmpty() && itinerary.recommendedStartTime != itinerary.formattedDepartureTime) {
-                                    if (appLanguage == AppLanguage.ES) "Salida ajustada a las ${itinerary.recommendedStartTime}" else "Eixida ajustada a les ${itinerary.recommendedStartTime}"
+                                    androidx.compose.ui.res.stringResource(com.example.R.string.route_detail_adjusted_start_format, itinerary.recommendedStartTime)
                                 } else null
 
                             val cleanNoticeText = rawNotice
@@ -329,7 +332,7 @@ fun RouteDetailBottomSheet(
                 ) {
                     Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (appLanguage == AppLanguage.ES) "Mapa" else "Mapa")
+                    Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_map))
                 }
 
                 if (canStart) {
@@ -347,7 +350,7 @@ fun RouteDetailBottomSheet(
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.ES) "Iniciar viaje" else "Iniciar viatge",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_start_trip),
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -357,7 +360,7 @@ fun RouteDetailBottomSheet(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text(if (appLanguage == AppLanguage.ES) "Aceptar" else "D'acord")
+                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_accept))
                     }
                 }
             }

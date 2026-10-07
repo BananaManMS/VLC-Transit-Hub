@@ -172,6 +172,13 @@ class MapSearchManager(
         }
     }
 
+    fun savePinnedLocation(location: RecentSearch?) {
+        scope.launch(Dispatchers.IO) {
+            val json = if (location == null) "" else gson.toJson(location)
+            dashboardRepository.savePreference("pinned_location", json)
+        }
+    }
+
     fun saveCustomFavorite(
         alias: String,
         subtitle: String,

@@ -8,6 +8,7 @@ import com.example.data.model.routing.TransitMode
 import com.example.data.repository.ActiveTripState
 import com.example.ui.dashboard.AppLanguage
 import com.example.util.ActiveProgressInfo
+import com.example.util.ActiveTripProgressTracker
 import com.example.util.ActiveTripSnapshotBuilder
 import com.example.util.RealTimeTripStatus
 import com.example.util.TripUrgencyLevel
@@ -291,5 +292,128 @@ class UnifiedActiveTripEngineTest {
         assertNotNull(graceUntilMs)
         val remainingMs = graceUntilMs!! - System.currentTimeMillis()
         assertTrue("Grace period duration must be approximately 2 minutes (>= 115s)", remainingMs >= 115_000L)
+    }
+
+    @Test
+    fun testCalculateBoardedRemainingMinutes_AtDestinationApproach_ReturnsPhysicalRemainingTimeAndRejectsPhantomDelay() {
+        val transitLeg = PlannedLeg(
+            mode = TransitMode.SUBWAY,
+            durationSeconds = 1800, // 30 min leg
+            distanceMeters = 15000.0,
+            formattedDuration = "30 min",
+            startTime = "18:15",
+            endTime = "18:45",
+            formattedStartTime = "18:15",
+            formattedEndTime = "18:45",
+            agencyName = "Metrovalencia",
+            routeShortName = "5",
+            routeLongName = "L5",
+            headsign = "Roses",
+            routeColorHex = "#00A859",
+            fromName = "Marítim",
+            toName = "Roses",
+            fromStopId = "1",
+            toStopId = "20",
+            fromLat = 39.4690,
+            fromLon = -0.3760,
+            toLat = 39.4900,
+            toLon = -0.4500
+        )
+
+        // User is at 90% progress (approaching Roses, only 1-2 min left)
+        ActiveTripProgressTracker.updateProgress(
+            progressWithinLeg = 0.90f,
+            waitTimeMessage = null,
+            isDeadReckoning = false,
+            isBoarded = true,
+            transitDepartureTimeMs = System.currentTimeMillis() - 25 * 60 * 1000L,
+            legIndex = 0,
+            remainingStopsCount = 1
+        )
+
+        // Case A: A phantom 35-minute delay was reported by a broken origin poll
+        val statusWithPhantomDelay = RealTimeTripStatus(
+            delayMinutes = 35,
+            isLive = true
+        )
+        val remainingMins = com.example.util.TripUIStateFormatter.calculateBoardedRemainingMinutes(
+            leg = transitLeg,
+            realTimeStatus = statusWithPhantomDelay
+        )
+        // Must NOT return 1 + 35 = 36 min! Must return 3 min (physical remaining time at 90% progress: 30 * 0.10 = 3 min)
+        assertEquals(3, remainingMins)
+
+        // Case B: Live vehicle forward radar reports destination arrival in 2 min
+        val statusWithLiveDestinationEta = RealTimeTripStatus(
+            checkpointEtaMinutes = 2,
+            isLive = true,
+            delayMinutes = 1
+        )
+        val liveRemainingMins = com.example.util.TripUIStateFormatter.calculateBoardedRemainingMinutes(
+            leg = transitLeg,
+            realTimeStatus = statusWithLiveDestinationEta
+        )
+        assertEquals(2, liveRemainingMins)
+    }
+
+    @Test
+    fun testTripVehicleMatcher_DeepPastTheoreticalSchedule_RejectsNewDepartingTrainWithPhantomDelay() {
+        val nowMs = System.currentTimeMillis()
+        val candidateDepartures = listOf(
+            com.example.util.TransitArrivalCandidate(
+                line = "5",
+                destination = "Roses",
+                seconds = 120, // 2 minutes from now
+                minutes = 2,
+                isRealTime = true,
+                rawStopId = "1"
+            )
+        )
+
+        // Scheduled departure was 35 minutes ago (theoreticalMinutesRemaining = -35)
+        val matchResult = com.example.util.TripVehicleMatcher.matchBestCandidate(
+            candidates = candidateDepartures,
+            nowMs = nowMs,
+            earliestReachableMs = nowMs,
+            isCurrentWalk = false,
+            isBoarded = false,
+            theoreticalMinutesRemaining = -35,
+            lastMatchedOriginVehicleKey = null,
+            vehicleKeyPrefix = "METRO"
+        )
+
+        // Must reject matching a vehicle departing now as an origin vehicle with +37 min delay
+        assertEquals(null, matchResult)
+    }
+
+    @Test
+    fun testPekingTimezone_MaintainsMadridScheduledTimesAndParsing() {
+        val originalTz = java.util.TimeZone.getDefault()
+        try {
+            // Simulate device set to Beijing time (Asia/Shanghai, UTC+8, ~6-7 hours ahead of Spain)
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
+
+            // 1. Parsing short scheduled time (18:45 in Valencia)
+            val parsedMs = com.example.util.TripTimeParser.parseTimeToMillis("18:45")
+            assertNotNull(parsedMs)
+            val calMadrid = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid")).apply {
+                timeInMillis = parsedMs!!
+            }
+            assertEquals("Hour in Spain must strictly be 18", 18, calMadrid.get(java.util.Calendar.HOUR_OF_DAY))
+            assertEquals("Minute in Spain must strictly be 45", 45, calMadrid.get(java.util.Calendar.MINUTE))
+
+            // 2. Adjusting arrival time (18:45 + 5 min delay = 18:50)
+            val adjusted = com.example.util.TripUIStateFormatter.calculateAdjustedArrivalTime("18:45", 5)
+            assertEquals("18:50", adjusted)
+
+            // 3. Adding minutes to now in Spain
+            val nowMadrid = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
+            val nowMadridHour = nowMadrid.get(java.util.Calendar.HOUR_OF_DAY)
+            val addedNow = com.example.util.TripTimeParser.addMinutesToNow(0)
+            val addedHour = addedNow.split(":")[0].toInt()
+            assertEquals("addMinutesToNow must match current hour in Spain, NOT Beijing", nowMadridHour, addedHour)
+        } finally {
+            java.util.TimeZone.setDefault(originalTz)
+        }
     }
 }

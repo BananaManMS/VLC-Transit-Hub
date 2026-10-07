@@ -352,12 +352,15 @@ fun BoxScope.MapDetailBottomSheetsHost(
             val isHome = (homeLoc != null &&
                     Math.abs(homeLoc!!.latitude - item.result.latitude) < 0.0001 &&
                     Math.abs(homeLoc!!.longitude - item.result.longitude) < 0.0001) ||
-                    item.result.type.equals("home", ignoreCase = true)
+                    item.result.type.equals("home", ignoreCase = true) ||
+                    item.result.placeName?.equals("Casa", ignoreCase = true) == true
 
             val isWork = (workLoc != null &&
                     Math.abs(workLoc!!.latitude - item.result.latitude) < 0.0001 &&
                     Math.abs(workLoc!!.longitude - item.result.longitude) < 0.0001) ||
-                    item.result.type.equals("work", ignoreCase = true)
+                    item.result.type.equals("work", ignoreCase = true) ||
+                    item.result.placeName?.equals("Trabajo", ignoreCase = true) == true ||
+                    item.result.placeName?.equals("Feina", ignoreCase = true) == true
 
             val matchingFav = customFavorites.find {
                 Math.abs(it.latitude - item.result.latitude) < 0.0001 &&

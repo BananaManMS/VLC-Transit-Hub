@@ -83,7 +83,9 @@ fun CercaniasScreen(
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) {
-                viewModel.fetchCercaniasDepartures()
+                if (departures.isEmpty()) {
+                    viewModel.fetchCercaniasDepartures()
+                }
             } else if (event == Lifecycle.Event.ON_STOP) {
                 viewModel.stopCercaniasPolling()
             }
@@ -95,8 +97,6 @@ fun CercaniasScreen(
         }
     }
 
-    var showLiveMap by remember { mutableStateOf(false) }
-
     Box(
         modifier = modifier.fillMaxSize()
     ) {
@@ -106,7 +106,10 @@ fun CercaniasScreen(
             // TabRow Unificado (Material 3 con tipografía titleSmall y Capitalizado)
             UnifiedTabRow(
                 selectedTabIndex = pagerState.currentPage,
-                tabs = if (appLanguage == AppLanguage.CA) listOf("Eixides", "Avisos") else listOf("Salidas", "Avisos"),
+                tabs = listOf(
+                    androidx.compose.ui.res.stringResource(com.example.R.string.metro_tab_salidas),
+                    androidx.compose.ui.res.stringResource(com.example.R.string.metro_tab_avisos)
+                ),
                 onTabSelected = { index ->
                     scope.launch { pagerState.animateScrollToPage(index) }
                 },
@@ -165,7 +168,7 @@ fun CercaniasScreen(
 
         // Dedicated Live Train Tracking Floating Action Button (FAB)
         FloatingActionButton(
-            onClick = { showLiveMap = true },
+            onClick = { viewModel.setShowLiveMap(true) },
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = Color.White,
             modifier = Modifier
@@ -175,7 +178,7 @@ fun CercaniasScreen(
         ) {
             Icon(
                 imageVector = Icons.Default.Map,
-                contentDescription = if (appLanguage == AppLanguage.CA) "Veure mapa en viu" else "Ver mapa en vivo"
+                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_view_live_map)
             )
         }
     }
@@ -213,12 +216,14 @@ fun CercaniasScreen(
         }
     }
 
-    // Standalone Live Train Map Overlay Dialog
+    // Live Map Dialog overlay
+    val showLiveMap by viewModel.showLiveMap.collectAsState()
     if (showLiveMap) {
         CercaniasLiveMapDialog(
             viewModel = viewModel,
             isDarkMode = isDarkMode,
-            onDismiss = { showLiveMap = false }
+            bottomPadding = activeTripBottomPadding + 80.dp,
+            onDismiss = { viewModel.setShowLiveMap(false) }
         )
     }
 }

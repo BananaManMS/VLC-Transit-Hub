@@ -123,15 +123,18 @@ object CercaniasDepartureMapper {
     fun sortDeparturesChronologically(departures: List<CercaniasDeparture>): List<CercaniasDeparture> {
         return departures
             .filter { it.minutesRemaining >= -1 && (it.minutesRemaining <= 1440 || it.isIndeterminateDelay) }
-            .distinctBy { Triple(it.departureTime, it.routeId, it.destination) }
+            .distinctBy { "${it.departureTime}_${it.routeId}_${it.destination}_${it.isTomorrow}" }
             .sortedWith(
                 compareBy<CercaniasDeparture> {
                     // Canceled trains placed after active ones
                     if (it.isCanceled) 1 else 0
                 }
                     .thenBy {
+                        if (it.isTomorrow) 1 else 0
+                    }
+                    .thenBy {
                         // Strict chronological ordering by minutes remaining
-                        if (it.isIndeterminateDelay) 999 else it.minutesRemaining.coerceAtLeast(0)
+                        if (it.isIndeterminateDelay) 9999 else it.minutesRemaining.coerceAtLeast(0)
                     }
                     .thenBy { it.departureTime }
                     .thenBy {

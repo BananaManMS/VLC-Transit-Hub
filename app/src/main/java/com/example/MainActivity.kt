@@ -2,6 +2,8 @@ package com.example
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -35,18 +37,47 @@ class MainActivity : ComponentActivity() {
     private val dashboardViewModel: DashboardViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        com.example.util.StartupProfiler.log("MainActivity", "onCreate started")
         installSplashScreen()
         // Initialize global uncaught exception interceptor
         CrashCatcher.init(applicationContext)
+
+        applyDeviceOrientation()
         
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        com.example.util.StartupProfiler.log("MainActivity", "setContent starting")
         setContent {
             val isDark by dashboardViewModel.isDarkMode.collectAsState()
-            VlcMetroTheme(darkTheme = isDark) {
-                var crashReport by remember { mutableStateOf(CrashCatcher.getCrashReport(applicationContext)) }
-                
-                DashboardScreen(viewModel = dashboardViewModel)
+            val appLanguage by dashboardViewModel.appLanguage.collectAsState()
+
+            val locale = remember(appLanguage) {
+                if (appLanguage == com.example.ui.dashboard.AppLanguage.CA) java.util.Locale("ca") else java.util.Locale("es")
+            }
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val localizedConfiguration = remember(locale, context) {
+                android.content.res.Configuration(context.resources.configuration).apply {
+                    setLocale(locale)
+                }
+            }
+            val localizedContext = remember(locale, context) {
+                context.createConfigurationContext(localizedConfiguration)
+            }
+
+            val activityResultRegistryOwner = remember(context) {
+                (context as? androidx.activity.result.ActivityResultRegistryOwner)
+                    ?: (this@MainActivity as androidx.activity.result.ActivityResultRegistryOwner)
+            }
+
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalConfiguration provides localizedConfiguration,
+                androidx.compose.ui.platform.LocalContext provides localizedContext,
+                androidx.activity.compose.LocalActivityResultRegistryOwner provides activityResultRegistryOwner
+            ) {
+                VlcMetroTheme(darkTheme = isDark) {
+                    var crashReport by remember { mutableStateOf(CrashCatcher.getCrashReport(applicationContext)) }
+                    
+                    DashboardScreen(viewModel = dashboardViewModel)
                 
                 if (crashReport != null) {
                     val currentReport = crashReport!!
@@ -77,7 +108,7 @@ class MainActivity : ComponentActivity() {
                                 val clip = android.content.ClipData.newPlainText("Crash Report", currentReport)
                                 clipboard.setPrimaryClip(clip)
                             }) {
-                                Text("Copiar Reporte")
+                                Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_copy_report))
                             }
                         },
                         dismissButton = {
@@ -85,12 +116,27 @@ class MainActivity : ComponentActivity() {
                                 CrashCatcher.clearCrashReport(applicationContext)
                                 crashReport = null
                             }) {
-                                Text("Entendido")
+                                Text(androidx.compose.ui.res.stringResource(com.example.R.string.card_alert_understood))
                             }
                         }
                     )
                 }
             }
         }
+    }
+}
+
+    private fun applyDeviceOrientation(config: Configuration = resources.configuration) {
+        val isTablet = resources.getBoolean(R.bool.allow_land_rotation) || config.smallestScreenWidthDp >= 600
+        requestedOrientation = if (isTablet) {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyDeviceOrientation(newConfig)
     }
 }

@@ -131,6 +131,7 @@ fun BoxScope.MapLocationSelectionOverlay(
         MapSelectionMode.SELECTING_LOCATION -> if (appLanguage == AppLanguage.CA) "Triar ubicació al mapa" else "Elegir ubicación en el mapa"
         MapSelectionMode.SELECTING_HOME -> if (appLanguage == AppLanguage.CA) "Establir ubicació de Casa" else "Establecer ubicación de Casa"
         MapSelectionMode.SELECTING_WORK -> if (appLanguage == AppLanguage.CA) "Establir ubicació de Feina" else "Establecer ubicación de Trabajo"
+        MapSelectionMode.SELECTING_PINNED -> if (appLanguage == AppLanguage.CA) "Establir lloc destacat" else "Establecer sitio destacado"
         MapSelectionMode.SELECTING_FOR_PLANNER_ORIGIN -> if (appLanguage == AppLanguage.CA) "Triar origen al mapa" else "Elegir origen en el mapa"
         MapSelectionMode.SELECTING_FOR_PLANNER_DESTINATION -> if (appLanguage == AppLanguage.CA) "Triar destí al mapa" else "Elegir destino en el mapa"
         else -> ""

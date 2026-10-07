@@ -167,6 +167,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        com.example.util.StartupProfiler.log("BusVM", "init started: loading prefs, metro network, valenbisi, bus sync")
         loadPreferences()
         loadMetroNetworkStations()
         fetchValenbisiStations()
@@ -396,10 +397,11 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startBusCountdownTicker() {
+        busCountdownJob?.cancel()
         busCountdownJob = viewModelScope.launch {
             var tickCount = 0
             while (isActive) {
-                delay(1000)
+                delay(15000L) // 15-second battery-friendly cadence for EMT
                 if (!isActive) break
                 tickCount++
                 val currentList = _busTimes.value
@@ -411,7 +413,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                             time
                         } else {
                             changed = true
-                            val newSecs = secs - 1
+                            val newSecs = (secs - 15).coerceAtLeast(0)
                             val newMinsVal = newSecs / 60
                             val newMinsStr = if (newMinsVal <= 0) "1" else newMinsVal.toString()
                             time.copy(
@@ -425,8 +427,8 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Poll real-time updates silently every 30 seconds
-                if (tickCount % 30 == 0 && isActive) {
+                // Poll real-time updates silently every 30 seconds (every 2 ticks)
+                if (tickCount % 2 == 0 && isActive) {
                     val stop = _selectedBusStop.value
                     if (stop != null) {
                         fetchBusTimes(
@@ -1091,10 +1093,11 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startMetrobusCountdownTicker() {
+        metrobusCountdownJob?.cancel()
         metrobusCountdownJob = viewModelScope.launch {
             var tickCount = 0
             while (isActive) {
-                delay(1000)
+                delay(15000L) // 15-second battery-friendly cadence for Metrobus
                 if (!isActive) break
                 tickCount++
                 val currentList = _metrobusTimes.value
@@ -1106,7 +1109,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                             time
                         } else {
                             changed = true
-                            val newSecs = secs - 1
+                            val newSecs = (secs - 15).coerceAtLeast(0)
                             val newMinsVal = (newSecs + 59) / 60
                             val newMinsStr = if (newMinsVal <= 1) "1" else newMinsVal.toString()
                             val newLabel = if (newMinsVal <= 1) "Inminente" else "$newMinsVal min"
@@ -1122,8 +1125,8 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Poll real-time / scheduled silently in background every 30s
-                if (tickCount % 30 == 0 && isActive) {
+                // Poll real-time / scheduled silently in background every 30s (every 2 ticks)
+                if (tickCount % 2 == 0 && isActive) {
                     val stop = _selectedMetrobusStop.value ?: break
                     if (isActive) {
                         fetchMetrobusTimes(
@@ -1138,4 +1141,26 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun onAppBackgrounded() {
+        busCountdownJob?.cancel()
+        busCountdownJob = null
+        metrobusCountdownJob?.cancel()
+        metrobusCountdownJob = null
+    }
+
+    fun onAppForegrounded() {
+        if (_selectedBusStop.value != null && busCountdownJob == null) {
+            fetchBusTimes(_selectedBusStop.value!!.opId, isSilent = true)
+            startBusCountdownTicker()
+        }
+        if (_selectedMetrobusStop.value != null && metrobusCountdownJob == null) {
+            fetchMetrobusTimes(
+                _selectedMetrobusStop.value!!.idParada,
+                limitPerLine = scheduledMetrobusLimitPerLine,
+                isSilent = true,
+                includeScheduled = isMetrobusScheduledExpanded
+            )
+            startMetrobusCountdownTicker()
+        }
+    }
 }

@@ -124,13 +124,13 @@ fun CercaniasStationSelectionDialog(
                 ) {
                     Column {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Favorites de Rodalia" else "Favoritas Cercanías",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_favs_dialog_title),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Selecciona fins a 10 estacions favorites de Rodalia Renfe" else "Selecciona hasta 10 estaciones favoritas de Cercanías Renfe",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_favs_dialog_subtitle),
                             fontSize = 12.sp,
                             color = subtextColor
                         )
@@ -192,7 +192,7 @@ fun CercaniasStationSelectionDialog(
                                 .clickable {
                                     if (!isChecked) {
                                         if (selectedStations.size >= 10) {
-                                            val toastMsg = if (appLanguage == AppLanguage.CA) "Només pots seleccionar un màxim de 10 estacions." else "Sólo puedes seleccionar un máximo de 10 estaciones."
+                                            val toastMsg = context.getString(com.example.R.string.cercanias_max_stations_limit_toast)
                                             Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
                                         } else {
                                             selectedStations = selectedStations + station.id
@@ -317,7 +317,7 @@ fun CercaniasStationSelectionDialog(
                         if (closestStations.isNotEmpty()) {
                             item(key = "header_closest_cercanias") {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "ESTACIONS MÉS PRÒXIMES" else "ESTACIONES MÁS CERCANAS",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_nearest_stations_header),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor,
@@ -333,7 +333,7 @@ fun CercaniasStationSelectionDialog(
                         if (alphabeticalStations.isNotEmpty()) {
                             item(key = "header_alphabetical_cercanias") {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "TOTES LES ESTACIONS (A-Z)" else "TODAS LAS ESTACIONES (A-Z)",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_all_stations_header),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor,
@@ -360,7 +360,7 @@ fun CercaniasStationSelectionDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Seleccionades: ${selectedStations.size} de 10" else "Seleccionadas: ${selectedStations.size} de 10",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_selected_count_format, selectedStations.size),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (selectedStations.isNotEmpty() && selectedStations.size <= 10) accentColor else MaterialTheme.colorScheme.error
@@ -368,11 +368,11 @@ fun CercaniasStationSelectionDialog(
                     Button(
                         onClick = {
                             if (selectedStations.isEmpty() || selectedStations.size > 10) {
-                                val toastMsg = if (appLanguage == AppLanguage.CA) "Per favor, selecciona entre 1 i 10 estacions." else "Por favor, selecciona entre 1 y 10 estaciones."
+                                val toastMsg = context.getString(com.example.R.string.cercanias_select_range_toast)
                                 Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
                             } else {
                                 viewModel.updateCercaniasFavoriteStations(selectedStations)
-                                val toastMsg = if (appLanguage == AppLanguage.CA) "Estacions favorites actualitzades." else "Estaciones favoritas actualizadas."
+                                val toastMsg = context.getString(com.example.R.string.cercanias_favs_updated_toast)
                                 Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
                                 onDismiss()
                             }
@@ -386,7 +386,7 @@ fun CercaniasStationSelectionDialog(
                     ) {
                         Icon(imageVector = Icons.Default.Check, contentDescription = null)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (appLanguage == AppLanguage.CA) "Guardar Canvis" else "Guardar Cambios", fontWeight = FontWeight.Bold)
+                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_save_changes), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -480,13 +480,13 @@ fun CercaniasQuickStationPickerDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Consultar Estació Rodalia" else "Consultar Estación Cercanías",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_quick_picker_title),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Veure eixides en temps real sense modificar favorites" else "Ver salidas en tiempo real sin modificar tus favoritas",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_quick_picker_subtitle),
                             fontSize = 12.sp,
                             color = subtextColor
                         )
@@ -497,7 +497,7 @@ fun CercaniasQuickStationPickerDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Tancar" else "Cerrar",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
                             tint = subtextColor
                         )
                     }
@@ -507,11 +507,11 @@ fun CercaniasQuickStationPickerDialog(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text(if (appLanguage == AppLanguage.CA) "Cercar estació..." else "Buscar estación...", fontSize = 14.sp, color = subtextColor) },
+                    placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.search_station_label), fontSize = 14.sp, color = subtextColor) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Cercar" else "Buscar",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.search_label),
                             tint = subtextColor
                         )
                     },
@@ -520,7 +520,7 @@ fun CercaniasQuickStationPickerDialog(
                             IconButton(onClick = { searchQuery = "" }) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = if (appLanguage == AppLanguage.CA) "Netejar" else "Limpiar",
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.clear_search_desc),
                                     tint = subtextColor
                                 )
                             }
@@ -570,7 +570,7 @@ fun CercaniasQuickStationPickerDialog(
                                 .clip(RoundedCornerShape(16.dp))
                                 .clickable {
                                     viewModel.selectCercaniasStation(station.id)
-                                    val msg = if (appLanguage == AppLanguage.CA) "Mostrant eixides de ${station.displayName}" else "Mostrando salidas de ${station.displayName}"
+                                    val msg = context.getString(com.example.R.string.showing_departures_format, station.displayName)
                                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                     onDismiss()
                                 }
@@ -678,7 +678,7 @@ fun CercaniasQuickStationPickerDialog(
                         if (closestStations.isNotEmpty()) {
                             item(key = "header_closest_cercanias") {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "ESTACIONS MÉS PRÒXIMES" else "ESTACIONES MÁS CERCANAS",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_nearest_stations_header),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor,
@@ -694,7 +694,7 @@ fun CercaniasQuickStationPickerDialog(
                         if (alphabeticalStations.isNotEmpty()) {
                             item(key = "header_alphabetical_cercanias") {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "TOTES LES ESTACIONS (A-Z)" else "TODAS LAS ESTACIONES (A-Z)",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_all_stations_header),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor,

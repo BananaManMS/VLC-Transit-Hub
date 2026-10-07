@@ -10,18 +10,11 @@
     android:paddingTop="@dimen/notification_padding_compact_vertical"
     android:paddingBottom="@dimen/notification_padding_compact_vertical">
 
-    <ImageView
-        android:id="@+id/notif_compact_icon"
-        android:layout_width="28dp"
-        android:layout_height="28dp"
-        android:contentDescription="Transporte" />
-
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="10dp"
-        android:layout_marginEnd="6dp"
+        android:layout_marginEnd="12dp"
         android:orientation="vertical">
 
         <TextView
@@ -44,11 +37,19 @@
             android:ellipsize="end" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/notif_compact_eta"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:textColor="#00A86B" />
+        android:gravity="end|center_vertical"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/notif_compact_eta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:maxLines="1" />
+    </LinearLayout>
 </LinearLayout>

@@ -332,7 +332,7 @@ object TripStepProgressionEngine {
         )
 
         val isTransitLeg = currentLeg.mode in listOf(
-            TransitMode.SUBWAY, TransitMode.BUS, TransitMode.TRAM, TransitMode.RAIL
+            TransitMode.SUBWAY, TransitMode.BUS, TransitMode.TRAM, TransitMode.RAIL, TransitMode.METROBUS, TransitMode.CERCANIAS
         )
 
         val captureRadius = if (isTransitLeg) 75.0 else CAPTURE_RADIUS_METERS
@@ -405,9 +405,9 @@ object TripStepProgressionEngine {
 
             // Distance threshold to consider departed: for TRAM/BUS in city center, 80m is enough to confirm vehicle departure
             val minDepartureDist = when (currentLeg.mode) {
-                TransitMode.SUBWAY, TransitMode.RAIL -> 150.0
+                TransitMode.SUBWAY, TransitMode.RAIL, TransitMode.CERCANIAS -> 150.0
                 TransitMode.TRAM -> 80.0
-                TransitMode.BUS -> 200.0
+                TransitMode.BUS, TransitMode.METROBUS -> 200.0
                 else -> 80.0
             }
 
@@ -451,8 +451,8 @@ object TripStepProgressionEngine {
                 // Freeze progress at 0.05f (origin station icon). Do NOT creep along the line.
                 val modeLabel = when (currentLeg.mode) {
                     TransitMode.SUBWAY -> "Espera al metro"
-                    TransitMode.BUS -> "Espera al autobús"
-                    TransitMode.RAIL -> "Espera al tren"
+                    TransitMode.BUS, TransitMode.METROBUS -> "Espera al autobús"
+                    TransitMode.RAIL, TransitMode.CERCANIAS -> "Espera al tren"
                     TransitMode.TRAM -> "Espera al tranvía"
                     else -> "Espera al transporte"
                 }

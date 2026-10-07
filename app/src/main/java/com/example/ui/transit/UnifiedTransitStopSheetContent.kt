@@ -184,7 +184,7 @@ fun UnifiedTransitStopSheetContent(
                     modifier = Modifier.size(14.dp)
                 )
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "Pròximes eixides" else "Próximas salidas",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_departures_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = titleColor
@@ -242,13 +242,13 @@ fun UnifiedTransitStopSheetContent(
                                 modifier = Modifier.size(24.dp)
                             )
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.offline_banner_title),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = titleColor
                             )
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "No es poden consultar les eixides en temps real." else "No se pueden consultar las salidas en tiempo real.",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_check_connection_departures),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = subtextColor,
                                 textAlign = TextAlign.Center
@@ -256,7 +256,7 @@ fun UnifiedTransitStopSheetContent(
                         }
                     } else {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "No hi ha eixides en temps real en este moment." else "No hay salidas en tiempo real en este momento.",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.no_live_departures_now),
                             style = MaterialTheme.typography.bodyMedium,
                             color = subtextColor,
                             textAlign = TextAlign.Center
@@ -272,7 +272,7 @@ fun UnifiedTransitStopSheetContent(
                 ) {
                     val filterText = effectiveFilters.joinToString(", ")
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "No hi ha eixides en temps real per a la línia $filterText." else "No hay salidas en tiempo real para la(s) línea(s) $filterText.",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.no_live_departures_filtered_format, filterText),
                         style = MaterialTheme.typography.bodyMedium,
                         color = subtextColor,
                         textAlign = TextAlign.Center
@@ -310,11 +310,7 @@ fun UnifiedDivertedAlertBanner(
     val bg = if (isDark) Color(0xFF3E2723) else Color(0xFFFFEBEE)
     val textColor = if (isDark) Color(0xFFFFAB91) else Color(0xFFC62828)
     val linesStr = divertedLines.joinToString(", ")
-    val text = if (appLanguage == AppLanguage.CA) {
-        "Avís: Línia(es) desviada(es): $linesStr"
-    } else {
-        "Aviso: Línea(s) desviada(s): $linesStr"
-    }
+    val text = androidx.compose.ui.res.stringResource(com.example.R.string.stop_lines_diverted_alert, linesStr)
 
     Surface(
         shape = RoundedCornerShape(8.dp),

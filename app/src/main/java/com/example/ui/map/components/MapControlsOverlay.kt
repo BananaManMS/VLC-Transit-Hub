@@ -129,7 +129,8 @@ fun MapControlsOverlay(
     onClearRecentSearches: () -> Unit = {},
     onRemoveRecentSearch: (String) -> Unit = {},
     onElegirEnMapaClick: () -> Unit = {},
-    onSaveLocationShortcutClick: (isHome: Boolean) -> Unit = {}
+    onSaveLocationShortcutClick: (isHome: Boolean) -> Unit = {},
+    onOpenNetworkPlans: (() -> Unit)? = null
 ) {
     val isDirectionsVisible = selectedItem != null && onDirectionsClick != null
     val localFocusManager = LocalFocusManager.current
@@ -248,7 +249,7 @@ fun MapControlsOverlay(
             }
         }
 
-        // RIGHT SIDE FABs (GPS Only) positioned near bottom right (Filters moved to unified Top Layers Sheet)
+        // RIGHT SIDE FABs (Network Plans & GPS) positioned near bottom right
         if (!isSearchFocused) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -261,6 +262,26 @@ fun MapControlsOverlay(
                     )
                     .width(56.dp)
             ) {
+                // Square FAB with Map Icon for Official Network Plans
+                if (onOpenNetworkPlans != null) {
+                    FloatingActionButton(
+                        onClick = onOpenNetworkPlans,
+                        shape = RoundedCornerShape(14.dp),
+                        containerColor = com.example.ui.theme.AppThemeColors.cardBackground(isDarkMode),
+                        contentColor = if (isDarkMode) Color(0xFF38BDF8) else Color(0xFF0284C7),
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("map_fab_network_plans")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Map,
+                            contentDescription = if (appLanguage == AppLanguage.CA) "Plànols de la xarxa" else "Planos de la red",
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
                 // Recenter GPS FAB
                 FloatingActionButton(
                     onClick = onRecenterUser,
@@ -572,7 +593,7 @@ fun MapControlsOverlay(
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Satèl·lit" else "Satélite",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.map_satellite_label),
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                                 fontWeight = if (isSateliteSelected) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isSateliteSelected) MaterialTheme.colorScheme.primary else (if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569))
@@ -582,7 +603,7 @@ fun MapControlsOverlay(
 
                     // Section 2: Modos de transporte / Capas
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "MODOS DE TRANSPORT" else "MODOS DE TRANSPORTE",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.map_transport_modes_header),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
@@ -593,7 +614,7 @@ fun MapControlsOverlay(
                     val filtersList = listOf(
                         MapLayerFilterItem(
                             type = MapFilterType.METRO,
-                            label = if (appLanguage == AppLanguage.CA) "Metro" else "Metro",
+                            label = "Metro",
                             activeColor = Color(0xFFEA1D24), // Official Metrovalencia Red
                             logoRes = R.drawable.logo_metrovalencia,
                             fallbackVector = Icons.Default.Subway,
@@ -601,7 +622,7 @@ fun MapControlsOverlay(
                         ),
                         MapLayerFilterItem(
                             type = MapFilterType.CERCANIAS,
-                            label = if (appLanguage == AppLanguage.CA) "Rodalia" else "Cercanías",
+                            label = androidx.compose.ui.res.stringResource(com.example.R.string.tab_cercanias),
                             activeColor = Color(0xFFE0001A), // Official Cercanías Red
                             logoRes = R.drawable.logo_cercanias,
                             fallbackVector = Icons.Default.Train,
@@ -609,7 +630,7 @@ fun MapControlsOverlay(
                         ),
                         MapLayerFilterItem(
                             type = MapFilterType.BUS,
-                            label = if (appLanguage == AppLanguage.CA) "Bus EMT" else "Bus EMT",
+                            label = "Bus EMT",
                             activeColor = Color(0xFFE53935), // Official EMT Red
                             logoRes = R.drawable.logo_emt_valencia,
                             fallbackVector = Icons.Default.DirectionsBus,
@@ -617,7 +638,7 @@ fun MapControlsOverlay(
                         ),
                         MapLayerFilterItem(
                             type = MapFilterType.METROBUS,
-                            label = if (appLanguage == AppLanguage.CA) "Metrobús" else "Metrobús",
+                            label = "Metrobús",
                             activeColor = com.example.util.MetrobusLineColorResolver.BRAND_COLOR, // Official Metrobús Amber (#F59E0B)
                             logoRes = R.drawable.logo_metrobus,
                             fallbackVector = Icons.Default.DirectionsBus,
@@ -625,7 +646,7 @@ fun MapControlsOverlay(
                         ),
                         MapLayerFilterItem(
                             type = MapFilterType.VALENBISI,
-                            label = if (appLanguage == AppLanguage.CA) "Valenbisi" else "Valenbisi",
+                            label = "Valenbisi",
                             activeColor = Color(0xFF10B981), // Valenbisi Green
                             logoRes = R.drawable.ic_bike,
                             fallbackVector = Icons.Default.DirectionsBike,
@@ -634,7 +655,7 @@ fun MapControlsOverlay(
                         ),
                         MapLayerFilterItem(
                             type = MapFilterType.FAVORITES,
-                            label = if (appLanguage == AppLanguage.CA) "Favorits" else "Favoritos",
+                            label = androidx.compose.ui.res.stringResource(com.example.R.string.map_favorites_label),
                             activeColor = Color(0xFFEAB308), // Favorites Gold
                             fallbackVector = Icons.Default.Star,
                             padding = 0.dp,

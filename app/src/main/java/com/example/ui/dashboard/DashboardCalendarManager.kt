@@ -77,16 +77,27 @@ class DashboardCalendarManager(
     }
 
     fun syncGoogleCalendarEvents(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        scope.launch(Dispatchers.IO) {
+            try {
+                database.calendarDao().deletePastEvents(now)
+            } catch (e: Exception) {
+                Log.e("DashboardCalendarManager", "Error deleting past events", e)
+            }
+        }
+
         if (ContextCompat.checkSelfPermission(application, android.Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
             return
         }
 
         scope.launch(Dispatchers.IO) {
             try {
-                val now = System.currentTimeMillis()
-                val sevenDaysLater = now + (7 * 86400000L)
+                val currentNow = System.currentTimeMillis()
+                database.calendarDao().deletePastEvents(currentNow)
+
+                val sevenDaysLater = currentNow + (7 * 86400000L)
                 val uriBuilder = CalendarContract.Instances.CONTENT_URI.buildUpon()
-                ContentUris.appendId(uriBuilder, now)
+                ContentUris.appendId(uriBuilder, currentNow)
                 ContentUris.appendId(uriBuilder, sevenDaysLater)
 
                 val projection = arrayOf(
@@ -123,28 +134,44 @@ class DashboardCalendarManager(
                         val end = if (endIdx >= 0) c.getLong(endIdx) else null
                         val allDay = if (allDayIdx >= 0) c.getInt(allDayIdx) == 1 else false
 
-                        syncedItems.add(
-                            CalendarItemEntity(
-                                title = title,
-                                description = desc,
-                                startMillis = start,
-                                endMillis = end,
-                                isAllDay = allDay,
-                                itemType = "EVENT",
-                                colorHex = "#4285F4",
-                                calendarEventId = eventId
+                        // Only add future or active events
+                        val isFinished = (end != null && end < currentNow) || (end == null && start != null && start < currentNow - 1800000L)
+                        if (!isFinished) {
+                            syncedItems.add(
+                                CalendarItemEntity(
+                                    title = title,
+                                    description = desc,
+                                    startMillis = start,
+                                    endMillis = end,
+                                    isAllDay = allDay,
+                                    itemType = "EVENT",
+                                    colorHex = "#4285F4",
+                                    calendarEventId = eventId
+                                )
                             )
-                        )
+                        }
                     }
                 }
 
-                if (syncedItems.isNotEmpty()) {
-                    val existing = database.calendarDao().getAllItemsList()
-                    val existingEventIds = existing.mapNotNull { it.calendarEventId }.toSet()
-                    syncedItems.forEach { item ->
-                        if (item.calendarEventId == null || !existingEventIds.contains(item.calendarEventId)) {
-                            database.calendarDao().insertItem(item)
-                        }
+                val existing = database.calendarDao().getAllItemsList()
+                val currentSyncedEvents = existing.filter { it.calendarEventId != null }
+                val newSyncedEventIds = syncedItems.mapNotNull { it.calendarEventId }.toSet()
+
+                // Remove previous synced events that no longer exist or have passed
+                currentSyncedEvents.forEach { item ->
+                    val eventId = item.calendarEventId
+                    if (eventId != null && (!newSyncedEventIds.contains(eventId) || (item.endMillis != null && item.endMillis < currentNow))) {
+                        database.calendarDao().deleteItem(item)
+                    }
+                }
+
+                // Insert or update active upcoming events
+                syncedItems.forEach { item ->
+                    val existingItem = existing.find { it.calendarEventId == item.calendarEventId }
+                    if (existingItem != null) {
+                        database.calendarDao().updateItem(item.copy(id = existingItem.id))
+                    } else {
+                        database.calendarDao().insertItem(item)
                     }
                 }
             } catch (e: Exception) {

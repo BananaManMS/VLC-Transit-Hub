@@ -1,110 +1,146 @@
-# Plan de Migración: Mapa de Cercanías en Vivo Independiente (Revisado)
+# Seguimiento Rápido de Metro y Notificaciones en Vivo (Pin & Alerta de Bajada)
 
-Este plan detalla la migración de la funcionalidad de rastreo de trenes Cercanías hacia un nuevo mapa autónomo. Incorpora la optimización sugerida por el usuario para **aprovechar al máximo la memoria caché compartida del panel de salidas**, logrando un mapa de carga instantánea con cero peticiones de red duplicadas.
-
----
-
-### Análisis de Integración con el Panel de Salidas (Optimización Clave)
-
-Tras analizar los componentes internos de Renfe en la aplicación, descubrimos una excelente oportunidad de optimización utilizando **`GtfsCacheManager`** y **`RenfeRepository`**:
-
-1. **Caché Unificada en Memoria (`GtfsCacheManager`)**:
-   * Cuando el panel de salidas de Cercanías se refresca periódicamente (cada 20s-30s), descarga e interpreta tres feeds: `flota.json`, `trip_updates.json` y `vehicle_positions.json`.
-   * Estos datos se guardan de forma segura bajo un **Mutex** en `GtfsCacheManager` con un tiempo de vida (TTL) de **15 segundos**.
-2. **Carga Instantánea sin Latencia (Cero Segundos)**:
-   * Al abrir el nuevo mapa de trenes, **no necesitamos esperar a una nueva llamada de red**. Podemos consumir inmediatamente `renfeRepository.getUniqueLiveVehicles()`, que retornará al instante todas las posiciones ya descargadas y parseadas por el panel de salidas.
-3. **Detalles Completos del Tren (`LiveVehicleInfo`)**:
-   * Cada registro en caché ya contiene información crucial del tren: `originName` (estación de origen), `destinationName` (dirección/cabecera), `trainNum` (número de servicio), `delayMinutes` (retraso acumulado), y la línea (`routeId`).
-   * No es necesario realizar peticiones adicionales para rellenar la cabecera o la dirección del tren en la hoja inferior (`LiveTrainBottomSheet`), ya están pre-cargadas.
+Sistema de seguimiento ligero e instantáneo para viajeros habituales de Metrovalencia. Permite monitorizar un tren en tiempo real o fijar una alerta de bajada en destino con una pulsación prolongada, sin configurar rutas ni transbordos, mediante notificaciones continuas silenciosas y soporte para pastillas activas en la barra de estado de Android 16+ (Rich Ongoing Notifications).
 
 ---
 
-## 1. Concepto y Flujo de Usuario (UX)
+## Decisiones Críticas y Confirmadas
 
-### Flujo de Datos Inteligente y Cero Latencia:
-```
-                                PANEL DE SALIDAS (Activo en Pestaña)
-                                                 │
-                                                 ▼ (Cada 20-30s)
-                                    ┌────────────────────────┐
-                                    │   GtfsCacheManager     │ <── Memoria Caché Compartida (TTL 15s)
-                                    └────────────┬───────────┘
-                                                 │
-                             Pulsar FAB          │ (Consumo Instantáneo)
-                        ────────────────────────►│
-                                                 ▼
-                                    ┌────────────────────────┐
-                                    │ CercaniasLiveMapDialog │ ──► Carga instantánea de trenes
-                                    │ (Mapa Dedicado Limpio) │ ──► Sin llamadas de red redundantes
-                                    └────────────────────────┘
-```
+> [!IMPORTANT]
+> El diseño se ha refinado para maximizar la simplicidad (cero texto innecesario) y evitar truncamientos en la barra de estado del sistema operativo.
 
-1. El usuario está visualizando el panel de salidas de una estación. En segundo plano, `GtfsCacheManager` mantiene frescas las posiciones de toda la flota de Valencia.
-2. El usuario pulsa el **Botón Flotante (FAB)** en la esquina inferior derecha.
-3. Al instante se despliega el mapa dedicado y **pinta los trenes de forma inmediata** con los datos de la caché en memoria.
-4. El mapa mantiene el bucle de refresco coordinado con la caché compartida, asegurando que las llamadas de red sigan el mismo ciclo de vida sin duplicarse.
-5. Al pulsar un tren, el panel `LiveTrainBottomSheet` muestra de inmediato el número de tren, su origen, destino y minutos de demora extraídos directamente de `LiveVehicleInfo`.
+* **Activación por Pulsación Larga (Cero Fricción)**: Al mantener pulsada cualquier tarjeta de salida de metro (tiempo real o programada), se despliega una hoja inferior minimalista con un único selector vertical de estaciones.
+* **Lista Unificada de Destino de 1 Toque**: 
+  * Primer elemento: `📌 Salida en andén actual` (ej. *Xàtiva · en 4 min*).
+  * Siguientes elementos: Las paradas directas del tren ordenadas cronológicamente (ej. *Colón · 6 min*, *Facultats · 11 min*).
+* **Diseño en Dos Capas para Android 16+ (Evita Truncado de Texto)**:
+  * *Pastilla colapsada (Status Bar Chip)*: Micro-texto ultra-compacto de máx. 5–7 caracteres (`[ 🚇 4 min ]` o `[ L3 · 8m ]`).
+  * *Notificación expandida (Cortina del sistema)*: Detalle completo con línea, estación de destino, hora prevista y botón «Descartar».
+* **Alerta Háptica de Bajada (Independiente de GPS)**: Durante el viaje, la notificación permanece en silencio absoluto; solo emite una vibración distintiva (doble pulso) al llegar a la penúltima estación o 1–2 minutos antes del destino. Funciona 100% bajo tierra gracias a la sincronización con el horario oficial y el radar en vivo.
+* **Transición Automática Programado $\rightarrow$ Tiempo Real**: Si el tren seleccionado sale en más de 15 minutos, la notificación arranca con la cuenta atrás programada oficial y conmuta suavemente a telemetría en tiempo real en cuanto el tren entra en el radar de FGV.
 
 ---
 
-## 2. Plan de Trabajo Paso a Paso
+## 1. Visión General y Concepto
 
-### Paso 1: Limpieza del Mapa Multi-Modal Principal
-- **`MapViewModel.kt`**:
-  - Remover el estado `liveCercaniasVehicles` y suspender el bucle de polling de flota de Renfe en `init` para que no consuma recursos del sistema en segundo plano.
-- **`OsmdroidMapView.kt`**:
-  - Eliminar el gestor de capas de trenes Cercanías de la pantalla principal.
+### ¿Qué soluciona?
+Los viajeros diarios que conocen perfectamente su recorrido no necesitan instrucciones paso a paso, mapas ni alertas de transbordo. Solo necesitan resolver dos preguntas básicas:
+1. *¿Cuántos minutos le faltan a mi tren para llegar a mi estación mientras termino el café o bajo las escaleras?*
+2. *¿Cuándo tengo que levantar la vista del móvil para no pasarme de mi parada mientras escucho música o leo?*
 
-### Paso 2: Exponer la Caché en `CercaniasViewModel.kt`
-- Añadiremos un flujo dedicado a los trenes en vivo en `CercaniasViewModel` que consulte la caché compartida del repositorio:
-  ```kotlin
-  private val _liveTrains = MutableStateFlow<List<LiveVehicleInfo>>(emptyList())
-  val liveTrains = _liveTrains.asStateFlow()
-  ```
-- Al abrir el mapa, invocamos `loadLiveTrainsFromCache()` para poblar el mapa al instante de manera síncrona.
-- Iniciamos un loop de refresco ligero de 20s en segundo plano mientras el mapa esté abierto que invoque a `renfeRepository.getUniqueLiveVehicles()`.
-
-### Paso 3: Crear el Diálogo Autónomo `CercaniasLiveMapDialog.kt`
-- Diseñar el diálogo de pantalla completa con un `MapView` exclusivo para Cercanías.
-- Pintar las líneas férreas y las estaciones de Cercanías de Valencia.
-- Renderizar los trenes en vivo recuperados de `liveTrains` y aplicar la animación suave de movimiento en base a sus coordenadas.
-- Al interactuar con el mapa:
-  - Estaciones de tren: abren `CercaniasStationBottomSheet`.
-  - Trenes en vivo: abren `LiveTrainBottomSheet` cargando la dirección y origen ya almacenados en el objeto de datos.
-
-### Paso 4: Agregar el FAB de Mapa a la Pantalla de Cercanías
-- Añadir un `FloatingActionButton` circular de Material 3 con el color identificativo de Cercanías en el archivo `CercaniasScreen.kt`.
-- El botón abrirá el mapa instantáneamente activando el diálogo modal.
+### Público Objetivo
+El usuario habitual de Metrovalencia (*commuter*) que busca la máxima inmediatez con el mínimo número de toques posible.
 
 ---
 
-## 3. Arquitectura de Datos Unificada
+## 2. Experiencia de Usuario y Flujos
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                              CAPA DE DATOS                             │
-│                                                                        │
-│                       ┌────────────────────────┐                       │
-│                       │    GtfsCacheManager    │                       │
-│                       │   (Caché con Mutex)    │                       │
-│                       └───────────┬────────────┘                       │
-└───────────────────────────────────┼────────────────────────────────────┘
-                                    │
-                                    ▼ (Consultas Locales Sin Redundancia)
-┌────────────────────────────────────────────────────────────────────────┐
-│                           CAPA DE PRESENTACIÓN                         │
-│                                                                        │
-│  ┌────────────────────────────────┐    ┌────────────────────────────┐  │
-│  │     Panel de Salidas           │    │  CercaniasLiveMapDialog    │  │
-│  │  (Consume horarios y demoras)  │    │  (Consume flota de trenes) │  │
-│  └────────────────────────────────┘    └────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│ PASO 1: En la pantalla de estación                     │
+│ Mantener pulsado un tren (Long Click con haptic tick) │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ PASO 2: Hoja inferior ultra-simple                     │
+│                                                        │
+│  🚇 L3 Rafelbunyol                                     │
+│  Selecciona aviso:                                     │
+│  ────────────────────────────────────────────────────  │
+│  📌 Aquí (Xàtiva)              En 4 min               │
+│  ○  Colón                      En 6 min               │
+│  ○  Alameda                    En 8 min               │
+│  ○  Facultats                  En 11 min              │
+│  ○  Benimaclet                 En 13 min              │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+             ┌─────────────┴─────────────┐
+             ▼                           ▼
+      [ Elige "Aquí" ]            [ Elige Destino ]
+             │                           │
+             ▼                           ▼
+┌─────────────────────────┐ ┌─────────────────────────┐
+│ NOTIFICACIÓN SALIDA     │ │ NOTIFICACIÓN EN RUTA    │
+│ Chip: [ 🚇 4 min ]      │ │ Chip: [ L3 · 11m ]      │
+│ Cortina: Pasa por       │ │ Cortina: Hacia          │
+│ Xàtiva en 4 min         │ │ Facultats (en 11 min)   │
+│                         │ │                         │
+│ Al partir el tren:      │ │ En penúltima estación:  │
+│ Se autodestruye sola.   │ │ 📳 "Próxima Facultats"   │
+└─────────────────────────┘ └─────────────────────────┘
 ```
+
+### Comportamiento de Notificaciones
+1. **Canal Silencioso Continuo (`IMPORTANCE_LOW` / `Ongoing`)**: Sin alertas audibles ni vibraciones cada vez que se actualiza el minutero.
+2. **Canal de Alarma de Bajada (`IMPORTANCE_HIGH`)**: Se dispara exclusivamente al entrar en el tramo de aviso de la estación de destino.
+3. **Acción de Cancelación Inmediata**: Botón «Descartar» directamente en la notificación para apagar el seguimiento en cualquier momento.
 
 ---
 
-## 4. Beneficios del Enfoque Optimizado
+## 3. Arquitectura Técnica y Estrategia de Datos
 
-* **Cero Latencia en Apertura**: La pantalla se dibuja con trenes en tiempo real desde el milisegundo uno.
-* **Consumo de Datos Eficiente**: Al reusar el gestor de caché con TTL de 15s, evitamos saturar las conexiones móviles del usuario y los servidores de Renfe.
-* **Aislamiento Perfecto**: El mapa principal queda 100% desligado de la telemetría de Renfe, recuperando un rendimiento óptimo.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                          CAPA UI                                │
+│  MetroArrivalsCard / MetroTimetableItem                         │
+│   └── Modifier.combinedClickable(onLongClick = { showSheet() }) │
+│         └── QuickTrainTrackerBottomSheet                        │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    GESTIÓN DE SEGUIMIENTO                       │
+│  QuickVehicleTrackerManager (Singleton / StateFlow)             │
+│   ├── activeTrackingState: StateFlow<QuickTrackedVehicle?>      │
+│   ├── startTracking(vehicle, targetStop)                        │
+│   └── stopTracking()                                            │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  SERVICIO EN SEGUNDO PLANO                      │
+│  QuickVehicleTrackingService (ForegroundService ligero)         │
+│   ├── Ticker local cada segundo (interpolación de cuenta atrás) │
+│   ├── Sincronización API cada 30-45s con MetroRepository        │
+│   ├── Detección de parada previa (cálculo de tiempo/estación)   │
+│   └── Actualización de NotificationCompat.Builder               │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   SISTEMA DE NOTIFICACIONES                     │
+│  - Android 16+: Notification.ProgressStyle / Ongoing Chip       │
+│  - Android 8-15: NotificationCompat.Builder (Ongoing, Low)      │
+│  - Alarma en destino: VibratorHelper (patrón doble pulso)      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Componentes a Crear / Integrar:
+1. **`QuickTrackedVehicle` (Modelo de Datos)**:
+   * `lineId`: Identificador de línea (ej. "3").
+   * `destinationName`: Nombre de cabecera (ej. "Rafelbunyol").
+   * `originStationId` y `originStationName`: Estación donde se fijó el tren.
+   * `targetStationId` y `targetStationName`: Estación seleccionada (`null` si solo se sigue la salida).
+   * `scheduledDepartureEpochMs` y `liveMinutesRemaining`: Tiempos calculados en zona `Europe/Madrid`.
+   * `downstreamStops`: Lista de paradas intermedias con sus desfases temporales.
+2. **`QuickVehicleTrackerManager`**:
+   * Coordina el ciclo de vida del seguimiento. Si se fija un nuevo tren, cancela limpiamente el anterior.
+3. **`QuickVehicleTrackingService`**:
+   * Foreground Service de bajo impacto que mantiene el proceso activo cuando el usuario bloquea el móvil o sale de la app.
+4. **`QuickTrainTrackerBottomSheet`**:
+   * Composable estilizado con Material Design 3, bordes redondeados, pastilla con el color oficial de la línea de Metrovalencia y lista de paradas táctiles con altura mínima accesible de 48dp.
+
+---
+
+## 4. Verificación y Pruebas
+
+1. **Pruebas de Cálculo Temporal y Zona Horaria**:
+   * Verificar que la cuenta atrás de la estación seleccionada utiliza siempre la hora oficial de España (`Europe/Madrid`).
+2. **Pruebas de Transición Automática**:
+   * Simular el cambio de estado de espera en andén a trayecto en marcha cuando el tiempo en origen llega a 0 min.
+3. **Pruebas de Alarma de Bajada**:
+   * Verificar que el evento de vibración se activa únicamente en la estación inmediatamente anterior a la de destino.
+4. **Compatibilidad Visual de Notificaciones**:
+   * Validar que los textos del chip colapsado no superen los 7 caracteres en Android 16+.
+   * Validar el funcionamiento del botón de descartar y la autodestrucción tras completar el viaje.

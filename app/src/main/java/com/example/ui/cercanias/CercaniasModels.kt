@@ -23,7 +23,9 @@ data class CercaniasDeparture(
     val isTomorrow: Boolean = false,
     val isIndeterminateDelay: Boolean = false,
     val statusDescription: String = "",
-    val allTripIds: List<String> = emptyList()
+    val allTripIds: List<String> = emptyList(),
+    val normalizedRoute: String = "",
+    val formattedDestination: String = ""
 )
 
 data class CercaniasAlert(

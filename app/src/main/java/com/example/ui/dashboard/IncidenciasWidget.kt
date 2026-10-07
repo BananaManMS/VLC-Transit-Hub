@@ -64,6 +64,8 @@ fun IncidenciasWidget(
     modifier: Modifier = Modifier,
     isMetroLoading: Boolean = false,
     isCercaniasLoading: Boolean = false,
+    hasMetroLoaded: Boolean = true,
+    hasCercaniasLoaded: Boolean = true,
     hasMetroError: Boolean = false,
     hasCercaniasError: Boolean = false,
     isOnline: Boolean = true,
@@ -98,7 +100,12 @@ fun IncidenciasWidget(
         )
     }
 
-    val metroCategoryBadges = remember(categoryCounts, isCa, isDarkMode) {
+    val incSingular = androidx.compose.ui.res.stringResource(com.example.R.string.incidencia_singular)
+    val incPlural = androidx.compose.ui.res.stringResource(com.example.R.string.incidencia_plural)
+    val avisoSingular = androidx.compose.ui.res.stringResource(com.example.R.string.aviso_singular)
+    val avisoPlural = androidx.compose.ui.res.stringResource(com.example.R.string.aviso_plural)
+
+    val metroCategoryBadges = remember(categoryCounts, incSingular, incPlural, avisoSingular, avisoPlural, isDarkMode) {
         val list = mutableListOf<CategoryCountBadge>()
         val incColor = if (isDarkMode) Color(0xFFEF5350) else Color(0xFFC62828)
         val avisoColor = if (isDarkMode) Color(0xFFFF7043) else Color(0xFFD84315)
@@ -106,7 +113,7 @@ fun IncidenciasWidget(
         if (categoryCounts.incidencias > 0) {
             list.add(
                 CategoryCountBadge(
-                    label = if (isCa) if (categoryCounts.incidencias == 1) "INCIDÈNCIA" else "INCIDÈNCIES" else if (categoryCounts.incidencias == 1) "INCIDENCIA" else "INCIDENCIAS",
+                    label = if (categoryCounts.incidencias == 1) incSingular else incPlural,
                     count = categoryCounts.incidencias,
                     color = incColor,
                     icon = Icons.Default.ReportProblem
@@ -116,7 +123,7 @@ fun IncidenciasWidget(
         if (categoryCounts.avisos > 0) {
             list.add(
                 CategoryCountBadge(
-                    label = if (isCa) if (categoryCounts.avisos == 1) "AVÍS" else "AVISOS" else if (categoryCounts.avisos == 1) "AVISO" else "AVISOS",
+                    label = if (categoryCounts.avisos == 1) avisoSingular else avisoPlural,
                     count = categoryCounts.avisos,
                     color = avisoColor,
                     icon = Icons.Default.ReportProblem
@@ -214,7 +221,9 @@ fun IncidenciasWidget(
     val totalCercaniasIncidents = if (showCercanias) filteredCercaniasAlerts.size else 0
     val totalActiveAlerts = totalMetroIncidents + totalCercaniasIncidents
 
-    val isAnyLoading = (showMetro && isMetroLoading) || (showCercanias && isCercaniasLoading)
+    val effectiveMetroLoading = isMetroLoading || !hasMetroLoaded
+    val effectiveCercaniasLoading = isCercaniasLoading || !hasCercaniasLoaded
+    val isAnyLoading = (showMetro && effectiveMetroLoading) || (showCercanias && effectiveCercaniasLoading)
 
     val textPrimary = MaterialTheme.colorScheme.onSurface
     val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
@@ -233,60 +242,19 @@ fun IncidenciasWidget(
                 .padding(16.dp)
         ) {
             // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Column {
-                        Text(
-                            text = if (isCa) "Incidències en el servei" else "Incidencias en el servicio",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = textPrimary
-                        )
-                        if (isAnyLoading) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(top = 4.dp)
-                                    .width(140.dp)
-                                    .height(14.dp)
-                                    .shimmerEffect(shape = RoundedCornerShape(4.dp))
-                            )
-                        } else if (totalActiveAlerts == 0) {
-                            if (!isOnline) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.WifiOff,
-                                        contentDescription = null,
-                                        tint = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Text(
-                                        text = if (isCa) "Sense connexió • Incidències no disponibles" else "Sin conexión • Incidencias no disponibles",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            Text(
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_service_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = textPrimary
+            )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Metro Row
             if (showMetro) {
                 OperatorIncidentsRow(
-                    operatorName = "Metrovalencia",
+                    operatorName = androidx.compose.ui.res.stringResource(com.example.R.string.operator_metrovalencia),
                     iconVector = Icons.Default.Subway,
                     iconTint = Color(0xFF1E88E5),
                     incidentsCount = totalMetroIncidents,
@@ -294,7 +262,7 @@ fun IncidenciasWidget(
                     categoryBadges = metroCategoryBadges,
                     hasAllLines = metroHasAll,
                     isCa = isCa,
-                    isLoading = isMetroLoading,
+                    isLoading = effectiveMetroLoading,
                     hasError = hasMetroError,
                     isDarkMode = isDarkMode,
                     textPrimary = textPrimary,
@@ -311,17 +279,17 @@ fun IncidenciasWidget(
                 )
             }
 
-            // Cercanías Row
+            // Cercanías / Rodalies Row
             if (showCercanias) {
                 OperatorIncidentsRow(
-                    operatorName = "Cercanías València",
+                    operatorName = androidx.compose.ui.res.stringResource(com.example.R.string.operator_cercanias_valencia),
                     iconVector = Icons.Default.DirectionsRailway,
                     iconTint = Color(0xFFE53935),
                     incidentsCount = filteredCercaniasAlerts.size,
                     affectedLines = cercaniasAffectedLines,
                     hasAllLines = cercaniasHasAll,
                     isCa = isCa,
-                    isLoading = isCercaniasLoading,
+                    isLoading = effectiveCercaniasLoading,
                     hasError = hasCercaniasError,
                     isDarkMode = isDarkMode,
                     textPrimary = textPrimary,
@@ -395,21 +363,21 @@ private fun OperatorIncidentsRow(
                 } else if (incidentsCount == 0) {
                     if (!isOnline) {
                         Text(
-                            text = if (isCa) "Sense connexió" else "Sin conexión",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_offline_short),
                             style = MaterialTheme.typography.bodySmall,
                             color = textSecondary,
                             fontSize = 12.sp
                         )
                     } else if (hasError) {
                         Text(
-                            text = if (isCa) "Informació no disponible" else "Información no disponible",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_info_unavailable),
                             style = MaterialTheme.typography.bodySmall,
                             color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
                             fontSize = 12.sp
                         )
                     } else {
                         Text(
-                            text = if (isCa) "Sense incidències" else "Sin incidencias",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_no_incidents),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF10B981),
                             fontSize = 12.sp
@@ -458,7 +426,7 @@ private fun OperatorIncidentsRow(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (isCa) "Afecta a totes les línies" else "Afecta a todas las líneas",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_affects_all_lines),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFFF9800),
                             fontSize = 12.sp,
@@ -473,7 +441,7 @@ private fun OperatorIncidentsRow(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (isCa) "$incidentsCount avisos actius" else "$incidentsCount avisos activos",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_active_count, incidentsCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFFF9800),
                             fontSize = 12.sp
@@ -566,9 +534,11 @@ private fun LineBadgeChip(lineStatus: LineAlertStatus) {
                 fontSize = 11.sp
             )
 
+            val tagBus = androidx.compose.ui.res.stringResource(com.example.R.string.tag_bus)
+            val tagObras = androidx.compose.ui.res.stringResource(com.example.R.string.tag_obras)
             val tagText = lineStatus.customTag ?: when (lineStatus.category) {
-                IncidentCategory.BUS -> "Bus"
-                IncidentCategory.OBRAS -> "Obras"
+                IncidentCategory.BUS -> tagBus
+                IncidentCategory.OBRAS -> tagObras
                 IncidentCategory.URGENT -> null
             }
 

@@ -6,15 +6,22 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -57,6 +64,7 @@ import com.example.ui.map.components.SheetState
 import com.example.ui.metro.MetroViewModel
 import com.example.ui.routing.PlannerLocation
 import com.example.ui.routing.components.RouteDetailBottomSheet
+import com.example.util.TripStartEligibility
 import kotlinx.coroutines.delay
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -79,6 +87,7 @@ fun MapScreen(
     onClearItinerary: (() -> Unit)? = null,
     onOpenRouteDetail: (() -> Unit)? = null,
     onStartTrip: ((PlannedItinerary) -> Unit)? = null,
+    onOpenNetworkPlans: (() -> Unit)? = null,
     activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val context = LocalContext.current
@@ -92,6 +101,7 @@ fun MapScreen(
     val selectedBusLineFilters by mapViewModel.selectedBusLineFilters.collectAsState()
     val selectedDirectionFilter by mapViewModel.selectedDirectionFilter.collectAsState()
     val userLocation by mapViewModel.userLocation.collectAsState()
+    val isCellTowerLocation by mapViewModel.isCellTowerLocation.collectAsState()
     val isFollowingUser by mapViewModel.isFollowingUser.collectAsState()
     val cameraTarget by mapViewModel.cameraTarget.collectAsState()
     val debouncedCameraTarget by mapViewModel.debouncedCameraTarget.collectAsState()
@@ -123,15 +133,30 @@ fun MapScreen(
     val unifiedTransitFavorites by mapViewModel.unifiedTransitFavorites.collectAsState()
     val selectionMode by mapViewModel.selectionMode.collectAsState()
     val selectedMetrobusShapes by mapViewModel.selectedMetrobusShapes.collectAsState()
+    val activeTripState by dashboardViewModel.activeTripState.collectAsState()
+
+    val isCurrentItineraryActive = remember(selectedItinerary, activeTripState) {
+        TripStartEligibility.isItineraryCurrentlyActive(selectedItinerary, activeTripState)
+    }
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
 
     var isSearchFocused by remember { mutableStateOf(false) }
     var isMapMoving by remember { mutableStateOf(false) }
+    var isNetworkPlansVisible by remember { mutableStateOf(false) }
 
     var editingStopForAlias by remember { mutableStateOf<GeoportalStopEntity?>(null) }
     var showSaveFavoriteDialog by remember { mutableStateOf(false) }
+
+    if (isNetworkPlansVisible && onOpenNetworkPlans == null) {
+        com.example.ui.map.networkmaps.NetworkPlansScreen(
+            appLanguage = appLanguage,
+            isDarkMode = isDarkMode,
+            onBack = { isNetworkPlansVisible = false }
+        )
+        return
+    }
     var locationToSave by remember { mutableStateOf<NominatimResult?>(null) }
     var showRouteDetailSheet by remember { mutableStateOf(false) }
     var zoomInTrigger by remember { mutableStateOf(0) }
@@ -187,6 +212,7 @@ fun MapScreen(
             mapViewModel.selectItem(null)
             disambiguationItems = null
             mapViewModel.clearDestination()
+            mapViewModel.disableFollowUser()
         }
     }
 
@@ -291,6 +317,7 @@ fun MapScreen(
             zoomInTrigger = zoomInTrigger,
             zoomOutTrigger = zoomOutTrigger,
             userLocation = userLocation,
+            isCellTowerLocation = isCellTowerLocation,
             destinationLocation = destinationLocation,
             destinationTitle = destinationTitle,
             busStops = visibleBusStops,
@@ -311,6 +338,7 @@ fun MapScreen(
             selectedMetrobusShapes = selectedMetrobusShapes,
             selectedDirectionFilter = selectedDirectionFilter,
             bottomPanelOffsetPx = animatedBottomOffsetPx,
+            isFollowingUser = isFollowingUser,
             onSelectItem = { item ->
                 if (selectedItinerary == null) {
                     mapViewModel.selectItem(item)
@@ -392,6 +420,36 @@ fun MapScreen(
                 .align(Alignment.TopCenter)
         )
 
+        val isMapTransitLoading = visibleMetroStations.isEmpty() && visibleBusStops.isEmpty() && visibleCercaniasStations.isEmpty()
+        if (isMapTransitLoading) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 96.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                shadowElevation = 6.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = if (appLanguage == AppLanguage.CA) "Carregant mapa i parades..." else "Cargando mapa y paradas...",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
         val isAtUserLocation = userLocation != null && cameraTarget.distanceToAsDouble(userLocation) < 15.0
         // Central focal crosshair indicator when no individual item is selected, not centered on user, and NOT in route/itinerary preview
         if (selectedItem == null && !isAtUserLocation && selectedItinerary == null) {
@@ -435,7 +493,7 @@ fun MapScreen(
                     showRouteDetailSheet = true
                     onOpenRouteDetail?.invoke()
                 },
-                onStartTrip = if (onStartTrip != null) {
+                onStartTrip = if (onStartTrip != null && !isCurrentItineraryActive) {
                     { onStartTrip(selectedItinerary) }
                 } else null
             )
@@ -545,6 +603,13 @@ fun MapScreen(
                     mapViewModel.setSelectionMode(
                         if (isHome) MapSelectionMode.SELECTING_HOME else MapSelectionMode.SELECTING_WORK
                     )
+                },
+                onOpenNetworkPlans = {
+                    if (onOpenNetworkPlans != null) {
+                        onOpenNetworkPlans()
+                    } else {
+                        isNetworkPlansVisible = true
+                    }
                 }
             )
         }
@@ -588,7 +653,8 @@ fun MapScreen(
                     val wasPlannerPicking = (selectionMode == MapSelectionMode.SELECTING_FOR_PLANNER_ORIGIN || 
                                             selectionMode == MapSelectionMode.SELECTING_FOR_PLANNER_DESTINATION)
                     val wasCommutePicking = (selectionMode == MapSelectionMode.SELECTING_HOME ||
-                                            selectionMode == MapSelectionMode.SELECTING_WORK)
+                                            selectionMode == MapSelectionMode.SELECTING_WORK ||
+                                            selectionMode == MapSelectionMode.SELECTING_PINNED)
                     mapViewModel.setSelectionMode(MapSelectionMode.NORMAL)
                     if (wasPlannerPicking) {
                         onCancelPlannerLocationPicking?.invoke()
@@ -598,7 +664,8 @@ fun MapScreen(
                 },
                 onConfirmSelection = { target, isOrigin ->
                     val wasCommutePicking = (selectionMode == MapSelectionMode.SELECTING_HOME ||
-                                            selectionMode == MapSelectionMode.SELECTING_WORK)
+                                            selectionMode == MapSelectionMode.SELECTING_WORK ||
+                                            selectionMode == MapSelectionMode.SELECTING_PINNED)
                     mapViewModel.confirmSelectedLocationOnMap(
                         mode = selectionMode,
                         lat = target.latitude,

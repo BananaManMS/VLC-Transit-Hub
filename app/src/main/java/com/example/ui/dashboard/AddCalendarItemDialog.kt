@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.core.graphics.toColorInt
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -70,7 +71,7 @@ fun AddCalendarItemDialog(
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "Añadir evento de calendario",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.calendar_add_dialog_title),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
@@ -82,7 +83,7 @@ fun AddCalendarItemDialog(
                 TextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Title") },
+                    label = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.calendar_input_title)) },
                     shape = RoundedCornerShape(8.dp),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
@@ -99,7 +100,7 @@ fun AddCalendarItemDialog(
                 TextField(
                     value = desc,
                     onValueChange = { desc = it },
-                    label = { Text("Description") },
+                    label = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.calendar_input_desc)) },
                     shape = RoundedCornerShape(8.dp),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
@@ -119,7 +120,7 @@ fun AddCalendarItemDialog(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Starts in (hours):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.calendar_starts_in_hours), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(onClick = { if (hourOffset > 0) hourOffset-- }) { Text("-") }
                                 Text("$hourOffset", fontWeight = FontWeight.Bold)
@@ -127,7 +128,7 @@ fun AddCalendarItemDialog(
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Duration (hours):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.calendar_duration_hours), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(onClick = { if (durationHours > 1) durationHours-- }) { Text("-") }
                                 Text("$durationHours", fontWeight = FontWeight.Bold)
@@ -138,7 +139,7 @@ fun AddCalendarItemDialog(
                 } else {
                     // Task Due offset
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        Text("Due in (hours):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.calendar_due_in_hours), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { if (hourOffset > 0) hourOffset-- }) { Text("-") }
                             Text("$hourOffset", fontWeight = FontWeight.Bold)
@@ -150,7 +151,7 @@ fun AddCalendarItemDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Color Tag Picker
-                Text("Select Tag Color:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                Text(androidx.compose.ui.res.stringResource(com.example.R.string.calendar_select_tag_color), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
                 Spacer(modifier = Modifier.height(4.dp))
                 val parsedColors = remember {
                     colors.map { it to Color(it.toColorInt()) }
@@ -188,7 +189,7 @@ fun AddCalendarItemDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel", fontWeight = FontWeight.Bold)
+                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_cancel), fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -203,7 +204,7 @@ fun AddCalendarItemDialog(
                         },
                         modifier = Modifier.testTag("dialog_confirm_button")
                     ) {
-                        Text("Add Item")
+                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_add))
                     }
                 }
             }

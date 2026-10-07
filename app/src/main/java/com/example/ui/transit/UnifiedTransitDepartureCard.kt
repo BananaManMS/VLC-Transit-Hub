@@ -120,9 +120,10 @@ fun UnifiedTransitDepartureCard(
                 if (departure.isRealTime) {
                     val mins = departure.minutesRemaining
                     val isImmediate = mins <= 0
+                    val immediateText = androidx.compose.ui.res.stringResource(com.example.R.string.departure_immediate)
                     val timeText = when {
-                        mins < 0 -> if (departure.formattedEstimatedTime.isNotBlank()) departure.formattedEstimatedTime else (if (appLanguage == AppLanguage.CA) "Immediat" else "En parada")
-                        isImmediate -> if (appLanguage == AppLanguage.CA) "Immediat" else "En parada"
+                        mins < 0 -> if (departure.formattedEstimatedTime.isNotBlank()) departure.formattedEstimatedTime else immediateText
+                        isImmediate -> immediateText
                         else -> "$mins min"
                     }
 
@@ -145,7 +146,7 @@ fun UnifiedTransitDepartureCard(
                         )
 
                         LiveRssFeedIcon(
-                            contentDescription = "En vivo",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.status_live),
                             tint = Color(0xFF2ECC71),
                             modifier = Modifier.size(16.dp)
                         )
@@ -173,14 +174,14 @@ fun UnifiedTransitDepartureCard(
 
                         Icon(
                             imageVector = Icons.Default.Schedule,
-                            contentDescription = "Programado",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.status_scheduled),
                             tint = subtextColor,
                             modifier = Modifier.size(15.dp)
                         )
                     }
 
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.departure_scheduled_label),
                         style = MaterialTheme.typography.labelSmall,
                         color = subtextColor,
                         fontSize = 10.sp,

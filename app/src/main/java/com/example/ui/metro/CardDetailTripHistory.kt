@@ -131,9 +131,9 @@ fun CardDetailTripHistory(
                                     else -> MaterialTheme.colorScheme.onSecondaryContainer
                                 }
                                 val badgeLabel = when {
-                                    tipoLower.contains("entrada") -> if (appLanguage == AppLanguage.CA) "Entrada" else "Entrada"
-                                    tipoLower.contains("salida") -> if (appLanguage == AppLanguage.CA) "Eixida" else "Salida"
-                                    tipoLower.contains("transbordo") -> if (appLanguage == AppLanguage.CA) "Transbord" else "Transbordo"
+                                    tipoLower.contains("entrada") -> androidx.compose.ui.res.stringResource(com.example.R.string.card_trip_entry)
+                                    tipoLower.contains("salida") -> androidx.compose.ui.res.stringResource(com.example.R.string.card_trip_exit)
+                                    tipoLower.contains("transbordo") -> androidx.compose.ui.res.stringResource(com.example.R.string.card_trip_transfer)
                                     else -> viaje.tipoValidacion
                                 }
                                 Text(

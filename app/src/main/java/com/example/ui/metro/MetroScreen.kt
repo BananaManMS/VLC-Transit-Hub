@@ -84,7 +84,11 @@ fun MetroScreen(
     ) {
         UnifiedTabRow(
             selectedTabIndex = pagerState.currentPage,
-            tabs = if (appLanguage == AppLanguage.CA) listOf("Eixides", "Avisos", "Targetes") else listOf("Salidas", "Avisos", "Tarjetas"),
+            tabs = listOf(
+                androidx.compose.ui.res.stringResource(com.example.R.string.metro_tab_salidas),
+                androidx.compose.ui.res.stringResource(com.example.R.string.metro_tab_avisos),
+                androidx.compose.ui.res.stringResource(com.example.R.string.metro_tab_tarjetas)
+            ),
             onTabSelected = { index ->
                 scope.launch {
                     pagerState.animateScrollToPage(index)

@@ -445,4 +445,21 @@ class MetrobusManager(
             }
         }
     }
+
+    fun onAppBackgrounded() {
+        metrobusCountdownJob?.cancel()
+        metrobusCountdownJob = null
+    }
+
+    fun onAppForegrounded() {
+        if (_selectedMetrobusStop.value != null && metrobusCountdownJob == null) {
+            fetchMetrobusTimes(
+                _selectedMetrobusStop.value!!.idParada,
+                limitPerLine = scheduledMetrobusLimitPerLine,
+                isSilent = true,
+                includeScheduled = isMetrobusScheduledExpanded
+            )
+            startMetrobusCountdownTicker()
+        }
+    }
 }

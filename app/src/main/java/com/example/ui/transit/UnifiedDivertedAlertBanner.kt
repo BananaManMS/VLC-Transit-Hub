@@ -26,11 +26,7 @@ fun UnifiedDivertedAlertBanner(
     appLanguage: AppLanguage,
     modifier: Modifier = Modifier
 ) {
-    val message = if (appLanguage == AppLanguage.CA) {
-        "Línies desviades o amb afectacions en el servei"
-    } else {
-        "Líneas desviadas o con alteraciones en el servicio"
-    }
+    val message = androidx.compose.ui.res.stringResource(com.example.R.string.diverted_lines_alert_title)
 
     Box(
         modifier = modifier

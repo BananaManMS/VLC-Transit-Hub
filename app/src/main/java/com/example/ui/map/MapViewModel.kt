@@ -261,6 +261,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     // Location & Camera Delegations
     val userLocation: StateFlow<GeoPoint?> = locationCoordinator.userLocation
+    val isCellTowerLocation: StateFlow<Boolean> = locationCoordinator.isCellTowerLocation
     val cameraTarget: StateFlow<GeoPoint> = locationCoordinator.cameraTarget
     val cameraZoom: StateFlow<Double> = locationCoordinator.cameraZoom
     val cameraAnimTrigger: StateFlow<Int> = locationCoordinator.cameraAnimTrigger
@@ -348,11 +349,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
         favMetros.forEach { id ->
             metros.find { it.id == id }?.let { station ->
+                val z = com.example.data.model.cleanZoneCode(station.zone)
                 list.add(RecentSearch(
                     type = "metro",
                     id = station.id,
                     title = station.name,
-                    subtitle = "Metrovalencia",
+                    subtitle = "Zona $z • Metrovalencia",
                     latitude = station.latitude,
                     longitude = station.longitude,
                     extraData = station.lines.joinToString(",")

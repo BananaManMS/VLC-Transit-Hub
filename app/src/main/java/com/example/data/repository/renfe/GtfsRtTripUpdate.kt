@@ -13,6 +13,9 @@ data class GtfsRtStopTime(
 data class GtfsRtTripUpdate(
     val tripId: String,
     val routeId: String = "",
+    val startDate: String = "",
+    val startTime: String = "",
+    val scheduleRelationship: String = "SCHEDULED",
     val delaySeconds: Long = 0L,
     val stopDelays: Map<String, Long> = emptyMap(),
     val stopEstimatedTimes: Map<String, Long> = emptyMap(),

@@ -1,8 +1,11 @@
 package com.example.ui.metro
 
+import android.content.Context
+import android.os.Build
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,6 +20,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -30,14 +36,19 @@ import com.example.ui.dashboard.AppLanguage
  * High-craftsmanship scheduled departure card using the official Metrovalencia line logo
  * and styling consistent with live departures (MetroLineDepartureCard).
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MetroScheduledDepartureCard(
     item: MetroScheduledDeparture,
     modifier: Modifier = Modifier,
     appLanguage: AppLanguage = AppLanguage.ES,
     isDarkMode: Boolean = MaterialTheme.colorScheme.surface.luminance() < 0.5f,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
+    val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
+
     val badgeColor = remember(item.line) {
         TransitLogoUtils.getMetroLineColor(item.line)
     }
@@ -56,8 +67,31 @@ fun MetroScheduledDepartureCard(
             .testTag("scheduled_dep_${item.timeMinutes}_${item.line}")
             .clip(RoundedCornerShape(16.dp))
             .then(
-                if (onClick != null) {
-                    Modifier.clickable { onClick() }
+                if (onClick != null || onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = { onClick?.invoke() },
+                        onLongClick = if (onLongClick != null) {
+                            {
+                                try {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                                        vibratorManager?.defaultVibrator
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                                    }
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        vibrator?.vibrate(android.os.VibrationEffect.createOneShot(50, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        vibrator?.vibrate(50)
+                                    }
+                                } catch (_: Exception) {}
+                                onLongClick()
+                            }
+                        } else null
+                    )
                 } else {
                     Modifier
                 }
@@ -118,7 +152,7 @@ fun MetroScheduledDepartureCard(
                         modifier = Modifier.size(11.dp)
                     )
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_status_scheduled),
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Medium,
                         color = if (isDarkMode) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
@@ -138,14 +172,16 @@ fun ScheduledDepartureRow(
     modifier: Modifier = Modifier,
     appLanguage: AppLanguage = AppLanguage.ES,
     isDarkMode: Boolean = MaterialTheme.colorScheme.surface.luminance() < 0.5f,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
     MetroScheduledDepartureCard(
         item = item,
         modifier = modifier,
         appLanguage = appLanguage,
         isDarkMode = isDarkMode,
-        onClick = onClick
+        onClick = onClick,
+        onLongClick = onLongClick
     )
 }
 
@@ -163,7 +199,8 @@ fun MetroInlineTheoreticalSection(
     isDarkMode: Boolean,
     onTriggerLoad: () -> Unit,
     modifier: Modifier = Modifier,
-    onDepartureClick: ((MetroScheduledDeparture) -> Unit)? = null
+    onDepartureClick: ((MetroScheduledDeparture) -> Unit)? = null,
+    onDepartureLongClick: ((MetroScheduledDeparture) -> Unit)? = null
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -201,10 +238,7 @@ fun MetroInlineTheoreticalSection(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA)
-                                "Llisca cap amunt per veure següents trens (Programat)"
-                            else
-                                "Desliza hacia arriba para ver siguientes trenes (Programado)",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_swipe_up_scheduled),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary,
@@ -227,7 +261,7 @@ fun MetroInlineTheoreticalSection(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Carregant següents trens..." else "Cargando siguientes trenes...",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_loading_scheduled_trains),
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -246,7 +280,7 @@ fun MetroInlineTheoreticalSection(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Següents trens (Programat)" else "Siguientes trenes (Programado)",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_upcoming_trains_scheduled_header),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -258,10 +292,7 @@ fun MetroInlineTheoreticalSection(
 
                 if (inlineTheoreticalDepartures.isEmpty()) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA)
-                            "No hi ha més trens programats per a hui."
-                        else
-                            "No hay más trenes programados para hoy.",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_no_more_trains_scheduled),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 8.dp)
@@ -276,7 +307,10 @@ fun MetroInlineTheoreticalSection(
                                 item = item,
                                 appLanguage = appLanguage,
                                 isDarkMode = isDarkMode,
-                                onClick = { onDepartureClick?.invoke(item) }
+                                onClick = { onDepartureClick?.invoke(item) },
+                                onLongClick = if (onDepartureLongClick != null) {
+                                    { onDepartureLongClick(item) }
+                                } else null
                             )
                         }
                     }

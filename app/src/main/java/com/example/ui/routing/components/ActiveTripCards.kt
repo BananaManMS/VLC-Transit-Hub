@@ -68,25 +68,28 @@ fun BoardingConfirmationContent(
     onAdvanceLeg: (Int) -> Unit
 ) {
     val modeLabel = when (candidateTransitLeg.mode) {
-        TransitMode.TRAM -> if (appLanguage == AppLanguage.ES) "Tranvía" else "Tramvia"
+        TransitMode.TRAM -> androidx.compose.ui.res.stringResource(com.example.R.string.transit_mode_tram)
         TransitMode.SUBWAY -> "Metro"
         TransitMode.BUS -> "Bus"
-        TransitMode.RAIL -> if (appLanguage == AppLanguage.ES) "Tren" else "Tren"
-        else -> if (appLanguage == AppLanguage.ES) "transporte" else "transport"
+        TransitMode.RAIL -> androidx.compose.ui.res.stringResource(com.example.R.string.transit_mode_train)
+        else -> androidx.compose.ui.res.stringResource(com.example.R.string.transit_mode_generic)
     }
+    val lineBadge = candidateTransitLeg.routeShortName?.takeIf { it.isNotBlank() }
+        ?: candidateTransitLeg.routeLongName?.takeIf { it.isNotBlank() }
+        ?: ""
+    val lineDetail = if (lineBadge.isNotBlank()) "$modeLabel $lineBadge" else modeLabel
 
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color(0xFF00A86B).copy(alpha = if (isDark) 0.25f else 0.15f),
+        shape = RoundedCornerShape(12.dp),
+        color = if (isDark) Color(0xFF13281E) else Color(0xFFE8F5E9),
+        border = BorderStroke(1.dp, if (isDark) Color(0xFF1B5E20) else Color(0xFFA5D6A7)),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { onAdvanceLeg(candidateLegIndex) }
             .testTag("active_trip_board_confirm_chip")
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -94,51 +97,78 @@ fun BoardingConfirmationContent(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(
-                    imageVector = when (candidateTransitLeg.mode) {
-                        TransitMode.TRAM -> Icons.Default.Tram
-                        TransitMode.BUS -> Icons.Default.DirectionsBus
-                        TransitMode.RAIL -> Icons.Default.DirectionsRailway
-                        else -> Icons.Default.Subway
-                    },
-                    contentDescription = null,
-                    tint = Color(0xFF00A86B),
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (appLanguage == AppLanguage.ES) "¿A bordo del $modeLabel?" else "A bord del $modeLabel?",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        color = if (isDark) Color(0xFF81C784) else Color(0xFF1B5E20),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF00A86B).copy(alpha = if (isDark) 0.3f else 0.15f),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = when (candidateTransitLeg.mode) {
+                                TransitMode.TRAM -> Icons.Default.Tram
+                                TransitMode.BUS -> Icons.Default.DirectionsBus
+                                TransitMode.RAIL -> Icons.Default.DirectionsRailway
+                                else -> Icons.Default.Subway
+                            },
+                            contentDescription = null,
+                            tint = Color(0xFF00A86B),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_are_you_on_board),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            color = if (isDark) Color(0xFF81C784) else Color(0xFF1B5E20),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = lineDetail,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = if (isDark) Color(0xFF81C784).copy(alpha = 0.8f) else Color(0xFF2E7D32).copy(alpha = 0.85f),
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Dedicated, isolated "Sí" confirmation button (only tapping here triggers boarding)
             Surface(
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(8.dp),
                 color = Color(0xFF00A86B),
-                modifier = Modifier.padding(start = 6.dp)
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onAdvanceLeg(candidateLegIndex) }
+                    .testTag("active_trip_board_confirm_button")
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(14.dp)
                     )
-                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = if (appLanguage == AppLanguage.ES) "Confirmar" else "Confirmar",
-                        style = MaterialTheme.typography.labelSmall.copy(
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.yes_label),
+                        style = MaterialTheme.typography.labelMedium.copy(
                             color = Color.White,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 10.sp
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
                         )
                     )
                 }
@@ -180,7 +210,7 @@ fun TransferRiskPromptContent(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (appLanguage == AppLanguage.ES) "Posible transbordo perdido" else "Possible transbordament perdut",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_warning_transfer_lost),
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.ExtraBold,
                         color = cardContentColor,
@@ -211,7 +241,7 @@ fun TransferRiskPromptContent(
                     modifier = Modifier.padding(end = 4.dp)
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.ES) "No, mantener" else "No, mantindre",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_button_keep),
                         style = MaterialTheme.typography.labelMedium.copy(
                             color = secondaryTextColor,
                             fontSize = 11.sp
@@ -231,13 +261,13 @@ fun TransferRiskPromptContent(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.ES) "Recalculando..." else "Recalculant...",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_recalculating),
                             fontSize = 11.sp,
                             color = Color.White
                         )
                     } else {
                         Text(
-                            text = if (appLanguage == AppLanguage.ES) "Sí, recalcular" else "Sí, recalcular",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_button_recalculate),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -284,7 +314,7 @@ fun RecalculateErrorBanner(
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "Cerrar",
+                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
                     tint = if (isDark) Color(0xFFFF8A80) else Color(0xFFC62828),
                     modifier = Modifier.size(14.dp)
                 )
@@ -318,10 +348,9 @@ fun ArrivalCompletedContent(
         onDismiss()
     }
 
-    val isEs = appLanguage == AppLanguage.ES
-    val titleText = if (isEs) "¡Has llegado a tu destino!" else "¡Has arribat al teu destí!"
-    val subtitleText = if (isEs) "Viaje completado · $destinationName" else "Viatge completat · $destinationName"
-    val doneButtonText = if (isEs) "Listo" else "Fet"
+    val titleText = androidx.compose.ui.res.stringResource(com.example.R.string.trip_arrived_title)
+    val subtitleText = androidx.compose.ui.res.stringResource(com.example.R.string.trip_completed_format, destinationName)
+    val doneButtonText = androidx.compose.ui.res.stringResource(com.example.R.string.btn_done)
 
     Column(
         modifier = Modifier

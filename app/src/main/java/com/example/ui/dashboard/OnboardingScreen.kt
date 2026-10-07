@@ -674,7 +674,7 @@ fun OnboardingScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         if (isLocationConnected) {
-                                            if (appLanguage == AppLanguage.CA) "Ubicació activada ✓" else "Ubicación activada ✓"
+                                            if (appLanguage == AppLanguage.CA) "Ubicació activada" else "Ubicación activada"
                                         } else {
                                             if (appLanguage == AppLanguage.CA) "Permetre ubicació" else "Permitir ubicación"
                                         }
@@ -844,7 +844,7 @@ fun OnboardingScreen(
                                     SummaryRowItem(
                                         icon = Icons.Default.LocationOn,
                                         title = if (appLanguage == AppLanguage.CA) "Ubicació GPS" else "Ubicación GPS",
-                                        value = if (isLocationConnected) "Activada ✓" else "Sense concedir"
+                                        value = if (isLocationConnected) "Activada" else (if (appLanguage == AppLanguage.CA) "Sense concedir" else "Sin conceder")
                                     )
                                     SummaryRowItem(
                                         icon = Icons.Default.CreditCard,
@@ -869,7 +869,7 @@ fun OnboardingScreen(
                             )
                         ) {
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Començar a viatjar" else "Empezar a viajar",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.onboarding_start_traveling),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
@@ -943,7 +943,7 @@ fun OnboardingScreen(
                         ) {
                             Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (appLanguage == AppLanguage.CA) "Enrere" else "Atrás", fontWeight = FontWeight.SemiBold)
+                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.onboarding_back), fontWeight = FontWeight.SemiBold)
                         }
                     } else {
                         Spacer(modifier = Modifier.width(60.dp))
@@ -957,7 +957,7 @@ fun OnboardingScreen(
                             ),
                             modifier = Modifier.testTag("onboarding_btn_skip")
                         ) {
-                            Text(if (appLanguage == AppLanguage.CA) "Ometre" else "Saltar")
+                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.onboarding_skip))
                         }
 
                         Button(
@@ -969,7 +969,7 @@ fun OnboardingScreen(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.testTag("onboarding_btn_next")
                         ) {
-                            Text(if (appLanguage == AppLanguage.CA) "Següent" else "Siguiente", fontWeight = FontWeight.Bold)
+                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.onboarding_next), fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.width(4.dp))
                             Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
                         }

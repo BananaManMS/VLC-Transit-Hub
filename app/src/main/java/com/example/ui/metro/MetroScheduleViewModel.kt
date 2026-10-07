@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.model.MetroScheduledDeparture
 import com.example.data.model.MetroTrainTimeline
 import com.example.data.repository.MetroScheduleRepository
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -60,6 +62,36 @@ class MetroScheduleViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             scheduleRepository.ensureLoaded()
         }
+        viewModelScope.launch {
+            while (isActive) {
+                delay(30_000L)
+                if (_isInlineTheoreticalLoaded.value || _isScheduledSheetVisible.value) {
+                    pruneDeparturesPastCurrentTime()
+                }
+            }
+        }
+    }
+
+    private fun pruneDeparturesPastCurrentTime() {
+        if (!_isInlineTheoreticalLoaded.value && !_isScheduledSheetVisible.value) return
+        if (cachedStationDepartures.isEmpty() && _scheduledDepartures.value.isEmpty()) return
+        val cal = Calendar.getInstance(TimeZone.getTimeZone("Europe/Madrid"))
+        val currentMinOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+
+        if (_isInlineTheoreticalLoaded.value && cachedStationDepartures.isNotEmpty()) {
+            val validCached = cachedStationDepartures.filter { it.timeMinutes > currentMinOfDay }
+            if (validCached.size != cachedStationDepartures.size) {
+                cachedStationDepartures = validCached
+                _inlineTheoreticalDepartures.value = filterDeparturesInMemory(cachedStationDepartures, _selectedLineFilter.value, _availableLines.value)
+            }
+        }
+
+        if (_isScheduledSheetVisible.value && _scheduledDepartures.value.isNotEmpty()) {
+            val updatedSheet = _scheduledDepartures.value.filter { it.timeMinutes > currentMinOfDay }
+            if (updatedSheet.size != _scheduledDepartures.value.size) {
+                _scheduledDepartures.value = updatedSheet
+            }
+        }
     }
 
     private fun filterDeparturesInMemory(
@@ -88,7 +120,8 @@ class MetroScheduleViewModel(application: Application) : AndroidViewModel(applic
             if (com.example.util.MetroDepotFilterHelper.isDepotExcludedStationLine(activeStationFgvId, activeStationName, dep.line)) {
                 return@filter false
             }
-            val isUpcoming = dep.timeMinutes >= currentMinOfDay
+            // Strictly greater than current minute so departed trains are immediately removed
+            val isUpcoming = dep.timeMinutes > currentMinOfDay
             val withinWindow = if (maxMinutes != null) dep.timeMinutes <= maxMinutes else true
             val matchesLine = if (normFilter != null) {
                 dep.line.replace("L", "", ignoreCase = true).trim().equals(normFilter, ignoreCase = true)
@@ -128,11 +161,11 @@ class MetroScheduleViewModel(application: Application) : AndroidViewModel(applic
                     val departures = scheduleRepository.getScheduledDepartures(
                         stationWebId = webId,
                         limit = 1000,
-                        fromMinutesOfDay = currentMinOfDay,
+                        fromMinutesOfDay = currentMinOfDay + 1,
                         toMinutesOfDay = null,
                         lineFilter = null
                     )
-                    cachedStationDepartures = departures.filter { it.timeMinutes >= currentMinOfDay }
+                    cachedStationDepartures = departures.filter { it.timeMinutes > currentMinOfDay }
                     _inlineTheoreticalDepartures.value = filterDeparturesInMemory(cachedStationDepartures, lineFilter, lines)
                 } else {
                     cachedStationDepartures = emptyList()
@@ -174,7 +207,13 @@ class MetroScheduleViewModel(application: Application) : AndroidViewModel(applic
                 scheduleRepository.ensureLoaded()
                 val webId = scheduleRepository.getWebIdForStationId(stationFgvId, stationName)
                 if (webId != null) {
-                    _scheduledDepartures.value = scheduleRepository.getScheduledDepartures(webId)
+                    val cal = Calendar.getInstance(TimeZone.getTimeZone("Europe/Madrid"))
+                    val currentMinOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+                    val raw = scheduleRepository.getScheduledDepartures(
+                        stationWebId = webId,
+                        fromMinutesOfDay = currentMinOfDay + 1
+                    )
+                    _scheduledDepartures.value = raw.filter { it.timeMinutes > currentMinOfDay }
                 } else {
                     _scheduledDepartures.value = emptyList()
                 }
@@ -188,6 +227,7 @@ class MetroScheduleViewModel(application: Application) : AndroidViewModel(applic
 
     fun dismissScheduledDepartures() {
         _isScheduledSheetVisible.value = false
+        _scheduledDepartures.value = emptyList()
     }
 
     /**

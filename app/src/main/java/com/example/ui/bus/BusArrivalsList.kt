@@ -95,7 +95,7 @@ fun BusArrivalsList(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp)
                     ) {
                         Text(
-                            text = "Todas",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.bus_line_filter_all),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
                             color = if (isAllSelected) Color.White else sheetSubtextColor
@@ -186,15 +186,13 @@ fun BusArrivalsList(
                             modifier = Modifier.size(28.dp)
                         )
                         Text(
-                            text = if (texts.headerAjustesTitle == "Ajusts") "Sense connexió a internet" else "Sin conexión a internet",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.offline_banner_title),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = sheetTextColor
                         )
                         Text(
-                            text = if (texts.headerAjustesTitle == "Ajusts") 
-                                "No es poden consultar les estimacions de pas sense connexió." 
-                                else "No se pueden consultar las estimaciones de paso sin conexión.",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_check_connection_departures),
                             style = MaterialTheme.typography.bodySmall,
                             color = sheetSubtextColor,
                             textAlign = TextAlign.Center
@@ -206,7 +204,7 @@ fun BusArrivalsList(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = if (texts.headerAjustesTitle == "Ajusts") "No hi ha estimacions d'arribada disponibles." else "No hay estimaciones de llegada disponibles.",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.no_arrival_estimates),
                             style = MaterialTheme.typography.bodyMedium,
                             color = sheetSubtextColor
                         )

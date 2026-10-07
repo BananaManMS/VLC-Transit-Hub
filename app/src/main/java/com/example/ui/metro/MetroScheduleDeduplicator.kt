@@ -112,8 +112,8 @@ object MetroScheduleDeduplicator {
                 }
 
                 if (maxLiveArrivalMin != -1) {
-                    // Start strictly after the last live train on this corridor
-                    sched.timeMinutes > maxLiveArrivalMin
+                    // Start strictly after the last live train on this corridor AND strictly after current minute
+                    sched.timeMinutes > maxLiveArrivalMin && sched.timeMinutes > currentMinOfDay
                 } else {
                     sched.timeMinutes > currentMinOfDay
                 }

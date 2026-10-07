@@ -5,11 +5,20 @@ package com.example.ui.dashboard
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
@@ -31,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.data.model.MetroStation
 import com.example.data.model.routing.PlannedItinerary
 import com.example.ui.cercanias.CercaniasViewModel
 import com.example.ui.routing.PlannerLocation
@@ -51,31 +61,25 @@ enum class DashboardTab {
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
-    cercaniasViewModel: CercaniasViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+    cercaniasViewModel: CercaniasViewModel? = null,
     metroViewModel: com.example.ui.metro.MetroViewModel? = null,
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    val mapViewModel: com.example.ui.map.MapViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-    val mapUserLocation by mapViewModel.userLocation.collectAsState()
-    val userAndroidLocation = remember(mapUserLocation) {
-        mapUserLocation?.let { geo ->
-            android.location.Location("gps").apply {
-                latitude = geo.latitude
-                longitude = geo.longitude
-            }
+
+    val handleLocationResult: (Double, Double) -> Unit = { lat, lng ->
+        viewModel.updateLocation(lat, lng)
+        viewModel.updateWeatherByLocation(lat, lng, context)
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        com.example.util.StartupProfiler.log("DashboardScreen", ">>> PRIMER FRAME ÚTIL RENDERIZADO <<<")
+        if (LocationUtils.hasLocationPermission(context)) {
+            LocationUtils.requestDeviceLocation(context, handleLocationResult)
         }
     }
-    val routePlannerViewModel: com.example.ui.routing.RoutePlannerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-    val busViewModel: com.example.ui.bus.BusViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-    val metroViewModel = metroViewModel ?: androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = com.example.ui.metro.MetroViewModel.Companion.Factory(
-            application = context.applicationContext as android.app.Application,
-            metroRepository = com.example.data.repository.MetroRepository(context)
-        )
-    )
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val isFahrenheit by viewModel.isFahrenheit.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -83,46 +87,42 @@ fun DashboardScreen(
     val shouldShowOnboarding by viewModel.shouldShowOnboarding.collectAsState()
     val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
 
-    val selectedStationId by metroViewModel.selectedStationId.collectAsState()
-
-    val favoriteStations by metroViewModel.favoriteStations.collectAsState()
-    val sortedFavoriteStations by metroViewModel.sortedFavoriteStations.collectAsState()
-
     val weatherCity by viewModel.weatherCity.collectAsState()
     val weatherData by viewModel.weatherData.collectAsState()
     val useGpsOnOpen by viewModel.useGpsOnOpen.collectAsState()
 
     val calendarItems by viewModel.calendarItems.collectAsState()
 
-    // Real-time trains state collection
-    val realTimeSelectedStationId by metroViewModel.realTimeSelectedStationId.collectAsState()
-    val realTimeDepartures by metroViewModel.realTimeDepartures.collectAsState()
-    val realTimeLoading by metroViewModel.realTimeLoading.collectAsState()
-    val realTimeError by metroViewModel.realTimeError.collectAsState()
-
-    val metroSearchQuery by metroViewModel.metroSearchQuery.collectAsState()
-    val filteredStations by metroViewModel.searchedStations.collectAsState()
-
-    val metroIncidents by metroViewModel.activeIncidents.collectAsState()
-    val metroSpecialNotices by metroViewModel.specialNotices.collectAsState()
-    val isMetroAlertsLoading by metroViewModel.isMetroAlertsLoading.collectAsState()
-    val cercaniasAlerts by cercaniasViewModel.activeCercaniasAlerts.collectAsState()
-    val isCercaniasAlertsLoading by cercaniasViewModel.isCercaniasAlertsLoading.collectAsState()
+    val metroIncidents by viewModel.activeMetroIncidents.collectAsState()
+    val metroSpecialNotices by viewModel.metroSpecialNotices.collectAsState()
+    val isMetroAlertsLoading by viewModel.isMetroAlertsLoading.collectAsState()
+    val cercaniasAlerts by viewModel.activeCercaniasAlerts.collectAsState()
+    val isCercaniasAlertsLoading by viewModel.isCercaniasAlertsLoading.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()
+    val lastLocation by viewModel.lastLocation.collectAsState()
 
     var activeTab by remember { mutableStateOf(DashboardTab.Inicio) }
     var previousTabForBack by remember { mutableStateOf<DashboardTab?>(null) }
-    val lastBusTabMemory by busViewModel.selectedBusTabIndex.collectAsState()
-    var busInitialPage by remember { androidx.compose.runtime.mutableIntStateOf(busViewModel.selectedBusTabIndex.value) }
+    var busInitialPage by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var metroInitialPage by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var cercaniasInitialPage by remember { androidx.compose.runtime.mutableIntStateOf(0) }
 
     var plannerInitialDestination by remember { mutableStateOf<PlannerLocation?>(null) }
+    var pendingSelectedMetroStationId by remember { mutableStateOf<String?>(null) }
+    var pendingSelectedCercaniasStationId by remember { mutableStateOf<String?>(null) }
     var isPlannerVisible by remember { mutableStateOf(false) }
+    var isNetworkPlansVisible by remember { mutableStateOf(false) }
     var isViewingPlannerItineraryOnMap by remember { mutableStateOf(false) }
     var activeMapItinerary by remember { mutableStateOf<PlannedItinerary?>(null) }
     var userDismissedActiveMapItinerary by remember { mutableStateOf(false) }
     var lastTrackedActiveTripStartMs by remember { mutableStateOf<Long?>(null) }
+    var instantTabSwitch by remember { mutableStateOf(false) }
+
+    LaunchedEffect(activeTab) {
+        if (instantTabSwitch) {
+            instantTabSwitch = false
+        }
+    }
 
     val activeTrip by viewModel.activeTripState.collectAsState()
     val unifiedTripSnapshot by viewModel.unifiedTripSnapshot.collectAsState()
@@ -153,14 +153,6 @@ fun DashboardScreen(
         }
     }
 
-
-
-    LaunchedEffect(activeTab, realTimeSelectedStationId) {
-        if (activeTab == DashboardTab.Metro && realTimeSelectedStationId != null) {
-            metroViewModel.fetchRealTimeDepartures(realTimeSelectedStationId!!)
-        }
-    }
-
     var showAddDialog by remember { mutableStateOf(false) }
     var showStationConfigDialog by remember { mutableStateOf(false) }
     var showCercaniasStationConfigDialog by remember { mutableStateOf(false) }
@@ -176,21 +168,10 @@ fun DashboardScreen(
     ) { isGranted ->
         if (isGranted) {
             viewModel.syncGoogleCalendarEvents()
-            android.widget.Toast.makeText(context, if (appLanguage == AppLanguage.ES) "Sincronizando eventos..." else "Sincronitzant esdeveniments...", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, context.getString(com.example.R.string.toast_syncing_events), android.widget.Toast.LENGTH_SHORT).show()
         } else {
-            android.widget.Toast.makeText(context, if (appLanguage == AppLanguage.ES) "Permiso de calendario denegado." else "Permís de calendari denegat.", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(context, context.getString(com.example.R.string.toast_calendar_permission_denied), android.widget.Toast.LENGTH_LONG).show()
         }
-    }
-
-    val handleLocationResult: (Double, Double) -> Unit = { lat, lng ->
-        viewModel.updateLocation(lat, lng)
-        viewModel.updateWeatherByLocation(lat, lng, context)
-        metroViewModel.setLocation(android.location.Location("GPS").apply {
-            latitude = lat
-            longitude = lng
-        })
-        cercaniasViewModel.updateLocation(lat, lng)
-        mapViewModel.updateLocation(lat, lng)
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -240,13 +221,12 @@ fun DashboardScreen(
     LaunchedEffect(isAppInForeground) {
         if (isAppInForeground) {
             viewModel.onAppForegrounded()
-            while (true) {
-                if (LocationUtils.hasLocationPermission(context)) {
-                    if (viewModel.shouldRequestLocationUpdate()) {
-                        LocationUtils.requestDeviceLocation(context, handleLocationResult)
+            if (LocationUtils.hasLocationPermission(context)) {
+                LocationUtils.requestDeviceLocation(context, handleLocationResult)
+                LocationUtils.getLocationUpdates(context, intervalMs = 10000L, minDistanceMeters = 5.0f)
+                    .collect { loc ->
+                        handleLocationResult(loc.latitude, loc.longitude)
                     }
-                }
-                delay(600_000) // 10 minutes frequency
             }
         }
     }
@@ -260,9 +240,11 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
             if (shouldShowOnboarding) {
+                val metroVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
+                val cercaniasVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.cercanias.CercaniasViewModel>()
                 OnboardingScreen(
-                    cercaniasViewModel = cercaniasViewModel,
-                    metroViewModel = metroViewModel,
+                    cercaniasViewModel = cercaniasVm,
+                    metroViewModel = metroVm,
                     viewModel = viewModel,
                     onConfigureStations = { showStationConfigDialog = true },
                     onConfigureCercaniasStations = { showCercaniasStationConfigDialog = true },
@@ -283,7 +265,6 @@ fun DashboardScreen(
                     DashboardBottomNavBar(
                         activeTab = activeTab,
                         isDarkMode = isDarkMode,
-                        texts = texts,
                         onTabSelected = { selectedTab ->
                             when (selectedTab) {
                                 DashboardTab.Inicio -> {
@@ -304,7 +285,7 @@ fun DashboardScreen(
                                 }
                                 DashboardTab.Bus -> {
                                     previousTabForBack = null
-                                    busInitialPage = busViewModel.selectedBusTabIndex.value
+                                    busInitialPage = 0
                                     if (activeTrip == null) {
                                         activeMapItinerary = null
                                         isViewingPlannerItineraryOnMap = false
@@ -347,8 +328,20 @@ fun DashboardScreen(
 
                     val isViewingActiveRouteOnMap = (activeTab == DashboardTab.Mapa && activeMapItinerary != null)
                     var activeTripOverlayMeasuredHeight by remember { mutableStateOf(104.dp) }
+                    var offlineBannerMeasuredHeight by remember { mutableStateOf(52.dp) }
+                    var isOfflineBannerDismissed by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(isOnline) {
+                        if (isOnline) {
+                            isOfflineBannerDismissed = false
+                        }
+                    }
+
+                    val activeTripHeightNeeded = if (activeTrip != null && !isPlannerVisible) (activeTripOverlayMeasuredHeight + 8.dp) else 0.dp
+                    val offlineBannerHeightNeeded = if (!isOnline && !isOfflineBannerDismissed) (offlineBannerMeasuredHeight + 8.dp) else 0.dp
+
                     val dynamicBottomTripPadding by animateDpAsState(
-                        targetValue = if (activeTrip != null && !isPlannerVisible) (activeTripOverlayMeasuredHeight + 8.dp) else 0.dp,
+                        targetValue = activeTripHeightNeeded + offlineBannerHeightNeeded,
                         animationSpec = spring(
                             dampingRatio = Spring.DampingRatioLowBouncy,
                             stiffness = Spring.StiffnessMedium
@@ -358,7 +351,7 @@ fun DashboardScreen(
 
                     Crossfade(
                         targetState = activeTab,
-                        animationSpec = tween(durationMillis = 350),
+                        animationSpec = if (instantTabSwitch) snap() else tween(durationMillis = 280),
                         label = "tab_fade_transition"
                     ) { currentTab ->
                         when (currentTab) {
@@ -367,13 +360,10 @@ fun DashboardScreen(
                                 isRefreshing = isRefreshing,
                                 onRefresh = {
                                     if (LocationUtils.hasLocationPermission(context)) {
-                                        LocationUtils.requestDeviceLocation(context) { lat, lng ->
-                                            viewModel.updateWeatherByLocation(lat, lng, context)
-                                        }
+                                        LocationUtils.requestDeviceLocation(context, handleLocationResult)
                                     }
                                     viewModel.refreshAll()
-                                    metroViewModel.fetchAllAlerts()
-                                    cercaniasViewModel.fetchCercaniasRealTimeAlerts()
+                                    viewModel.fetchAllDashboardAlerts(force = true)
                                 },
                                 currentTimeFlow = viewModel.currentTime,
                                 appLanguage = appLanguage,
@@ -405,7 +395,7 @@ fun DashboardScreen(
                                 onSyncCalendarClick = {
                                     if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                                         viewModel.syncGoogleCalendarEvents(force = true)
-                                        android.widget.Toast.makeText(context, if (appLanguage == AppLanguage.ES) "Sincronizando eventos..." else "Sincronitzant esdeveniments...", android.widget.Toast.LENGTH_SHORT).show()
+                                        android.widget.Toast.makeText(context, context.getString(com.example.R.string.toast_syncing_events), android.widget.Toast.LENGTH_SHORT).show()
                                     } else {
                                         calendarPermissionLauncher.launch(android.Manifest.permission.READ_CALENDAR)
                                     }
@@ -421,9 +411,6 @@ fun DashboardScreen(
                                 },
                                 onDeleteCalendarItem = { viewModel.deleteItem(it) },
                                 dashboardViewModel = viewModel,
-                                metroViewModel = metroViewModel,
-                                cercaniasViewModel = cercaniasViewModel,
-                                busViewModel = busViewModel,
                                 onNavigateToTab = { targetTab, page ->
                                     previousTabForBack = DashboardTab.Inicio
                                     when (targetTab) {
@@ -434,7 +421,14 @@ fun DashboardScreen(
                                     }
                                     activeTab = targetTab
                                 },
+                                onSelectMetroStation = { stationId ->
+                                    pendingSelectedMetroStationId = stationId
+                                },
+                                onSelectCercaniasStation = { stationId ->
+                                    pendingSelectedCercaniasStationId = stationId
+                                },
                                 onOpenRoutePlanner = { dest ->
+                                    previousTabForBack = DashboardTab.Inicio
                                     plannerInitialDestination = dest
                                     isPlannerVisible = true
                                 },
@@ -446,14 +440,9 @@ fun DashboardScreen(
                                         )
                                     )
                                 },
-                                onConfigureLocationOnMap = { isHome ->
+                                onConfigureLocationOnMap = { commuteType ->
                                     previousTabForBack = DashboardTab.Inicio
                                     activeTab = DashboardTab.Mapa
-                                    mapViewModel.selectItem(null)
-                                    mapViewModel.setSelectionMode(
-                                        if (isHome) com.example.ui.map.MapSelectionMode.SELECTING_HOME
-                                        else com.example.ui.map.MapSelectionMode.SELECTING_WORK
-                                    )
                                 },
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -461,20 +450,40 @@ fun DashboardScreen(
                             )
                         }
                         DashboardTab.Mapa -> {
+                            val mapVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.map.MapViewModel>()
+                            val metroVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
+                            val cercaniasVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.cercanias.CercaniasViewModel>()
+                            val plannerVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.routing.RoutePlannerViewModel>()
+                            
+                            val currentLoc = lastLocation ?: com.example.util.LocationUtils.lastKnownLocationCache?.let { Pair(it.latitude, it.longitude) }
+                            if (currentLoc != null) {
+                                mapVm.updateLocation(currentLoc.first, currentLoc.second)
+                            }
+
+                            LaunchedEffect(lastLocation) {
+                                lastLocation?.let { (lat, lon) ->
+                                    mapVm.updateLocation(lat, lon)
+                                    metroVm.setLocation(android.location.Location("gps").apply {
+                                        latitude = lat
+                                        longitude = lon
+                                    })
+                                    cercaniasVm.updateLocation(lat, lon)
+                                }
+                            }
                             DashboardMapTab(
-                                mapViewModel = mapViewModel,
+                                mapViewModel = mapVm,
                                 dashboardViewModel = viewModel,
-                                metroViewModel = metroViewModel,
-                                cercaniasViewModel = cercaniasViewModel,
+                                metroViewModel = metroVm,
+                                cercaniasViewModel = cercaniasVm,
                                 isDarkMode = isDarkMode,
                                 appLanguage = appLanguage,
                                 onNavigateToMetro = { stationId ->
-                                    metroViewModel.selectRealTimeStation(stationId)
+                                    metroVm.selectRealTimeStation(stationId)
                                     previousTabForBack = DashboardTab.Mapa
                                     activeTab = DashboardTab.Metro
                                 },
                                 onNavigateToCercanias = { stationId ->
-                                    cercaniasViewModel.selectCercaniasStation(stationId)
+                                    cercaniasVm.selectCercaniasStation(stationId)
                                     previousTabForBack = DashboardTab.Mapa
                                     activeTab = DashboardTab.Cercanias
                                 },
@@ -482,25 +491,25 @@ fun DashboardScreen(
                                     keyboardController?.hide()
                                     focusManager.clearFocus()
                                     plannerInitialDestination = location
-                                    val userLoc = mapViewModel.userLocation.value
+                                    val userLoc = mapVm.userLocation.value
                                     if (userLoc != null) {
-                                        routePlannerViewModel.setUserLocationAsOrigin(android.location.Location("gps").apply {
+                                        plannerVm.setUserLocationAsOrigin(android.location.Location("gps").apply {
                                             latitude = userLoc.latitude
                                             longitude = userLoc.longitude
                                         })
                                     } else {
-                                        routePlannerViewModel.useCurrentLocationAsOrigin(context)
+                                        plannerVm.useCurrentLocationAsOrigin(context)
                                     }
-                                    routePlannerViewModel.setDestination(location)
-                                    routePlannerViewModel.dismissSearchPanel()
+                                    plannerVm.setDestination(location)
+                                    plannerVm.dismissSearchPanel()
                                     isPlannerVisible = true
                                 },
                                 onPlannerLocationPicked = { loc, isOrigin ->
                                     plannerInitialDestination = null
                                     if (isOrigin) {
-                                        routePlannerViewModel.setOrigin(loc)
+                                        plannerVm.setOrigin(loc)
                                     } else {
-                                        routePlannerViewModel.setDestination(loc)
+                                        plannerVm.setDestination(loc)
                                     }
                                     isPlannerVisible = true
                                 },
@@ -523,6 +532,15 @@ fun DashboardScreen(
                                     }
                                 },
                                 onStartTrip = { itinerary ->
+                                    if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                        val hasNotifPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                                            context,
+                                            android.Manifest.permission.POST_NOTIFICATIONS
+                                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                        if (!hasNotifPerm) {
+                                            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                        }
+                                    }
                                     val origName = itinerary.legs.firstOrNull()?.fromName
                                         ?: if (appLanguage == AppLanguage.ES) "Tu ubicación" else "La teua ubicació"
                                     val destName = itinerary.legs.lastOrNull()?.toName
@@ -532,11 +550,15 @@ fun DashboardScreen(
                                     if (activeTrip != null) {
                                         pendingTripToStart = Triple(itinerary, origName, destName)
                                     } else {
+                                        mapVm.disableFollowUser()
                                         viewModel.startActiveTrip(itinerary, origName, destName)
                                         activeMapItinerary = itinerary
                                         isPlannerVisible = false
                                         activeTab = DashboardTab.Mapa
                                     }
+                                },
+                                onOpenNetworkPlans = {
+                                    isNetworkPlansVisible = true
                                 },
                                 activeTripBottomPadding = dynamicBottomTripPadding,
                                 modifier = Modifier
@@ -545,9 +567,18 @@ fun DashboardScreen(
                             )
                         }
                 DashboardTab.Bus -> {
+                    val metroVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
+                    LaunchedEffect(lastLocation) {
+                        lastLocation?.let { (lat, lon) ->
+                            metroVm.setLocation(android.location.Location("gps").apply {
+                                latitude = lat
+                                longitude = lon
+                            })
+                        }
+                    }
                     DashboardBusTab(
                         viewModel = viewModel,
-                        metroViewModel = metroViewModel,
+                        metroViewModel = metroVm,
                         isDarkMode = isDarkMode,
                         initialPage = busInitialPage,
                         activeTripBottomPadding = dynamicBottomTripPadding,
@@ -557,8 +588,23 @@ fun DashboardScreen(
                     )
                 }
                 DashboardTab.Metro -> {
+                    val metroVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
+                    LaunchedEffect(lastLocation) {
+                        lastLocation?.let { (lat, lon) ->
+                            metroVm.setLocation(android.location.Location("gps").apply {
+                                latitude = lat
+                                longitude = lon
+                            })
+                        }
+                    }
+                    LaunchedEffect(pendingSelectedMetroStationId) {
+                        pendingSelectedMetroStationId?.let { stId ->
+                            metroVm.selectRealTimeStation(stId, isUserAction = true)
+                            pendingSelectedMetroStationId = null
+                        }
+                    }
                     DashboardMetroTab(
-                        metroViewModel = metroViewModel,
+                        metroViewModel = metroVm,
                         appLanguage = appLanguage,
                         isDarkMode = isDarkMode,
                         initialPage = metroInitialPage,
@@ -583,8 +629,20 @@ fun DashboardScreen(
                     )
                 }
                 DashboardTab.Cercanias -> {
+                    val cercaniasVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.cercanias.CercaniasViewModel>()
+                    LaunchedEffect(lastLocation) {
+                        lastLocation?.let { (lat, lon) ->
+                            cercaniasVm.updateLocation(lat, lon)
+                        }
+                    }
+                    LaunchedEffect(pendingSelectedCercaniasStationId) {
+                        pendingSelectedCercaniasStationId?.let { stId ->
+                            cercaniasVm.selectCercaniasStation(stId)
+                            pendingSelectedCercaniasStationId = null
+                        }
+                    }
                     DashboardCercaniasTab(
-                        cercaniasViewModel = cercaniasViewModel,
+                        cercaniasViewModel = cercaniasVm,
                         isDarkMode = isDarkMode,
                         initialPage = cercaniasInitialPage,
                         activeTripBottomPadding = dynamicBottomTripPadding,
@@ -602,6 +660,7 @@ fun DashboardScreen(
                                 activeTab = backTo
                             }
                         } else null,
+                        onOpenMap = { activeTab = DashboardTab.Mapa },
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(bottom = innerPadding.calculateBottomPadding())
@@ -610,8 +669,6 @@ fun DashboardScreen(
                 DashboardTab.Ajustes -> {
                     AjustesScreen(
                         viewModel = viewModel,
-                        cercaniasViewModel = cercaniasViewModel,
-                        metroViewModel = metroViewModel,
                         onBackClick = { activeTab = DashboardTab.Inicio },
                         modifier = Modifier
                             .fillMaxSize()
@@ -666,7 +723,9 @@ fun DashboardScreen(
                         isOnline = isOnline,
                         appLanguage = appLanguage,
                         isDarkMode = isDarkMode,
-                        bottomPadding = dynamicBottomTripPadding,
+                        bottomPadding = activeTripHeightNeeded,
+                        onDismiss = { isOfflineBannerDismissed = true },
+                        onHeightChanged = { h -> if (h > 0.dp) offlineBannerMeasuredHeight = h },
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(bottom = innerPadding.calculateBottomPadding())
@@ -698,6 +757,7 @@ fun DashboardScreen(
 
         // Back navigation for tabs when no overlay/dialog/planner is active
         val isTabBackEnabled = !isPlannerVisible &&
+            !isNetworkPlansVisible &&
             activeMapItinerary == null &&
             !showAddDialog &&
             !showStationConfigDialog &&
@@ -711,7 +771,31 @@ fun DashboardScreen(
             activeTab = backTo
         }
 
-        if (isPlannerVisible) {
+        AnimatedVisibility(
+            visible = isPlannerVisible,
+            enter = slideInVertically(
+                initialOffsetY = { fullHeight -> fullHeight },
+                animationSpec = tween(280, easing = FastOutSlowInEasing)
+            ) + fadeIn(animationSpec = tween(180)),
+            exit = if (instantTabSwitch) {
+                ExitTransition.None
+            } else {
+                slideOutVertically(
+                    targetOffsetY = { fullHeight -> fullHeight },
+                    animationSpec = tween(240, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(180))
+            }
+        ) {
+            val plannerVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.routing.RoutePlannerViewModel>()
+            val userLocation by viewModel.lastLocation.collectAsState()
+            val userAndroidLocation = remember(userLocation) {
+                userLocation?.let { (lat, lon) ->
+                    android.location.Location("gps").apply {
+                        latitude = lat
+                        longitude = lon
+                    }
+                }
+            }
             RoutePlannerScreen(
                 userLocation = userAndroidLocation,
                 initialDestination = plannerInitialDestination,
@@ -726,6 +810,7 @@ fun DashboardScreen(
                 onSelectItineraryForMap = { itinerary ->
                     activeMapItinerary = itinerary
                     isViewingPlannerItineraryOnMap = true
+                    instantTabSwitch = true
                     isPlannerVisible = false
                     activeTab = DashboardTab.Mapa
                 },
@@ -737,25 +822,51 @@ fun DashboardScreen(
                     } else {
                         viewModel.startActiveTrip(itinerary, originName, destName)
                         activeMapItinerary = itinerary
+                        instantTabSwitch = true
                         isPlannerVisible = false
                         activeTab = DashboardTab.Mapa
                     }
                 },
                 onPickOnMapClick = { isOrigin ->
+                    instantTabSwitch = true
                     isPlannerVisible = false
                     activeTab = DashboardTab.Mapa
-                    mapViewModel.selectItem(null)
-                    mapViewModel.setSelectionMode(
-                        if (isOrigin) com.example.ui.map.MapSelectionMode.SELECTING_FOR_PLANNER_ORIGIN
-                        else com.example.ui.map.MapSelectionMode.SELECTING_FOR_PLANNER_DESTINATION
-                    )
                 },
-                viewModel = routePlannerViewModel,
+                viewModel = plannerVm,
                 isDarkMode = isDarkMode,
                 appLanguage = appLanguage,
                 modifier = Modifier.fillMaxSize()
             )
         }
+
+        AnimatedVisibility(
+            visible = isNetworkPlansVisible,
+            enter = slideInVertically(
+                initialOffsetY = { fullHeight -> fullHeight },
+                animationSpec = tween(320, easing = FastOutSlowInEasing)
+            ) + fadeIn(tween(250)),
+            exit = slideOutVertically(
+                targetOffsetY = { fullHeight -> fullHeight },
+                animationSpec = tween(280, easing = FastOutLinearInEasing)
+            ) + fadeOut(tween(200))
+        ) {
+            com.example.ui.map.networkmaps.NetworkPlansScreen(
+                appLanguage = appLanguage,
+                isDarkMode = isDarkMode,
+                onBack = { isNetworkPlansVisible = false }
+            )
+        }
+
+        val metroSearchVm = if (showMetroSearchDialog || showStationConfigDialog) {
+            androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
+        } else null
+        val cercaniasDialogVm = if (showCercaniasStationConfigDialog) {
+            androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.cercanias.CercaniasViewModel>()
+        } else null
+
+        val metroSearchQuery by (metroSearchVm?.metroSearchQuery ?: remember { kotlinx.coroutines.flow.MutableStateFlow("") }).collectAsState()
+        val filteredStations by (metroSearchVm?.searchedStations ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<MetroStation>()) }).collectAsState()
+        val favoriteStations by (metroSearchVm?.favoriteStations ?: viewModel.favoriteMetroStations).collectAsState()
 
         // Dialogs, Sheets and Modals Host
         DashboardDialogsHost(
@@ -778,16 +889,16 @@ fun DashboardScreen(
             metroSearchQuery = metroSearchQuery,
             filteredStations = filteredStations,
             favoriteStations = favoriteStations.toList(),
-            onMetroQueryChange = { metroViewModel.setMetroSearchQuery(it) },
+            onMetroQueryChange = { metroSearchVm?.setMetroSearchQuery(it) },
             onSelectMetroSearchStation = { stationId ->
-                metroViewModel.selectStation(stationId)
+                metroSearchVm?.selectStation(stationId)
                 showMetroSearchDialog = false
             },
             onToggleFavoriteMetroStation = { stationId ->
-                metroViewModel.toggleFavoriteStation(stationId)
+                metroSearchVm?.toggleFavoriteStation(stationId)
             },
-            metroViewModel = metroViewModel,
-            cercaniasViewModel = cercaniasViewModel,
+            metroViewModel = metroSearchVm,
+            cercaniasViewModel = cercaniasDialogVm,
             appLanguage = appLanguage,
             isDarkMode = isDarkMode,
             showActiveTripDetails = showActiveTripDetails,
@@ -805,6 +916,7 @@ fun DashboardScreen(
                 viewModel.startActiveTrip(itinerary, originName, destName)
                 userDismissedActiveMapItinerary = false
                 activeMapItinerary = itinerary
+                instantTabSwitch = true
                 isPlannerVisible = false
                 activeTab = DashboardTab.Mapa
                 pendingTripToStart = null
@@ -816,6 +928,17 @@ fun DashboardScreen(
             onRecalculateTransfer = { viewModel.recalculateMissedTransfer() },
             onDismissTransferRiskDialog = { viewModel.dismissTransferRiskDialog() }
         )
+
+        val remoteAnnouncements by viewModel.remoteAnnouncements.collectAsState()
+        if (remoteAnnouncements.isNotEmpty() && !shouldShowOnboarding) {
+            com.example.ui.components.RemoteAnnouncementDialog(
+                announcements = remoteAnnouncements,
+                appLanguage = appLanguage,
+                isDarkMode = isDarkMode,
+                onDismissSingle = { id -> viewModel.dismissRemoteAnnouncement(id) },
+                onCloseAll = { viewModel.dismissAllRemoteAnnouncements() }
+            )
+        }
 
     } // closes Box
     } // closes Surface

@@ -70,6 +70,14 @@ object MapMarkersManager {
     private var currentSelectedItinerary: PlannedItinerary? = null
     private var currentSelectedMapItem: SelectedMapItem? = null
 
+    private var lastRawMetroStations: List<MetroStation>? = null
+    private var cachedValidMetroStations: List<MetroStation> = emptyList()
+    private var cachedMetroPositions: Map<String, GeoPoint> = emptyMap()
+
+    private var lastRawCercaniasStations: List<com.example.data.database.CercaniasStationEntity>? = null
+    private var cachedValidCercaniasStations: List<com.example.data.database.CercaniasStationEntity> = emptyList()
+    private var cachedCercaniasPositions: Map<String, GeoPoint> = emptyMap()
+
     private var lastZoomedItineraryId: String? = null
 
     private fun clearRecycledMarkers() {
@@ -160,7 +168,8 @@ object MapMarkersManager {
         onSelectItem: (SelectedMapItem) -> Unit,
         onMapClick: () -> Unit,
         onShowDisambiguationMenu: ((List<SelectedMapItem>) -> Unit)? = null,
-        onMapLongClick: ((GeoPoint) -> Unit)? = null
+        onMapLongClick: ((GeoPoint) -> Unit)? = null,
+        isCellTowerLocation: Boolean = false
     ) {
         if (!mapView.isAttachedToWindow && mapView.parent == null) {
             mapView.post {
@@ -170,7 +179,8 @@ object MapMarkersManager {
                         valenbisiStations, customFavorites, homeLocation, workLocation, mapFilter,
                         userLocation, destinationLocation, destinationTitle, isDarkMode, busStopAliases,
                         appLanguage, selectedItinerary, selectedMapItem, selectedBusLineFilters, selectedMetrobusShapes,
-                        selectedDirectionFilter, onSelectItem, onMapClick, onShowDisambiguationMenu, onMapLongClick
+                        selectedDirectionFilter, onSelectItem, onMapClick, onShowDisambiguationMenu, onMapLongClick,
+                        isCellTowerLocation
                     )
                 }
             }
@@ -241,7 +251,8 @@ object MapMarkersManager {
             context = context,
             mapView = mapView,
             userLocation = userLocation,
-            existingUserMarker = userMarker
+            existingUserMarker = userMarker,
+            isCellTowerLocation = isCellTowerLocation
         )
 
         // 2b. Destination Location Marker (Only when not previewing an active route)
@@ -273,19 +284,32 @@ object MapMarkersManager {
             MetroMapOverlayLoader.setZoomCategory(category)
         }
 
-        val validMetroStations = if (showMetro) {
-            metroStations.filter { station ->
+        if (lastRawMetroStations !== metroStations) {
+            lastRawMetroStations = metroStations
+            cachedValidMetroStations = metroStations.filter { station ->
                 val lat = station.latitude
                 val lon = station.longitude
                 lat != null && lon != null && lat != 0.0 && lon != 0.0
             }
-        } else emptyList()
+            cachedMetroPositions = cachedValidMetroStations.associate { s ->
+                val fallback = GeoPoint(s.latitude!!, s.longitude!!)
+                s.name to com.example.data.repository.StaticTransitDataCache.getVisualPositionForMetro(s.name, fallback)
+            }
+        }
 
-        val validCercaniasStations = if (showCercanias) {
-            cercaniasStations.filter { station ->
+        if (lastRawCercaniasStations !== cercaniasStations) {
+            lastRawCercaniasStations = cercaniasStations
+            cachedValidCercaniasStations = cercaniasStations.filter { station ->
                 station.lat != 0.0 && station.lon != 0.0
             }
-        } else emptyList()
+            cachedCercaniasPositions = cachedValidCercaniasStations.associate { s ->
+                val fallback = GeoPoint(s.lat, s.lon)
+                s.stop_id to com.example.data.repository.StaticTransitDataCache.getVisualPositionForCercanias(s.stop_id, fallback)
+            }
+        }
+
+        val validMetroStations = if (showMetro) cachedValidMetroStations else emptyList()
+        val validCercaniasStations = if (showCercanias) cachedValidCercaniasStations else emptyList()
 
         // Fast visual positions lookup using StaticTransitDataCache
         if (!com.example.data.repository.StaticTransitDataCache.isOffsetsReady() && metroStations.isNotEmpty() && cercaniasStations.isNotEmpty()) {
@@ -300,14 +324,8 @@ object MapMarkersManager {
             com.example.data.repository.StaticTransitDataCache.precomputeStationVisualOffsets(mList, cList)
         }
 
-        val metroPositions = validMetroStations.associate { s ->
-            val fallback = GeoPoint(s.latitude!!, s.longitude!!)
-            s.name to com.example.data.repository.StaticTransitDataCache.getVisualPositionForMetro(s.name, fallback)
-        }
-        val cercaniasPositions = validCercaniasStations.associate { s ->
-            val fallback = GeoPoint(s.lat, s.lon)
-            s.stop_id to com.example.data.repository.StaticTransitDataCache.getVisualPositionForCercanias(s.stop_id, fallback)
-        }
+        val metroPositions = cachedMetroPositions
+        val cercaniasPositions = cachedCercaniasPositions
 
         this.currentMetroStations = validMetroStations
         this.currentCercaniasStations = validCercaniasStations

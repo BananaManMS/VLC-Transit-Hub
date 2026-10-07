@@ -28,15 +28,31 @@ object RoutingDataMapper {
         "destino", "Destino"
     )
 
+    fun isStationOrStopDescriptor(name: String?, stopType: String? = null, stopId: String? = null): Boolean {
+        if (!stopType.isNullOrBlank() || !stopId.isNullOrBlank()) return true
+        if (name.isNullOrBlank()) return false
+        val lower = name.lowercase().trim()
+        return lower.startsWith("estaci") || lower.startsWith("estació") || lower.startsWith("estacion") ||
+               lower.startsWith("parada") || lower.contains("metro") || lower.contains("rodalia") ||
+               lower.contains("cercanías") || lower.contains("cercanias") || lower.contains("estación") ||
+               lower.contains("estació") || lower.contains("adif") || lower.contains("renfe") ||
+               lower.matches(Regex(".*parada\\s+\\d+.*", RegexOption.IGNORE_CASE))
+    }
+
     fun mapDtoToItinerary(
         dto: TransitousItineraryDto,
         index: Int,
         originName: String? = null,
-        destinationName: String? = null
+        destinationName: String? = null,
+        isOriginStationOrStop: Boolean = false,
+        isDestinationStationOrStop: Boolean = false
     ): PlannedItinerary {
         val legs = mutableListOf<PlannedLeg>()
         var totalWalkDistance = 0.0
         var totalWalkDuration = 0L
+
+        val effectiveIsOriginStation = isOriginStationOrStop || isStationOrStopDescriptor(originName)
+        val effectiveIsDestStation = isDestinationStationOrStop || isStationOrStopDescriptor(destinationName)
 
         dto.legs.forEachIndexed { legIndex, legDto ->
             val mode = TransitMode.fromString(legDto.mode)
@@ -179,6 +195,20 @@ object RoutingDataMapper {
             )
         }
 
+        if (effectiveIsOriginStation && legs.size > 1 && legs.first().mode == TransitMode.WALK) {
+            val nextLeg = legs[1]
+            if (nextLeg.mode != TransitMode.WALK && nextLeg.mode != TransitMode.BICYCLE) {
+                legs.removeAt(0)
+            }
+        }
+
+        if (effectiveIsDestStation && legs.size > 1 && legs.last().mode == TransitMode.WALK) {
+            val prevLeg = legs[legs.size - 2]
+            if (prevLeg.mode != TransitMode.WALK && prevLeg.mode != TransitMode.BICYCLE) {
+                legs.removeAt(legs.size - 1)
+            }
+        }
+
         if (legs.size > 1) {
             legs.removeAll { leg ->
                 leg.mode == TransitMode.WALK && (leg.distanceMeters < 10.0 || leg.durationSeconds <= 0)
@@ -193,6 +223,7 @@ object RoutingDataMapper {
         val formattedDeparture = legs.firstOrNull()?.formattedStartTime ?: formatIsoToTime(dto.startTime)
         val formattedArrival = legs.lastOrNull()?.formattedEndTime ?: formatIsoToTime(dto.endTime)
         val totalDurationSec = calculateTotalDurationSec(legs, if ((dto.duration ?: 0L) > 0) (dto.duration ?: 0L) else legs.sumOf { it.durationSeconds })
+        val actualTransfers = (legs.count { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE } - 1).coerceAtLeast(0)
 
         return PlannedItinerary(
             id = dto.id ?: "itin_$index",
@@ -203,7 +234,7 @@ object RoutingDataMapper {
             formattedDuration = formatSecondsToDuration(totalDurationSec),
             formattedDepartureTime = formattedDeparture,
             formattedArrivalTime = formattedArrival,
-            transfersCount = dto.transfers,
+            transfersCount = actualTransfers,
             legs = legs,
             viability = ItineraryViability.THEORETICAL_SCHEDULE,
             viabilityNotice = null,
@@ -259,7 +290,9 @@ object RoutingDataMapper {
     fun addMinutesToCurrentTime(minutesToAdd: Int): String {
         val cal = Calendar.getInstance(TimeZone.getTimeZone("Europe/Madrid"))
         cal.add(Calendar.MINUTE, minutesToAdd)
-        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
+            timeZone = TimeZone.getTimeZone("Europe/Madrid")
+        }
         return sdf.format(cal.time)
     }
 

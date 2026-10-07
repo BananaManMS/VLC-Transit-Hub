@@ -127,7 +127,7 @@ fun MetrobusSheetHeader(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Cerrar",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
                             tint = if (isDarkMode) Color.White else Color.Black
                         )
                     }
@@ -153,7 +153,7 @@ fun MetrobusSheetHeader(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Cómo llegar",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.bus_directions_btn),
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     fontSize = 14.sp
@@ -253,11 +253,14 @@ fun MetrobusDepartureCard(
                                 )
                             }
                             Spacer(modifier = Modifier.width(6.dp))
+                            val lowText = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_occupancy_low)
+                            val mediumText = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_occupancy_medium)
+                            val highText = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_occupancy_high)
                             Text(
                                 text = when (level) {
-                                    "BAJA" -> "Baja"
-                                    "MEDIA" -> "Media"
-                                    "ALTA" -> "Alta"
+                                    "BAJA" -> lowText
+                                    "MEDIA" -> mediumText
+                                    "ALTA" -> highText
                                     else -> dep.ocupacion
                                 },
                                 style = MaterialTheme.typography.labelSmall,

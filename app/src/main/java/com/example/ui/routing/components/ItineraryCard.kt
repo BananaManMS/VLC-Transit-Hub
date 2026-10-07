@@ -130,7 +130,7 @@ fun ItineraryCard(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Bolt,
-                                contentDescription = if (appLanguage == AppLanguage.ES) "Más rápida" else "Més ràpida",
+                                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.itinerary_fastest_tag),
                                 tint = if (isDarkMode) Color(0xFF81C784) else Color(0xFF1B5E20),
                                 modifier = Modifier
                                     .padding(horizontal = 4.dp, vertical = 2.dp)
@@ -148,11 +148,10 @@ fun ItineraryCard(
                     )
                 }
 
-                // Transfers count badge ("Sin transbordos" / "1 transbordo", NOT confused with "En directo")
                 val transferText = when (itinerary.transfersCount) {
-                    0 -> if (appLanguage == AppLanguage.ES) "Sin transbordos" else "Sense transbord"
-                    1 -> if (appLanguage == AppLanguage.ES) "1 transbordo" else "1 transbord"
-                    else -> "${itinerary.transfersCount} ${if (appLanguage == AppLanguage.ES) "transbordos" else "transbords"}"
+                    0 -> androidx.compose.ui.res.stringResource(com.example.R.string.transfers_zero)
+                    1 -> androidx.compose.ui.res.stringResource(com.example.R.string.transfers_one)
+                    else -> androidx.compose.ui.res.stringResource(com.example.R.string.transfers_plural_format, itinerary.transfersCount)
                 }
 
                 Surface(
@@ -216,7 +215,7 @@ fun ItineraryCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.ES) "También disponible:" else "També disponible:",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.route_also_available_header),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -241,7 +240,7 @@ fun ItineraryCard(
                                     val deltaText = when {
                                         alt.deltaDurationMinutes > 0 -> "+${alt.deltaDurationMinutes} min"
                                         alt.deltaDurationMinutes < 0 -> "${alt.deltaDurationMinutes} min"
-                                        else -> if (appLanguage == AppLanguage.ES) "mismo tiempo" else "mateix temps"
+                                        else -> androidx.compose.ui.res.stringResource(com.example.R.string.route_same_duration)
                                     }
                                     val modeLabel = if (alt.mode == TransitMode.TRAM) "Tranvía" else "Bus"
                                     Text(
@@ -278,7 +277,7 @@ fun ItineraryCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "${itinerary.totalWalkDistanceMeters.toInt()} m ${if (appLanguage == AppLanguage.ES) "a pie" else "a peu"}",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.route_walk_format, itinerary.totalWalkDistanceMeters.toInt()),
                             style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
                         )
                     }
@@ -303,7 +302,7 @@ fun ItineraryCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (appLanguage == AppLanguage.ES) "Iniciar" else "Iniciar",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_start_trip_short),
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp
@@ -332,7 +331,7 @@ fun ItineraryCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (appLanguage == AppLanguage.ES) "Ver trayecto" else "Veure trajecte",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_view_itinerary),
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp
@@ -389,7 +388,7 @@ fun ViabilityBadge(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (appLanguage == AppLanguage.ES) "Comprobando en vivo..." else "Comprovant en viu...",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.route_checking_live),
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp,
@@ -434,10 +433,10 @@ fun ViabilityBadge(
             ?.replace("En vivo: ", "")
             ?.replace("En viu: ", "")
         itinerary.activeAlerts.isNotEmpty() -> itinerary.activeAlerts.first()
-        isLiveGps -> if (appLanguage == AppLanguage.ES) "En vivo • En hora" else "En viu • A l'hora"
-        itinerary.viability == ItineraryViability.ADJUSTED_NEXT_DEPARTURE -> if (appLanguage == AppLanguage.ES) "Salida recalculada en vivo" else "Eixida recalculada en viu"
-        itinerary.viability == ItineraryViability.SERVICE_ALERT -> if (appLanguage == AppLanguage.ES) "Aviso de servicio activo" else "Avís de servei actiu"
-        else -> if (appLanguage == AppLanguage.ES) "Horario programado" else "Horari programat"
+        isLiveGps -> androidx.compose.ui.res.stringResource(com.example.R.string.route_status_live_on_time)
+        itinerary.viability == ItineraryViability.ADJUSTED_NEXT_DEPARTURE -> androidx.compose.ui.res.stringResource(com.example.R.string.route_status_recalculated_live)
+        itinerary.viability == ItineraryViability.SERVICE_ALERT -> androidx.compose.ui.res.stringResource(com.example.R.string.route_status_active_alert)
+        else -> androidx.compose.ui.res.stringResource(com.example.R.string.route_status_scheduled)
     }
 
     Surface(
@@ -466,7 +465,7 @@ fun ViabilityBadge(
             }
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = noticeText ?: (if (appLanguage == AppLanguage.ES) "Horario programado" else "Horari programat"),
+                text = noticeText ?: androidx.compose.ui.res.stringResource(com.example.R.string.scheduled_time_label),
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 12.sp

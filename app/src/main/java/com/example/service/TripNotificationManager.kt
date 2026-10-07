@@ -59,22 +59,23 @@ class TripNotificationManager(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Seguimiento de Viaje Activo",
-                NotificationManager.IMPORTANCE_DEFAULT
+                context.getString(R.string.notif_channel_active_trip),
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Notificación en vivo del viaje multimodal en curso"
+                description = context.getString(R.string.notif_channel_active_trip_desc)
                 setShowBadge(false)
                 setSound(null, null)
                 enableVibration(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             notificationManager.createNotificationChannel(channel)
 
             val alertChannel = NotificationChannel(
                 CHANNEL_ALERT_ID,
-                "Alertas Críticas de Navegación",
+                context.getString(R.string.notif_channel_critical_alerts),
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Alertas de salida inminente, próxima parada para bajar y transbordos en riesgo"
+                description = context.getString(R.string.notif_channel_critical_alerts_desc)
                 enableVibration(true)
             }
             notificationManager.createNotificationChannel(alertChannel)
@@ -83,7 +84,7 @@ class TripNotificationManager(private val context: Context) {
 
     fun buildInitialFallbackNotification(): Notification {
         val currentAppLanguage = getAppLanguage()
-        val title = if (currentAppLanguage == AppLanguage.ES) "Viaje en curso" else "Viatge en curs"
+        val title = context.getString(R.string.notif_trip_in_progress)
         val desc = if (currentAppLanguage == AppLanguage.ES) "Siguiendo tu trayecto en tiempo real..." else "Seguint el teu trajecte en temps real..."
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
@@ -96,19 +97,36 @@ class TripNotificationManager(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val cancelIntent = Intent(context, ActiveTripTrackingService::class.java).apply {
+            action = ActiveTripTrackingService.ACTION_STOP
+        }
+        val cancelPendingIntent = PendingIntent.getService(
+            context,
+            1,
+            cancelIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val cancelActionText = if (currentAppLanguage == AppLanguage.ES) "Cancelar viaje" else "Cancel·lar viatge"
+
         return NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_location_notification)
+            .setSmallIcon(R.drawable.ic_stat_train_logo)
             .setContentTitle(title)
             .setContentText(desc)
             .setOngoing(true)
+            .setSortKey("!0_PRIMARY_LIVE_TRIP")
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
             .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setSound(null)
             .setVibrate(null)
             .setNotificationSilent()
             .setContentIntent(pendingIntent)
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                cancelActionText,
+                cancelPendingIntent
+            )
             .build()
     }
 
@@ -146,8 +164,8 @@ class TripNotificationManager(private val context: Context) {
         // 1. Consume preformatted Primary Instruction Title, Subtitle, and Adjusted ETA from single source of truth
         val formattedUI = snapshot.formattedUiState
 
-        val titleText = formattedUI.headline
-        val subtitleText = formattedUI.subheadline
+        val titleText = formattedUI.notificationHeadline?.takeIf { it.isNotBlank() } ?: formattedUI.headline
+        val subtitleText = formattedUI.notificationSubheadline ?: formattedUI.subheadline
         val etaText = formattedUI.formattedArrivalTimeText
 
         val now = System.currentTimeMillis()
@@ -199,19 +217,22 @@ class TripNotificationManager(private val context: Context) {
         // A) Transbordo en riesgo
         if (isTransferAtRisk && lastAlertedTransferLegIndex != currentLegIndex) {
             lastAlertedTransferLegIndex = currentLegIndex
-            val alertTitle = if (currentAppLanguage == AppLanguage.ES) "Posible transbordo perdido" else "Possible transbordament perdut"
+            val alertTitle = context.getString(R.string.trip_warning_transfer_lost)
             val alertBody = if (currentAppLanguage == AppLanguage.ES) {
-                realTime?.transferWarningEs ?: "Se estima que no llegarás a tiempo al enlace. Toca para recalcular ruta sin caminar más."
+                realTime?.transferWarningEs ?: context.getString(R.string.notif_transfer_warning_fallback)
             } else {
-                realTime?.transferWarningCa ?: "S'estima que no arribaràs a temps a l'enllaç. Toca per a recalcular ruta sense caminar més."
+                realTime?.transferWarningCa ?: context.getString(R.string.notif_transfer_warning_fallback)
             }
-            val alertAction = if (currentAppLanguage == AppLanguage.ES) "Buscar alternativas" else "Cercar alternatives"
+            val alertAction = context.getString(R.string.timeline_search_alternatives)
 
             val alertNotif = NotificationCompat.Builder(context, CHANNEL_ALERT_ID)
-                .setSmallIcon(R.drawable.ic_location_notification)
+                .setSmallIcon(R.drawable.ic_stat_train_logo)
                 .setContentTitle(alertTitle)
                 .setContentText(alertBody)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setSortKey("z_trip_alert")
+                .setTimeoutAfter(12000L)
+                .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
                 .setAutoCancel(true)
                 .setContentIntent(recalculatePendingIntent)
@@ -231,7 +252,7 @@ class TripNotificationManager(private val context: Context) {
         // B) "Sal ya" / Aviso de salida inminente hacia el primer transporte
         if (isSalYa && currentLegIndex == 0 && lastAlertedLeaveNowLegIndex != currentLegIndex) {
             lastAlertedLeaveNowLegIndex = currentLegIndex
-            val leaveTitle = if (currentAppLanguage == AppLanguage.ES) "¡Hora de salir!" else "¡Hora d'eixir!"
+            val leaveTitle = context.getString(R.string.notif_leave_now_title)
             val leaveBody = if (currentAppLanguage == AppLanguage.ES) {
                 realTime?.leaveNowMessageEs ?: "Sal ahora para llegar a tiempo a ${currentLeg?.toName ?: "tu parada"}."
             } else {
@@ -239,10 +260,13 @@ class TripNotificationManager(private val context: Context) {
             }
 
             val leaveNotif = NotificationCompat.Builder(context, CHANNEL_ALERT_ID)
-                .setSmallIcon(R.drawable.ic_location_notification)
+                .setSmallIcon(R.drawable.ic_stat_train_logo)
                 .setContentTitle(leaveTitle)
                 .setContentText(leaveBody)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setSortKey("z_trip_alert")
+                .setTimeoutAfter(12000L)
+                .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
                 .setAutoCancel(true)
                 .setContentIntent(openAppPendingIntent)
@@ -257,36 +281,32 @@ class TripNotificationManager(private val context: Context) {
         }
 
         // C) Aviso de "Próxima parada / Prepárate para bajar"
-        if (progressInfo.isBoarded && currentLeg != null && currentLeg.mode in listOf(TransitMode.BUS, TransitMode.SUBWAY, TransitMode.TRAM, TransitMode.RAIL)) {
+        if (progressInfo.isBoarded && currentLeg != null && currentLeg.mode in listOf(TransitMode.BUS, TransitMode.SUBWAY, TransitMode.TRAM, TransitMode.RAIL, TransitMode.METROBUS, TransitMode.CERCANIAS)) {
             val isImminentDebark = snapshot.isImminentDebark
 
             if (isImminentDebark && lastAlertedDebarkLegIndex != currentLegIndex) {
                 lastAlertedDebarkLegIndex = currentLegIndex
                 val modeLabel = when (currentLeg.mode) {
                     TransitMode.BUS -> "Bus"
+                    TransitMode.METROBUS -> "Metrobús"
                     TransitMode.SUBWAY -> "Metro"
-                    TransitMode.TRAM -> if (currentAppLanguage == AppLanguage.ES) "Tranvía" else "Tramvia"
-                    TransitMode.RAIL -> if (currentAppLanguage == AppLanguage.ES) "Tren" else "Tren"
+                    TransitMode.TRAM -> context.getString(R.string.transit_mode_tram)
+                    TransitMode.RAIL, TransitMode.CERCANIAS -> context.getString(R.string.transit_mode_train)
                     else -> ""
                 }
                 val lineLabel = currentLeg.routeShortName ?: ""
                 val destStation = currentLeg.toName
-                val debarkTitle = if (currentAppLanguage == AppLanguage.ES) {
-                    "Próxima parada: Baja en $destStation"
-                } else {
-                    "Pròxima parada: Baixa a $destStation"
-                }
-                val debarkBody = if (currentAppLanguage == AppLanguage.ES) {
-                    "Prepárate para bajar de $modeLabel $lineLabel."
-                } else {
-                    "Prepara't per a baixar de $modeLabel $lineLabel."
-                }
+                val debarkTitle = context.getString(R.string.notif_next_stop_title, destStation)
+                val debarkBody = context.getString(R.string.notif_prepare_alight, modeLabel, lineLabel)
 
                 val debarkNotif = NotificationCompat.Builder(context, CHANNEL_ALERT_ID)
-                    .setSmallIcon(R.drawable.ic_location_notification)
+                    .setSmallIcon(R.drawable.ic_stat_train_logo)
                     .setContentTitle(debarkTitle)
                     .setContentText(debarkBody)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setSortKey("z_trip_alert")
+                    .setTimeoutAfter(12000L)
+                    .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
                     .setDefaults(NotificationCompat.DEFAULT_ALL)
                     .setAutoCancel(true)
                     .setContentIntent(openAppPendingIntent)
@@ -334,8 +354,13 @@ class TripNotificationManager(private val context: Context) {
             setTextViewText(R.id.notif_title, titleText)
             setTextColor(R.id.notif_title, titleColor)
 
-            setTextViewText(R.id.notif_subtitle, subtitleText)
-            setTextColor(R.id.notif_subtitle, subtitleColor)
+            if (subtitleText.isNotBlank() && subtitleText != formattedUI.nextTransitDepartureInfo) {
+                setTextViewText(R.id.notif_subtitle, subtitleText)
+                setTextColor(R.id.notif_subtitle, subtitleColor)
+                setViewVisibility(R.id.notif_subtitle, android.view.View.VISIBLE)
+            } else {
+                setViewVisibility(R.id.notif_subtitle, android.view.View.GONE)
+            }
 
             if (!formattedUI.nextTransitDepartureInfo.isNullOrBlank()) {
                 setTextViewText(R.id.notif_extra_info, formattedUI.nextTransitDepartureInfo)
@@ -370,14 +395,19 @@ class TripNotificationManager(private val context: Context) {
             }
         }
 
-        // 5. Populate Compact RemoteViews
+        // 5. Populate Compact RemoteViews (clean strictly 2-line layout: title, departure/subtitle, duration)
         val compactView = RemoteViews(context.packageName, R.layout.notification_active_trip_compact).apply {
-            setImageViewBitmap(R.id.notif_compact_icon, modeIconBitmap)
             setTextViewText(R.id.notif_compact_title, titleText)
             setTextColor(R.id.notif_compact_title, titleColor)
 
-            setTextViewText(R.id.notif_compact_subtitle, subtitleText)
-            setTextColor(R.id.notif_compact_subtitle, subtitleColor)
+            val compactSub = if (subtitleText.isNotBlank()) subtitleText else (formattedUI.nextTransitDepartureInfo ?: "")
+            if (compactSub.isNotBlank()) {
+                setTextViewText(R.id.notif_compact_subtitle, compactSub)
+                setTextColor(R.id.notif_compact_subtitle, if (subtitleText.isNotBlank()) subtitleColor else extraInfoColor)
+                setViewVisibility(R.id.notif_compact_subtitle, android.view.View.VISIBLE)
+            } else {
+                setViewVisibility(R.id.notif_compact_subtitle, android.view.View.GONE)
+            }
 
             setTextViewText(R.id.notif_compact_eta, dynamicDuration)
             setTextColor(R.id.notif_compact_eta, compactEtaColor)
@@ -393,20 +423,51 @@ class TripNotificationManager(private val context: Context) {
         }
 
         try {
+            val chipText = if (dynamicDuration.length <= 8) dynamicDuration else "En ruta"
+
+            val cancelIntent = Intent(context, ActiveTripTrackingService::class.java).apply {
+                action = ActiveTripTrackingService.ACTION_STOP
+            }
+            val cancelPendingIntent = PendingIntent.getService(
+                context,
+                1,
+                cancelIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val cancelActionText = if (currentAppLanguage == AppLanguage.ES) "Cancelar viaje" else "Cancel·lar viatge"
+
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_location_notification)
+                .setSmallIcon(R.drawable.ic_stat_train_logo)
+                .setContentTitle(titleText)
+                .setContentText(subtitleText)
+                .setSubText(chipText)
                 .setCustomContentView(compactView)
                 .setCustomBigContentView(expandedView)
+                .setStyle(NotificationCompat.DecoratedCustomViewStyle())
                 .setOngoing(true)
+                .setSortKey("!0_PRIMARY_LIVE_TRIP")
                 .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .setOnlyAlertOnce(true)
                 .setSound(null)
                 .setVibrate(null)
                 .setNotificationSilent()
                 .setContentIntent(openAppPendingIntent)
+                .addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    cancelActionText,
+                    cancelPendingIntent
+                )
                 .build()
+
+            notification.flags = notification.flags or Notification.FLAG_ONGOING_EVENT
+            if (Build.VERSION.SDK_INT >= 34) {
+                try {
+                    notification.flags = notification.flags or Notification.FLAG_PROMOTED_ONGOING
+                    notification.extras.putBoolean("android.requestPromotedOngoing", true)
+                } catch (_: Throwable) {}
+            }
 
             notificationManager.notify(NOTIFICATION_ID, notification)
         } catch (e: Exception) {
@@ -426,13 +487,15 @@ class TripNotificationManager(private val context: Context) {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_location_notification)
+            .setSmallIcon(R.drawable.ic_stat_train_logo)
             .setContentTitle(title)
             .setContentText(content)
             .setOngoing(false)
+            .setGroup(GROUP_ACTIVE_TRIP_ONGOING)
+            .setSortKey("0_ongoing_trip")
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
             .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setSound(null)
             .setVibrate(null)
             .setNotificationSilent()
@@ -444,16 +507,8 @@ class TripNotificationManager(private val context: Context) {
 
     fun showBoardingConfirmationNotification(vehicleName: String, legIndex: Int) {
         val currentAppLanguage = getAppLanguage()
-        val title = if (currentAppLanguage == AppLanguage.ES) {
-            "¿Se ha subido al $vehicleName?"
-        } else {
-            "¿S'ha pujat al $vehicleName?"
-        }
-        val text = if (currentAppLanguage == AppLanguage.ES) {
-            "El vehículo ha salido de la parada. Pulsa Sí para confirmar el abordaje, o No para recalcular."
-        } else {
-            "El vehicle ha eixit de la parada. Clica Sí per confirmar l'abordatge, o No per recalcular."
-        }
+        val title = context.getString(R.string.notif_board_check_title, vehicleName)
+        val text = context.getString(R.string.notif_board_check_body)
 
         // Action SÍ: confirms manual boarding
         val yesIntent = Intent(context, ActiveTripTrackingService::class.java).apply {
@@ -479,8 +534,8 @@ class TripNotificationManager(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val yesLabel = if (currentAppLanguage == AppLanguage.ES) "Sí" else "Sí"
-        val noLabel = if (currentAppLanguage == AppLanguage.ES) "No" else "No"
+        val yesLabel = context.getString(R.string.yes_label)
+        val noLabel = context.getString(R.string.no_label)
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -493,13 +548,16 @@ class TripNotificationManager(private val context: Context) {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ALERT_ID)
-            .setSmallIcon(R.drawable.ic_location_notification)
+            .setSmallIcon(R.drawable.ic_stat_train_logo)
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(false)
             .setContentIntent(openAppPendingIntent)
+            .setSortKey("z_trip_alert")
+            .setTimeoutAfter(30000L)
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(Notification.DEFAULT_ALL)
             .setVibrate(longArrayOf(0, 350, 150, 350))
             .setAutoCancel(true)
@@ -543,7 +601,9 @@ class TripNotificationManager(private val context: Context) {
         const val NOTIFICATION_LEAVE_NOW_ID = 4003
         const val NOTIFICATION_DEBARK_ID = 4004
         const val NOTIFICATION_BOARDING_CONFIRM_ID = 4005
-        const val CHANNEL_ID = "active_trip_tracking_channel"
-        const val CHANNEL_ALERT_ID = "active_trip_alert_channel"
+        const val CHANNEL_ID = "active_trip_channel_v4"
+        const val CHANNEL_ALERT_ID = "active_trip_alert_channel_v4"
+        const val GROUP_ACTIVE_TRIP_ONGOING = "com.example.transit.GROUP_ACTIVE_TRIP_ONGOING"
+        const val GROUP_TRIP_ALERTS = "com.example.transit.GROUP_TRIP_ALERTS"
     }
 }

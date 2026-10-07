@@ -103,10 +103,10 @@ fun RouteSearchHeader(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
-        shadowElevation = 3.dp,
-        shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
+        color = MaterialTheme.colorScheme.background,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        shape = androidx.compose.ui.graphics.RectangleShape
     ) {
         Column(
             modifier = Modifier
@@ -181,7 +181,7 @@ fun RouteSearchHeader(
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = if (appLanguage == AppLanguage.ES) "Ubicación actual" else "Ubicació actual",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.current_location_label),
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,
@@ -221,7 +221,7 @@ fun RouteSearchHeader(
                                 .testTag("route_origin_input"),
                             placeholder = {
                                 Text(
-                                    if (appLanguage == AppLanguage.ES) "Origen (ej: Tu ubicación)" else "Origen (ex: La teua ubicació)",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.route_search_origin_placeholder),
                                     fontSize = 14.sp
                                 )
                             },
@@ -294,7 +294,7 @@ fun RouteSearchHeader(
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = if (appLanguage == AppLanguage.ES) "Ubicación actual" else "Ubicació actual",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.current_location_label),
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,
@@ -334,7 +334,7 @@ fun RouteSearchHeader(
                                 .testTag("route_destination_input"),
                             placeholder = {
                                 Text(
-                                    if (appLanguage == AppLanguage.ES) "¿A dónde vas?" else "On vols anar?",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.route_search_destination_placeholder),
                                     fontSize = 14.sp
                                 )
                             },
@@ -386,7 +386,7 @@ fun RouteSearchHeader(
                 ) {
                     Icon(
                         imageVector = Icons.Default.SwapVert,
-                        contentDescription = "Invertir origen y destino",
+                        contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.swap_origin_destination_desc),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .size(22.dp)
@@ -418,7 +418,7 @@ fun RouteSearchHeader(
                 item {
                     val isScheduleActive = departureType != DepartureType.LEAVE_NOW
                     val scheduleLabel = when (departureType) {
-                        DepartureType.LEAVE_NOW -> if (appLanguage == AppLanguage.ES) "Salir ahora ▾" else "Eixir ara ▾"
+                        DepartureType.LEAVE_NOW -> androidx.compose.ui.res.stringResource(com.example.R.string.route_search_leave_now)
                         DepartureType.DEPART_AT -> "Salir: ${selectedTime ?: "ahora"} ▾"
                         DepartureType.ARRIVE_BY -> "Llegar: ${selectedTime ?: "12:00"} ▾"
                     }
@@ -441,7 +441,7 @@ fun RouteSearchHeader(
                         onClick = { onClearModeFilters?.invoke() },
                         label = {
                             Text(
-                                if (appLanguage == AppLanguage.ES) "Todos" else "Tots",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.filter_all),
                                 fontSize = 12.sp,
                                 fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Normal
                             )
@@ -482,7 +482,7 @@ fun RouteSearchHeader(
                         onClick = onToggleFewestTransfers,
                         label = {
                             Text(
-                                if (appLanguage == AppLanguage.ES) "Menos transbordos" else "Menys transbords",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.filter_fewest_transfers),
                                 fontSize = 12.sp,
                                 fontWeight = if (fewestTransfers) FontWeight.Bold else FontWeight.Normal
                             )

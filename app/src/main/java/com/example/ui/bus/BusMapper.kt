@@ -15,7 +15,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 object BusMapper {
 
-    fun loadStopsFromAssets(context: Context): List<GeoportalStopEntity> {
+    suspend fun loadStopsFromAssets(context: Context): List<GeoportalStopEntity> {
         return com.example.data.repository.StaticTransitDataCache.getOrLoadEmtStops(context)
     }
 

@@ -36,23 +36,19 @@ object MetroMarkersRenderer {
         val selectedMetro = (selectedMapItem as? SelectedMapItem.Metro)?.station
         val isMetroVisible = currentZoom >= 11.5
 
-        val activeMetroKeys = HashSet<String>()
-
-        validMetroStations.forEach { station ->
+        val totalValid = validMetroStations.size
+        for (i in 0 until totalValid) {
+            val station = validMetroStations[i]
             val markerKey = "METRO_${station.id}"
-            activeMetroKeys.add(markerKey)
 
-            var marker = recycledMetroMarkers.find { it.id == markerKey }
-            if (marker == null) {
-                marker = recycledMetroMarkers.find { !it.isEnabled }
-                if (marker == null) {
-                    marker = Marker(mapView).also {
-                        recycledMetroMarkers.add(it)
-                        mapView.overlays.add(it)
-                    }
+            val marker = if (i < recycledMetroMarkers.size) {
+                recycledMetroMarkers[i]
+            } else {
+                Marker(mapView).also {
+                    recycledMetroMarkers.add(it)
                 }
-                marker.id = markerKey
             }
+            marker.id = markerKey
 
             marker.infoWindow = null
             marker.closeInfoWindow()
@@ -62,7 +58,7 @@ object MetroMarkersRenderer {
             val metroResult = if (isSelected) {
                 getMetroMarkerIcon(context, station.name, lines = station.lines, isDarkMode = isDarkMode, showPill = true)
             } else if (currentZoom < 13.5) {
-                getMetroLogoSmallIcon(context, isDarkMode)
+                getMetroWhiteDotIcon(context, isDarkMode)
             } else if (currentZoom < 16.0) {
                 getMetroMarkerIcon(context, station.name, lines = emptyList(), isDarkMode = isDarkMode, showPill = showPill)
             } else {
@@ -88,15 +84,15 @@ object MetroMarkersRenderer {
             }
         }
 
-        recycledMetroMarkers.forEach { m ->
-            if (m.id != null && m.id.startsWith("METRO_") && m.id !in activeMetroKeys) {
-                m.setVisible(false)
-                m.isEnabled = false
-                m.setOnMarkerClickListener(null)
+        for (i in totalValid until recycledMetroMarkers.size) {
+            recycledMetroMarkers[i].apply {
+                setVisible(false)
+                isEnabled = false
+                setOnMarkerClickListener(null)
             }
         }
 
-        return validMetroStations.size
+        return totalValid
     }
 
     /**
@@ -121,23 +117,19 @@ object MetroMarkersRenderer {
         val selectedCercanias = (selectedMapItem as? SelectedMapItem.Cercanias)?.station
         val isCercaniasVisible = currentZoom >= 9.0 || isOnlyCercaniasSelected
 
-        val activeCercaniasKeys = HashSet<String>()
-
-        validCercaniasStations.forEach { station ->
+        val totalValidCercanias = validCercaniasStations.size
+        for (i in 0 until totalValidCercanias) {
+            val station = validCercaniasStations[i]
             val markerKey = "CERCANIAS_${station.stop_id}"
-            activeCercaniasKeys.add(markerKey)
 
-            var marker = recycledCercaniasMarkers.find { it.id == markerKey }
-            if (marker == null) {
-                marker = recycledCercaniasMarkers.find { !it.isEnabled }
-                if (marker == null) {
-                    marker = Marker(mapView).also {
-                        recycledCercaniasMarkers.add(it)
-                        mapView.overlays.add(it)
-                    }
+            val marker = if (i < recycledCercaniasMarkers.size) {
+                recycledCercaniasMarkers[i]
+            } else {
+                Marker(mapView).also {
+                    recycledCercaniasMarkers.add(it)
                 }
-                marker.id = markerKey
             }
+            marker.id = markerKey
 
             marker.infoWindow = null
             marker.closeInfoWindow()
@@ -176,14 +168,14 @@ object MetroMarkersRenderer {
             }
         }
 
-        recycledCercaniasMarkers.forEach { m ->
-            if (m.id != null && m.id.startsWith("CERCANIAS_") && m.id !in activeCercaniasKeys) {
-                m.setVisible(false)
-                m.isEnabled = false
-                m.setOnMarkerClickListener(null)
+        for (i in totalValidCercanias until recycledCercaniasMarkers.size) {
+            recycledCercaniasMarkers[i].apply {
+                setVisible(false)
+                isEnabled = false
+                setOnMarkerClickListener(null)
             }
         }
 
-        return validCercaniasStations.size
+        return totalValidCercanias
     }
 }

@@ -47,6 +47,8 @@ import com.example.R
  * only when network connectivity is lost, informing the user that information
  * is loaded from cache/offline. Provides a close button ('X') to dismiss it.
  */
+import androidx.compose.ui.layout.onGloballyPositioned
+
 @Composable
 fun OfflineBanner(
     isOnline: Boolean,
@@ -54,9 +56,11 @@ fun OfflineBanner(
     isDarkMode: Boolean,
     bottomPadding: Dp = 0.dp,
     modifier: Modifier = Modifier,
-    onDismiss: (() -> Unit)? = null
+    onDismiss: (() -> Unit)? = null,
+    onHeightChanged: ((Dp) -> Unit)? = null
 ) {
     var isDismissed by remember { mutableStateOf(false) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
 
     // When connection is restored, reset dismissal so future disconnects warn the user again
     LaunchedEffect(isOnline) {
@@ -84,6 +88,12 @@ fun OfflineBanner(
             modifier = Modifier
                 .fillMaxWidth()
                 .shadow(elevation = 2.dp, shape = RoundedCornerShape(12.dp))
+                .onGloballyPositioned { layoutCoordinates ->
+                    val hDp = with(density) { layoutCoordinates.size.height.toDp() }
+                    if (hDp > 0.dp) {
+                        onHeightChanged?.invoke(hDp)
+                    }
+                }
                 .testTag("offline_status_banner"),
             shape = RoundedCornerShape(12.dp),
             color = containerColor,
@@ -116,14 +126,14 @@ fun OfflineBanner(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.offline_banner_title),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = textPrimary,
                         maxLines = 1
                     )
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Mostrant dades en memòria cau" else "Mostrando datos en caché local",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.offline_banner_cached_data),
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Normal,
                         color = textSecondary,
@@ -142,7 +152,7 @@ fun OfflineBanner(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = if (appLanguage == AppLanguage.CA) "Tancar avís sense connexió" else "Cerrar aviso sin conexión",
+                        contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.offline_banner_close_desc),
                         tint = textSecondary,
                         modifier = Modifier.size(18.dp)
                     )

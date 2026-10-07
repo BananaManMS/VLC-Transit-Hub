@@ -19,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -97,7 +99,7 @@ fun CercaniasDeparturesTab(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (appLanguage == AppLanguage.CA) "Les meues estacions favorites" else "Mis estaciones favoritas",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_my_fav_stations),
                 style = MaterialTheme.typography.titleSmall,
                 color = accentColor,
                 fontWeight = FontWeight.Bold
@@ -108,7 +110,7 @@ fun CercaniasDeparturesTab(
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "Editar favoritas",
+                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.edit_favorites_desc),
                     tint = accentColor,
                     modifier = Modifier.size(20.dp)
                 )
@@ -141,7 +143,7 @@ fun CercaniasDeparturesTab(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Explore,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Cercar estació" else "Buscar estación",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.search_station_label),
                             tint = accentColor,
                             modifier = Modifier.size(20.dp)
                         )
@@ -221,7 +223,7 @@ fun CercaniasDeparturesTab(
                                     color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else textColor,
                                     modifier = Modifier.weight(1f, fill = false)
                                 )
-                                val distanceText = viewModel.getCercaniasStationDistanceText(station)
+                                val distanceText = remember(station) { viewModel.getCercaniasStationDistanceText(station) }
                                 if (distanceText != null) {
                                     Text(
                                         text = distanceText,
@@ -269,6 +271,116 @@ fun CercaniasDeparturesTab(
             }
         }
 
+        // Line filter selector chips for Cercanías
+        val availableLines = remember(departures, selectedStationEntity) {
+            val stationLines = selectedStationEntity?.lines
+                ?.map { it.uppercase().replace("-", "").trim() }
+                ?.filter { it.isNotBlank() }
+                ?: emptyList()
+            val departureLines = departures
+                .map { it.routeId.uppercase().replace("-", "").trim() }
+                .filter { it.isNotBlank() }
+            (stationLines + departureLines).distinct().sorted()
+        }
+        val selectedLineFilters by viewModel.selectedCercaniasLineFilters.collectAsState()
+
+        if (availableLines.size > 1) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item {
+                    val isAllSelected = selectedLineFilters.isEmpty()
+                    val cardBgColor = if (isAllSelected) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDarkMode) 0.6f else 0.9f)
+                    } else {
+                        if (isDarkMode) Color(0xFF222222) else MaterialTheme.colorScheme.surface
+                    }
+                    val borderStroke = if (isAllSelected) {
+                        BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary)
+                    } else {
+                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                    }
+
+                    Card(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { viewModel.clearCercaniasLineFilters() }
+                            .testTag("cercanias_filter_all"),
+                        colors = CardDefaults.cardColors(containerColor = cardBgColor),
+                        border = borderStroke,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DirectionsRailway,
+                                contentDescription = null,
+                                tint = if (isAllSelected) MaterialTheme.colorScheme.primary else subtextColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "Todas",
+                                fontSize = 10.sp,
+                                fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isAllSelected) MaterialTheme.colorScheme.onPrimaryContainer else textColor
+                            )
+                        }
+                    }
+                }
+
+                items(availableLines) { line ->
+                    val isSelected = selectedLineFilters.contains(line)
+                    val isAnySelected = selectedLineFilters.isNotEmpty()
+                    val alpha = if (isAnySelected && !isSelected) 0.38f else 1.0f
+
+                    androidx.compose.material3.Surface(
+                        onClick = { viewModel.toggleCercaniasLineFilter(line) },
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color.Transparent,
+                        modifier = Modifier
+                            .height(24.dp)
+                            .widthIn(min = 24.dp)
+                            .alpha(alpha)
+                            .then(
+                                if (isSelected) {
+                                    Modifier.border(
+                                        width = 1.2.dp,
+                                        color = if (isDarkMode) Color.White else MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(6.dp)
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .testTag("cercanias_filter_$line")
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(if (isSelected) 1.5.dp else 0.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            com.example.ui.metro.CercaniasLineBadge(
+                                routeId = line,
+                                size = 16.dp,
+                                modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Pull to refresh + List of Departures
         val pullToRefreshState = rememberPullToRefreshState()
         PullToRefreshBox(
@@ -287,7 +399,7 @@ fun CercaniasDeparturesTab(
             },
             modifier = Modifier.fillMaxWidth().weight(1f)
         ) {
-            if (isLoading && departures.isEmpty() && error == null) {
+            if (isLoading && departures.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(top = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -296,7 +408,7 @@ fun CercaniasDeparturesTab(
                         CercaniasDepartureSkeletonCard()
                     }
                 }
-            } else if (error != null && departures.isEmpty()) {
+            } else if (!isLoading && error != null && departures.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -322,45 +434,304 @@ fun CercaniasDeparturesTab(
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (appLanguage == AppLanguage.CA) "Reintentar" else "Reintentar")
+                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_retry))
                     }
                 }
-            } else if (departures.isEmpty() && !isLoading) {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DirectionsRailway,
-                        contentDescription = null,
-                        tint = subtextColor,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = if (appLanguage == AppLanguage.CA) "No hi ha eixides pròximes per a esta estació" else "No hay salidas próximas para esta estación",
-                        color = subtextColor,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
-                    )
-                }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp + activeTripBottomPadding)
+                val filteredList = remember(departures, selectedLineFilters) {
+                    if (selectedLineFilters.isEmpty()) {
+                        departures
+                    } else {
+                        departures.filter { selectedLineFilters.contains(it.routeId.uppercase().replace("-", "").trim()) }
+                    }
+                }
+
+                if (filteredList.isEmpty()) {
+                    val matchingAlerts = remember(cercaniasAlerts, selectedLineFilters, selectedStationEntity) {
+                        val stationLines = selectedStationEntity?.lines
+                            ?.map { it.uppercase().replace("-", "").trim() }
+                            ?.filter { it.isNotBlank() }
+                            ?: emptyList()
+                        cercaniasAlerts.filter { alert ->
+                            if (selectedLineFilters.isNotEmpty()) {
+                                alert.routeIds.any { alertRoute ->
+                                    selectedLineFilters.contains(alertRoute.uppercase().replace("-", "").trim())
+                                }
+                            } else {
+                                alert.stopIds.contains(selectedStationId) ||
+                                selectedStationEntity?.let { alert.stopIds.contains(it.stop_id) || alert.stopIds.contains(it.id) } == true ||
+                                alert.routeIds.any { alertRoute ->
+                                    stationLines.any { sLine ->
+                                        alertRoute.uppercase().replace("-", "").trim() == sLine
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(top = 24.dp, bottom = 16.dp + activeTripBottomPadding)
+                    ) {
+                        item {
+                            Icon(
+                                imageVector = Icons.Default.DirectionsRailway,
+                                contentDescription = null,
+                                tint = subtextColor,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = if (selectedLineFilters.isNotEmpty()) {
+                                    if (selectedLineFilters.size == 1) {
+                                        "No hay trenes programados para la línea ${selectedLineFilters.first()} en las próximas 24h."
+                                    } else {
+                                        "No hay trenes programados para las líneas seleccionadas en las próximas 24h."
+                                    }
+                                } else {
+                                    "No hay trenes programados para esta estación en las próximas 24h."
+                                },
+                                color = textColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Revisa los avisos activos a continuación.",
+                                color = subtextColor,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp)
+                            )
+                        }
+
+                        if (matchingAlerts.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (selectedLineFilters.isNotEmpty()) "AVISOS DE LA LÍNEA" else "AVISOS DE LA ESTACIÓN",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            letterSpacing = 1.2.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+
+                            items(matchingAlerts, key = { "filtered_alert_${it.id}" }) { alert ->
+                                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                    CercaniasNoticeFilteredCard(
+                                        alert = alert,
+                                        isDarkMode = isDarkMode,
+                                        appLanguage = appLanguage
+                                    )
+                                }
+                            }
+                        } else {
+                            item {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isDarkMode) Color(0xFF1E293B) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text(
+                                        text = "No hay avisos activos en este momento.",
+                                        modifier = Modifier.padding(16.dp),
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 13.sp,
+                                        color = subtextColor
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    val todayDepartures = remember(filteredList) { filteredList.filter { !it.isTomorrow } }
+                    val tomorrowDepartures = remember(filteredList) { filteredList.filter { it.isTomorrow } }
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp + activeTripBottomPadding)
+                    ) {
+                        if (todayDepartures.isNotEmpty()) {
+                            items(todayDepartures, key = { "${it.tripId}_${it.routeId}_${it.departureTime}_today" }) { departure ->
+                                CercaniasDepartureCard(
+                                    departure = departure,
+                                    alerts = cercaniasAlerts,
+                                    isDarkMode = isDarkMode,
+                                    appLanguage = appLanguage,
+                                    onClick = { onSelectDeparture(departure) }
+                                )
+                            }
+                        }
+
+                        if (tomorrowDepartures.isNotEmpty()) {
+                            item(key = "header_tomorrow_departures") {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = if (todayDepartures.isNotEmpty()) 12.dp else 4.dp, bottom = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+                                        modifier = Modifier.padding(end = 10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CalendarToday,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = androidx.compose.ui.res.stringResource(com.example.R.string.calendar_filter_tomorrow),
+                                                style = MaterialTheme.typography.titleSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp
+                                                ),
+                                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                            )
+                                        }
+                                    }
+                                    HorizontalDivider(
+                                        modifier = Modifier.weight(1f),
+                                        color = if (isDarkMode) Color(0xFF334155) else Color(0xFFCBD5E1),
+                                        thickness = 1.dp
+                                    )
+                                }
+                            }
+
+                            items(tomorrowDepartures, key = { "${it.tripId}_${it.routeId}_${it.departureTime}_tomorrow" }) { departure ->
+                                CercaniasDepartureCard(
+                                    departure = departure,
+                                    alerts = cercaniasAlerts,
+                                    isDarkMode = isDarkMode,
+                                    appLanguage = appLanguage,
+                                    onClick = { onSelectDeparture(departure) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CercaniasNoticeFilteredCard(
+    alert: CercaniasAlert,
+    isDarkMode: Boolean,
+    appLanguage: AppLanguage
+) {
+    val catEnum = remember(alert.headerEs, alert.descriptionEs) {
+        CercaniasNoticeCategory.resolveFromText(alert.headerEs, alert.descriptionEs)
+    }
+    val badgeCategoryName = catEnum.getDisplayName(appLanguage)
+    val badgeColor = catEnum.getColor(isDarkMode)
+    val badgeIcon = catEnum.icon
+    val isUrgent = catEnum == CercaniasNoticeCategory.SUPRESION || catEnum == CercaniasNoticeCategory.INCIDENCIA
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("cercanias_filtered_notice_card_${alert.id}"),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isUrgent) {
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = if (isDarkMode) 0.35f else 0.18f)
+            } else {
+                if (isDarkMode) Color(0xFF232630) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            }
+        ),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = badgeColor.copy(alpha = 0.15f)
                 ) {
-                    items(departures, key = { "${it.tripId}_${it.routeId}_${it.departureTime}" }) { departure ->
-                        CercaniasDepartureCard(
-                            departure = departure,
-                            alerts = cercaniasAlerts,
-                            isDarkMode = isDarkMode,
-                            appLanguage = appLanguage,
-                            onClick = { onSelectDeparture(departure) }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Icon(
+                            imageVector = badgeIcon,
+                            contentDescription = null,
+                            tint = badgeColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = badgeCategoryName,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = badgeColor,
+                            letterSpacing = 0.5.sp
                         )
                     }
                 }
+
+                if (alert.routeIds.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        alert.routeIds.forEach { lineId ->
+                            com.example.ui.metro.CercaniasLineBadge(routeId = lineId, size = 20.dp)
+                        }
+                    }
+                }
+            }
+
+            if (alert.headerEs.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = alert.headerEs,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            if (alert.descriptionEs.isNotBlank() && !alert.descriptionEs.equals(alert.headerEs, ignoreCase = true)) {
+                Spacer(modifier = Modifier.height(6.dp))
+                com.example.ui.components.LinkifiedText(
+                    text = alert.descriptionEs,
+                    textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp
+                )
             }
         }
     }

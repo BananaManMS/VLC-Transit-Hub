@@ -16,8 +16,8 @@ import org.osmdroid.views.overlay.Polyline
 import java.lang.ref.WeakReference
 
 /**
- * Handles deferred (lazy) loading and LOD caching of the optimized 80 KB Cercanías GeoJSON routes.
- * Avoids loading and parsing the GeoJSON during app cold start.
+ * Handles deferred (lazy) loading and LOD caching of Cercanías routes with dynamic perpendicular lateral offsets.
+ * Eliminates overlapping polyline artifacts on shared corridors (e.g. C1 and C2 on the Southern Trunk, C5 and C6).
  */
 object CercaniasMapOverlayLoader {
     private const val TAG = "CercaniasOverlayLoader"
@@ -48,9 +48,6 @@ object CercaniasMapOverlayLoader {
     private var cachedUseHighRes: Boolean? = null
     private var cachedPolylines: List<Polyline> = emptyList()
 
-    /**
-     * Triggers asynchronous background parsing of ruta_cercanias_valencia.geojson if not already loaded.
-     */
     @Synchronized
     fun ensureLoaded(context: Context, scope: CoroutineScope? = null, onComplete: (() -> Unit)? = null) {
         if (isLoaded) {
@@ -75,12 +72,12 @@ object CercaniasMapOverlayLoader {
                     polylineSets = sets
                     _isLoadedState.value = true
                     isLoading = false
-                    cachedMapViewRef = null // Invalidate cache so new polylines generate
+                    cachedMapViewRef = null
                     val callbacks = pendingCallbacks.toList()
                     pendingCallbacks.clear()
                     callbacks
                 }
-                Log.d(TAG, "Successfully lazy-loaded Cercanias polylines from GeoJSON")
+                Log.d(TAG, "Successfully lazy-loaded Cercanias polylines with lateral offsets from GeoJSON")
                 withContext(Dispatchers.Main) {
                     callbacksToRun.forEach { it.invoke() }
                 }
@@ -94,10 +91,6 @@ object CercaniasMapOverlayLoader {
         }
     }
 
-    /**
-     * Returns the pre-built OSMPolyline objects for the given MapView, zoom, and resolution.
-     * If not loaded yet, triggers lazy background loading without blocking the UI thread.
-     */
     @Synchronized
     fun getLoadedPolylines(
         mapView: MapView? = null,
@@ -148,7 +141,7 @@ object CercaniasMapOverlayLoader {
             }
 
             cachedPolylines = rawList.map { raw ->
-                Polyline(mapView).apply {
+                SafePolyline(mapView).apply {
                     relatedObject = raw
                     setPoints(raw.points)
                     outlinePaint.color = raw.color
@@ -192,14 +185,31 @@ object CercaniasMapOverlayLoader {
             val properties = feature.optJSONObject("properties") ?: continue
             val geometry = feature.optJSONObject("geometry") ?: continue
 
-            val colourHex = properties.optString("colour", "#C1272D")
-            val color = try {
-                if (colourHex.startsWith("#")) Color.parseColor(colourHex) else Color.parseColor("#$colourHex")
-            } catch (e: Exception) {
-                try { Color.parseColor("#C1272D") } catch (ex: Exception) { Color.RED }
+            val rawRef = properties.optString("ref", "").trim().uppercase()
+            val cleanRef = when {
+                rawRef.startsWith("C1") || rawRef == "1" -> "C1"
+                rawRef.startsWith("C2") || rawRef == "2" -> "C2"
+                rawRef.startsWith("C3") || rawRef == "3" -> "C3"
+                rawRef.startsWith("C5") || rawRef == "5" -> "C5"
+                rawRef.startsWith("C6") || rawRef == "6" -> "C6"
+                else -> rawRef
             }
-            val lineRef = properties.optString("ref", "").trim()
-            val strokeWidth = 9f
+            if (cleanRef.isBlank()) continue
+
+            val colourHex = properties.optString("colour", "")
+            val defaultColor = when (cleanRef) {
+                "C1" -> Color.parseColor("#7AB3DE")
+                "C2" -> Color.parseColor("#F79529")
+                "C3" -> Color.parseColor("#7A2780")
+                "C5" -> Color.parseColor("#018A27")
+                "C6" -> Color.parseColor("#0D3386")
+                else -> Color.parseColor("#E30613")
+            }
+            val color = try {
+                if (colourHex.startsWith("#")) Color.parseColor(colourHex) else if (colourHex.isNotBlank()) Color.parseColor("#$colourHex") else defaultColor
+            } catch (_: Exception) {
+                defaultColor
+            }
 
             val featureSegments = ArrayList<List<GeoPoint>>()
             val geomType = geometry.optString("type")
@@ -221,22 +231,20 @@ object CercaniasMapOverlayLoader {
                 }
             }
 
-            val mergedSegments = mergeSegments(featureSegments)
+            for (points in featureSegments) {
+                // Slightly thicker than Metrovalencia (Metro: 10f / 7f / 5f -> Cercanias: 12f / 8.5f / 6f)
+                val strokeClose = 12.0f
+                val strokeMed = 8.5f
+                val strokeFar = 6.0f
 
-            for (segment in mergedSegments) {
-                val normalized = normalizeDirection(segment)
-                if (normalized.size < 2) continue
+                highResCloseList.add(MetroMapOverlayLoader.RawPolyline(points, color, strokeClose, cleanRef))
+                highResMediumList.add(MetroMapOverlayLoader.RawPolyline(points, color, strokeMed, cleanRef))
+                highResFarList.add(MetroMapOverlayLoader.RawPolyline(points, color, strokeFar, cleanRef))
 
-                val highResPoly = MetroMapOverlayLoader.RawPolyline(normalized, color, strokeWidth, lineRef)
-                highResCloseList.add(highResPoly)
-                highResMediumList.add(highResPoly)
-                highResFarList.add(highResPoly)
-
-                val simplified = rdpSimplify(normalized, epsilon)
-                val lowResPoly = MetroMapOverlayLoader.RawPolyline(simplified, color, strokeWidth, lineRef)
-                lowResCloseList.add(lowResPoly)
-                lowResMediumList.add(lowResPoly)
-                lowResFarList.add(lowResPoly)
+                val simplified = MapPolylineOffsetHelper.rdpSimplify(points, epsilon)
+                lowResCloseList.add(MetroMapOverlayLoader.RawPolyline(simplified, color, strokeClose, cleanRef))
+                lowResMediumList.add(MetroMapOverlayLoader.RawPolyline(simplified, color, strokeMed, cleanRef))
+                lowResFarList.add(MetroMapOverlayLoader.RawPolyline(simplified, color, strokeFar, cleanRef))
             }
         }
 
@@ -263,118 +271,6 @@ object CercaniasMapOverlayLoader {
             }
         }
         return list
-    }
-
-    private fun distanceBetween(p1: GeoPoint, p2: GeoPoint): Double {
-        val latMid = Math.toRadians((p1.latitude + p2.latitude) / 2.0)
-        val dy = (p2.latitude - p1.latitude) * 111111.0
-        val dx = (p2.longitude - p1.longitude) * 111111.0 * Math.cos(latMid)
-        return Math.sqrt(dx * dx + dy * dy)
-    }
-
-    private fun mergeSegments(segments: List<List<GeoPoint>>): List<List<GeoPoint>> {
-        if (segments.isEmpty()) return emptyList()
-        val pool = segments.map { it.toList() }.toMutableList()
-        val merged = ArrayList<List<GeoPoint>>()
-
-        while (pool.isNotEmpty()) {
-            val currentPath = ArrayList<GeoPoint>(pool.removeAt(0))
-            var joinedAny: Boolean
-            do {
-                joinedAny = false
-                var i = 0
-                while (i < pool.size) {
-                    val s = pool[i]
-                    if (s.isEmpty()) {
-                        pool.removeAt(i)
-                        continue
-                    }
-                    val distLastFirst = distanceBetween(currentPath.last(), s.first())
-                    val distLastLast = distanceBetween(currentPath.last(), s.last())
-                    val distFirstLast = distanceBetween(currentPath.first(), s.last())
-                    val distFirstFirst = distanceBetween(currentPath.first(), s.first())
-
-                    if (distLastFirst < 10.0) {
-                        currentPath.addAll(s.subList(1, s.size))
-                        pool.removeAt(i)
-                        joinedAny = true
-                    } else if (distLastLast < 10.0) {
-                        currentPath.addAll(s.reversed().subList(1, s.size))
-                        pool.removeAt(i)
-                        joinedAny = true
-                    } else if (distFirstLast < 10.0) {
-                        currentPath.addAll(0, s.subList(0, s.size - 1))
-                        pool.removeAt(i)
-                        joinedAny = true
-                    } else if (distFirstFirst < 10.0) {
-                        currentPath.addAll(0, s.reversed().subList(0, s.size - 1))
-                        pool.removeAt(i)
-                        joinedAny = true
-                    } else {
-                        i++
-                    }
-                }
-            } while (joinedAny && pool.isNotEmpty())
-            merged.add(currentPath)
-        }
-        return merged
-    }
-
-    private fun normalizeDirection(points: List<GeoPoint>): List<GeoPoint> {
-        if (points.size < 2) return points
-        val start = points.first()
-        val end = points.last()
-
-        val deltaLat = Math.abs(end.latitude - start.latitude)
-        val deltaLon = Math.abs(end.longitude - start.longitude)
-
-        val shouldReverse = if (deltaLat > deltaLon) {
-            start.latitude > end.latitude
-        } else {
-            start.longitude > end.longitude
-        }
-
-        return if (shouldReverse) points.reversed() else points
-    }
-
-    private fun rdpSimplify(points: List<GeoPoint>, epsilon: Double): List<GeoPoint> {
-        if (points.size < 3) return points
-
-        var dmax = 0.0
-        var index = 0
-        val end = points.size - 1
-
-        for (i in 1 until end) {
-            val d = perpendicularDistance(points[i], points[0], points[end])
-            if (d > dmax) {
-                index = i
-                dmax = d
-            }
-        }
-
-        return if (dmax > epsilon) {
-            val recResults1 = rdpSimplify(points.subList(0, index + 1), epsilon)
-            val recResults2 = rdpSimplify(points.subList(index, points.size), epsilon)
-            recResults1.dropLast(1) + recResults2
-        } else {
-            listOf(points[0], points[end])
-        }
-    }
-
-    private fun perpendicularDistance(p: GeoPoint, lineStart: GeoPoint, lineEnd: GeoPoint): Double {
-        val x = p.longitude
-        val y = p.latitude
-        val x1 = lineStart.longitude
-        val y1 = lineStart.latitude
-        val x2 = lineEnd.longitude
-        val y2 = lineEnd.latitude
-
-        val dx = x2 - x1
-        val dy = y2 - y1
-
-        val num = Math.abs(dy * x - dx * y + x2 * y1 - y2 * x1)
-        val den = Math.sqrt(dy * dy + dx * dx)
-        return if (den == 0.0) 0.0 else num / den
     }
 
     fun getLinePoints(lineCode: String): List<List<GeoPoint>> {

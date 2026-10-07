@@ -104,7 +104,7 @@ fun MetrobusTab(
             BusFilterChip(
                 selected = filterSource == BusFilterSource.FAVORITES_BUS,
                 onClick = { onFilterSourceSelected(BusFilterSource.FAVORITES_BUS) },
-                label = if (appLanguage == AppLanguage.CA) "Preferides" else "Favoritas",
+                label = androidx.compose.ui.res.stringResource(com.example.R.string.chip_favorites),
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Star,
@@ -118,7 +118,7 @@ fun MetrobusTab(
             BusFilterChip(
                 selected = filterSource == BusFilterSource.GPS_USER,
                 onClick = { onFilterSourceSelected(BusFilterSource.GPS_USER) },
-                label = if (appLanguage == AppLanguage.CA) "Prop de mi" else "Cerca de mí",
+                label = androidx.compose.ui.res.stringResource(com.example.R.string.chip_nearby),
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.LocationOn,
@@ -132,7 +132,7 @@ fun MetrobusTab(
             BusFilterChip(
                 selected = filterSource == BusFilterSource.METRO_STATION,
                 onClick = { onFilterSourceSelected(BusFilterSource.METRO_STATION) },
-                label = "Metro",
+                label = androidx.compose.ui.res.stringResource(com.example.R.string.metro_service_label),
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Subway,
@@ -150,7 +150,7 @@ fun MetrobusTab(
             if (metroStationsList.isNotEmpty()) {
                 Column(modifier = Modifier.padding(bottom = 8.dp)) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Selecciona l'estació de metro:" else "Selecciona estación de metro:",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.select_metro_station_label),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp)
@@ -194,12 +194,12 @@ fun MetrobusTab(
                     .fillMaxWidth()
                     .padding(bottom = 12.dp)
                     .testTag("metrobus_search_bar"),
-                placeholder = { Text(if (appLanguage == AppLanguage.CA) "Cercar parada o línia Metrobús" else "Buscar parada o línea Metrobús") },
-                leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = "Buscar") },
+                placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.search_metrobus_placeholder)) },
+                leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.search_label)) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { onSearchQueryChanged("") }) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "Limpiar")
+                            Icon(imageVector = Icons.Default.Close, contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.clear_search_desc))
                         }
                     }
                 },
@@ -225,15 +225,15 @@ fun MetrobusTab(
             } else if (metrobusStopsList.isEmpty()) {
                 val emptyMsg = when (filterSource) {
                     BusFilterSource.FAVORITES_BUS -> if (searchQuery.isNotEmpty()) {
-                        if (appLanguage == AppLanguage.CA) "No s'han trobat parades de Metrobús actives" else "No se encontraron paradas de Metrobús activas"
+                        androidx.compose.ui.res.stringResource(com.example.R.string.no_metrobus_stops_search)
                     } else {
-                        if (appLanguage == AppLanguage.CA) "No tens parades de Metrobús guardades a preferides." else "No tienes paradas de Metrobús guardadas en favoritas."
+                        androidx.compose.ui.res.stringResource(com.example.R.string.no_metrobus_stops_fav)
                     }
-                    BusFilterSource.GPS_USER -> if (appLanguage == AppLanguage.CA) "No s'han trobat parades de Metrobús en un radi proper" else "No se encontraron paradas de Metrobús en un radio cercano"
-                    BusFilterSource.METRO_STATION -> if (appLanguage == AppLanguage.CA) "No s'han trobat parades de Metrobús prop de l'estació seleccionada" else "No se encontraron paradas de Metrobús cerca de la estación seleccionada"
+                    BusFilterSource.GPS_USER -> androidx.compose.ui.res.stringResource(com.example.R.string.no_metrobus_stops_gps)
+                    BusFilterSource.METRO_STATION -> androidx.compose.ui.res.stringResource(com.example.R.string.no_metrobus_stops_metro)
                 }
                 EmptyStateCard(
-                    title = if (appLanguage == AppLanguage.CA) "Sense Parades Metrobús" else "Sin Paradas Metrobús",
+                    title = androidx.compose.ui.res.stringResource(com.example.R.string.no_metrobus_stops_title),
                     message = emptyMsg,
                     icon = Icons.Default.DirectionsBus,
                     modifier = Modifier.padding(vertical = 24.dp)

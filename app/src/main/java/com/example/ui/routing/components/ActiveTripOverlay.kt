@@ -135,17 +135,14 @@ fun ActiveTripOverlay(
             onDismissRequest = { showCancelConfirmationDialog = false },
             title = {
                 Text(
-                    text = if (appLanguage == AppLanguage.ES) "¿Finalizar viaje activo?" else "Finalitzar viatge actiu?",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_end_dialog_title),
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
             },
             text = {
                 Text(
-                    text = if (appLanguage == AppLanguage.ES)
-                        "Se detendrá el seguimiento en tiempo real y la navegación paso a paso para este itinerario."
-                    else
-                        "S'aturarà el seguiment en temps real i la navegació pas a pas per a este itinerari.",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_end_dialog_desc),
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -159,7 +156,7 @@ fun ActiveTripOverlay(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.ES) "Finalizar" else "Finalitzar",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_finish_trip),
                         color = MaterialTheme.colorScheme.onError,
                         fontWeight = FontWeight.Bold
                     )
@@ -168,7 +165,7 @@ fun ActiveTripOverlay(
             dismissButton = {
                 TextButton(onClick = { showCancelConfirmationDialog = false }) {
                     Text(
-                        text = if (appLanguage == AppLanguage.ES) "Continuar viaje" else "Continuar viatge",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_continue_trip),
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -278,7 +275,7 @@ fun ActiveTripOverlay(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (appLanguage == AppLanguage.ES) "Ruta desviada" else "Ruta desviada",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_status_route_diverted),
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         color = if (isDark) Color(0xFFFF8A80) else Color(0xFFC62828),
                                         fontWeight = FontWeight.Bold,
@@ -314,7 +311,7 @@ fun ActiveTripOverlay(
                     }
 
                     // Next Transit Departure Info Banner
-                    if (!promptData.nextTransitDepartureInfo.isNullOrBlank() && !isTransferAtRisk && !isOffRoute) {
+                    if (!promptData.nextTransitDepartureInfo.isNullOrBlank() && !isTransferAtRisk && !isOffRoute && promptData.subheadline != promptData.nextTransitDepartureInfo) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDark) 0.35f else 0.2f),
@@ -444,7 +441,7 @@ fun ActiveTripOverlay(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Cancelar viaje",
+                                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.cancel_trip_btn),
                                 tint = if (isDark) Color(0xFF78909C) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -525,13 +522,13 @@ fun ActiveTripOverlay(
                                         .padding(horizontal = 5.dp, vertical = 2.dp)
                                 ) {
                                     com.example.ui.components.LiveRssFeedIcon(
-                                        contentDescription = "En vivo",
+                                        contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.status_live),
                                         tint = Color(0xFF00A86B),
                                         modifier = Modifier.size(11.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
-                                        text = if (appLanguage == AppLanguage.ES) "En vivo" else "En directe",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_status_live),
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             color = Color(0xFF00A86B),
                                             fontWeight = FontWeight.Bold,
@@ -639,13 +636,13 @@ fun ActiveTripOverlay(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Map,
-                                            contentDescription = "Ver mapa",
+                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_view_map),
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(13.dp)
                                         )
                                         Spacer(modifier = Modifier.width(3.dp))
                                         Text(
-                                            text = if (appLanguage == AppLanguage.ES) "Mapa" else "Mapa",
+                                            text = androidx.compose.ui.res.stringResource(com.example.R.string.map_label),
                                             style = MaterialTheme.typography.labelSmall.copy(
                                                 color = MaterialTheme.colorScheme.primary,
                                                 fontWeight = FontWeight.Bold,
@@ -663,7 +660,7 @@ fun ActiveTripOverlay(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Cancelar viaje",
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.cancel_trip_btn),
                                     tint = secondaryTextColor,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -694,7 +691,7 @@ fun ActiveTripOverlay(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (appLanguage == AppLanguage.ES) "Ruta desviada" else "Ruta desviada",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_status_route_diverted),
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         color = if (isDark) Color(0xFFFF8A80) else Color(0xFFC62828),
                                         fontWeight = FontWeight.Bold,
@@ -859,7 +856,7 @@ fun ActiveTripOverlay(
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.Map,
-                                        contentDescription = if (appLanguage == AppLanguage.ES) "Ver ruta en el mapa" else "Veure ruta al mapa",
+                                        contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.view_route_on_map),
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -874,7 +871,7 @@ fun ActiveTripOverlay(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Cancelar viaje",
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.cancel_trip_btn),
                                     tint = secondaryTextColor,
                                     modifier = Modifier.size(17.dp)
                                 )
@@ -931,7 +928,7 @@ fun ActiveTripOverlay(
 
                         // "Pasos >" Clickable text
                         Text(
-                            text = if (appLanguage == AppLanguage.ES) "Pasos >" else "Passos >",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_steps),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold,

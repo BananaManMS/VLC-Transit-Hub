@@ -27,21 +27,25 @@ class RenfeScheduleSyncManager(
     
     private var stationNameMap: Map<String, String>? = null
 
-    fun getHorariosForStation(stationId: String): List<RenfeScheduleItem> {
-        val cleanId = stationId.trim()
-        stationSchedulesMap[cleanId]?.let { return it }
+    suspend fun ensureScheduleLoadedInMemory() = withContext(Dispatchers.IO) {
+        if (stationSchedulesMap.isNotEmpty()) return@withContext
         try {
             val jsonString = getScheduleJsonString()
             if (jsonString.isNotBlank()) {
                 val jsonArray = JSONArray(jsonString)
-                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                    loadAndSaveScheduleJson(jsonArray)
-                }
+                loadAndSaveScheduleJson(jsonArray)
+                buildTripDestinationMapFromAssets()
             }
         } catch (e: Exception) {
-            Log.e("RenfeScheduleSyncManager", "Error loading station horarios: ${e.message}")
+            Log.e("RenfeScheduleSyncManager", "Error loading station horarios into memory: ${e.message}")
         }
-        return stationSchedulesMap[cleanId] ?: emptyList()
+    }
+
+    suspend fun getHorariosForStation(stationId: String): List<RenfeScheduleItem> = withContext(Dispatchers.IO) {
+        val cleanId = stationId.trim()
+        stationSchedulesMap[cleanId]?.let { return@withContext it }
+        ensureScheduleLoadedInMemory()
+        stationSchedulesMap[cleanId] ?: emptyList()
     }
 
     private fun isValidScheduleJson(text: String): Boolean {
@@ -131,14 +135,8 @@ class RenfeScheduleSyncManager(
 
     private fun getScheduleJsonString(): String {
         return try {
-            if (localScheduleFile.exists() && localScheduleFile.length() > 100) {
-                val cached = localScheduleFile.readText()
-                if (cached.contains("Torreblanca del Sol") || cached.contains("Buã") || cached.contains("Civis") || cached.contains("l'Alcudia\"") || cached.contains("València-Estació del Nord") || cached.contains("Valencia-Estacio") || !cached.contains("69011") || !cached.contains("Alcoi")) {
-                    localScheduleFile.delete()
-                    readAssetSchedule()
-                } else {
-                    cached
-                }
+            if (localScheduleFile.exists() && localScheduleFile.length() > 5000) {
+                localScheduleFile.readText()
             } else {
                 readAssetSchedule()
             }
@@ -257,7 +255,7 @@ class RenfeScheduleSyncManager(
     suspend fun initDatabaseFromAssetsIfNeeded() = withContext(Dispatchers.IO) {
         try {
             val currentAssetsVersion = database.preferenceDao().getPreference("cercanias_assets_version")?.value ?: "0"
-            if (currentAssetsVersion != "16") {
+            if (currentAssetsVersion != "17") {
                 try {
                     if (localScheduleFile.exists()) {
                         localScheduleFile.delete()
@@ -267,7 +265,7 @@ class RenfeScheduleSyncManager(
                     stationDao.deleteAllStations()
                 } catch (e: Exception) {}
                 database.preferenceDao().insertPreference(
-                    com.example.data.database.PreferenceEntity("cercanias_assets_version", "16")
+                    com.example.data.database.PreferenceEntity("cercanias_assets_version", "17")
                 )
             }
         } catch (e: Exception) {

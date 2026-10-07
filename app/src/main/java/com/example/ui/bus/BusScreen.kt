@@ -43,6 +43,7 @@ import com.example.ui.components.EmptyStateCard
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -277,6 +278,13 @@ fun EmtBusScreen(
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val busTimesState by busViewModel.busTimes.collectAsState()
+
+    DisposableEffect(lifecycleOwner) {
+        onDispose {
+            busViewModel.onAppBackgrounded()
+        }
+    }
+
     LaunchedEffect(selectedBusStop) {
         if (selectedBusStop != null) {
             showTimesSheet = true
@@ -347,7 +355,7 @@ fun EmtBusScreen(
                             BusFilterChip(
                                 selected = currentFilter == BusFilterSource.FAVORITES_BUS,
                                 onClick = { busViewModel.setBusFilterSource(BusFilterSource.FAVORITES_BUS) },
-                                label = if (appLanguage == AppLanguage.CA) "Preferides" else "Favoritas",
+                                label = androidx.compose.ui.res.stringResource(com.example.R.string.bus_filter_favorites),
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Default.Star,
@@ -368,7 +376,7 @@ fun EmtBusScreen(
                                         busViewModel.loadBusStops()
                                     }
                                 },
-                                label = if (appLanguage == AppLanguage.CA) "Prop de mi" else "Cerca de mí",
+                                label = androidx.compose.ui.res.stringResource(com.example.R.string.bus_filter_near_me),
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Default.LocationOn,
@@ -400,7 +408,7 @@ fun EmtBusScreen(
                             if (metroStationsList.isNotEmpty()) {
                                 Column(modifier = Modifier.padding(bottom = 8.dp)) {
                                     Text(
-                                        text = if (appLanguage == AppLanguage.CA) "Selecciona l'estació de metro:" else "Selecciona estación de metro:",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.bus_select_metro_station),
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(bottom = 4.dp)
@@ -444,12 +452,12 @@ fun EmtBusScreen(
                                     .fillMaxWidth()
                                     .padding(bottom = 12.dp)
                                     .testTag("bus_search_bar"),
-                                placeholder = { Text(if (appLanguage == AppLanguage.CA) "Cercar parada" else "Buscar parada") },
-                                leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = if (appLanguage == AppLanguage.CA) "Cercar" else "Buscar") },
+                                placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.search_stop_placeholder)) },
+                                leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.search_label)) },
                                 trailingIcon = {
                                     if (searchQuery.isNotEmpty()) {
                                         IconButton(onClick = { busViewModel.setBusSearchQuery("") }) {
-                                            Icon(imageVector = Icons.Default.Close, contentDescription = if (appLanguage == AppLanguage.CA) "Netejar" else "Limpiar")
+                                            Icon(imageVector = Icons.Default.Close, contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.clear_search_desc))
                                         }
                                     }
                                 },
@@ -475,15 +483,15 @@ fun EmtBusScreen(
                             } else if (busStopsList.isEmpty()) {
                                 val emptyMsg = when (currentFilter) {
                                     BusFilterSource.FAVORITES_BUS -> if (searchQuery.isNotEmpty()) {
-                                        if (appLanguage == AppLanguage.CA) "No s'han trobat parades actives" else "No se encontraron paradas activas"
+                                        androidx.compose.ui.res.stringResource(com.example.R.string.bus_no_active_stops)
                                     } else {
                                         texts.noFavStopsSaved
                                     }
-                                    BusFilterSource.GPS_USER -> if (appLanguage == AppLanguage.CA) "No s'han trobat parades en un radi de 500m" else "No se encontraron paradas en un radio de 500m"
-                                    BusFilterSource.METRO_STATION -> if (appLanguage == AppLanguage.CA) "No s'han trobat parades prop de l'estació seleccionada" else "No se encontraron paradas cerca de la estación seleccionada"
+                                    BusFilterSource.GPS_USER -> androidx.compose.ui.res.stringResource(com.example.R.string.bus_no_stops_radius)
+                                    BusFilterSource.METRO_STATION -> androidx.compose.ui.res.stringResource(com.example.R.string.bus_no_stops_near_metro)
                                 }
                                 EmptyStateCard(
-                                    title = if (appLanguage == AppLanguage.CA) "Sense Parades" else "Sin Paradas",
+                                    title = androidx.compose.ui.res.stringResource(com.example.R.string.bus_no_stops_title),
                                     message = emptyMsg,
                                     icon = Icons.Default.DirectionsBus,
                                     modifier = Modifier.padding(vertical = 24.dp)
@@ -653,16 +661,14 @@ fun EmtBusScreen(
             onDismissRequest = { editingStopForAlias = null },
             title = {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "Nom personalitzat" else "Nombre personalizado",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_title),
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Column {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) 
-                            "Assigna un nom per identificar la Parada ${stopToEdit.opId} més fàcilment:" 
-                            else "Asigna un nombre para identificar la Parada ${stopToEdit.opId} más fácilmente:",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_desc_format, stopToEdit.opId),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -670,12 +676,12 @@ fun EmtBusScreen(
                     OutlinedTextField(
                         value = aliasInput,
                         onValueChange = { if (it.length <= 32) aliasInput = it },
-                        label = { Text(if (appLanguage == AppLanguage.CA) "Nom/Alias (màx. 32 lletres)" else "Nombre/Alias (máx. 32 letras)") },
-                        placeholder = { Text("Ej: Casa, Trabajo, Universidad...") },
+                        label = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_field_label)) },
+                        placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.alias_placeholder)) },
                         singleLine = true,
                         supportingText = {
                             Text(
-                                text = "${aliasInput.length}/32 ${if (appLanguage == AppLanguage.CA) "lletres" else "letras"}",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_length_format, aliasInput.length),
                                 modifier = Modifier.fillMaxWidth(),
                                 textAlign = TextAlign.End,
                                 style = MaterialTheme.typography.labelSmall
@@ -695,7 +701,7 @@ fun EmtBusScreen(
                     },
                     modifier = Modifier.testTag("save_alias_button")
                 ) {
-                    Text(if (appLanguage == AppLanguage.CA) "Desar" else "Guardar")
+                    Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_save))
                 }
             },
             dismissButton = {
@@ -708,13 +714,13 @@ fun EmtBusScreen(
                             }
                         ) {
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Esborrar nom" else "Eliminar nombre",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_delete_alias),
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
                     }
                     TextButton(onClick = { editingStopForAlias = null }) {
-                        Text(if (appLanguage == AppLanguage.CA) "Cancel·lar" else "Cancelar")
+                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_cancel))
                     }
                 }
             }
@@ -730,16 +736,14 @@ fun EmtBusScreen(
             onDismissRequest = { editingMetrobusStopForAlias = null },
             title = {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "Nom personalitzat" else "Nombre personalizado",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_title),
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Column {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) 
-                            "Assigna un nom per identificar la parada ${stopToEdit.denominacion} de Metrobús més fàcilment:" 
-                            else "Asigna un nombre para identificar la parada ${stopToEdit.denominacion} de Metrobús más fácilmente:",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_metrobus_desc_format, stopToEdit.denominacion),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -747,12 +751,12 @@ fun EmtBusScreen(
                     OutlinedTextField(
                         value = aliasInput,
                         onValueChange = { if (it.length <= 32) aliasInput = it },
-                        label = { Text(if (appLanguage == AppLanguage.CA) "Nom/Alias (màx. 32 lletres)" else "Nombre/Alias (máx. 32 letras)") },
-                        placeholder = { Text("Ej: Casa, Trabajo, Universidad...") },
+                        label = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_field_label)) },
+                        placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.alias_placeholder)) },
                         singleLine = true,
                         supportingText = {
                             Text(
-                                text = "${aliasInput.length}/32 ${if (appLanguage == AppLanguage.CA) "lletres" else "letras"}",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_length_format, aliasInput.length),
                                 modifier = Modifier.fillMaxWidth(),
                                 textAlign = TextAlign.End,
                                 style = MaterialTheme.typography.labelSmall
@@ -772,7 +776,7 @@ fun EmtBusScreen(
                     },
                     modifier = Modifier.testTag("save_metrobus_alias_button")
                 ) {
-                    Text(if (appLanguage == AppLanguage.CA) "Desar" else "Guardar")
+                    Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_save))
                 }
             },
             dismissButton = {
@@ -785,13 +789,13 @@ fun EmtBusScreen(
                             }
                         ) {
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Esborrar nom" else "Eliminar nombre",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_delete_alias),
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
                     }
                     TextButton(onClick = { editingMetrobusStopForAlias = null }) {
-                        Text(if (appLanguage == AppLanguage.CA) "Cancel·lar" else "Cancelar")
+                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_cancel))
                     }
                 }
             }

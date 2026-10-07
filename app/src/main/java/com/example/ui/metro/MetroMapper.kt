@@ -117,7 +117,7 @@ object MetroMapper {
 
         val isWarningColor = isNow || seconds <= 30
         val isSecondaryColor = !isWarningColor && seconds <= 50
-        val shouldBlink = isNow || seconds <= 10
+        val shouldBlink = isNow || seconds <= 30
 
         val numericDigit = departure.lineId.filter { it.isDigit() }
         val sharedDigits = sharedLineDigitsGetter(numericDigit).filter { it != numericDigit }
@@ -224,7 +224,9 @@ object MetroMapper {
                 subsequentDepartures = subsequent,
                 sharedDigits = sharedDigits,
                 direction = groupDirection,
-                directionTerminusName = terminus
+                directionTerminusName = terminus,
+                stationId = currentStationId,
+                stationName = currentStationName
             )
         }.sortedBy { it.primaryDeparture.originalDeparture.secondsRemaining }
     }
@@ -304,7 +306,9 @@ object MetroMapper {
                     colorHex = primaryDep.colorHex,
                     primaryDeparture = primaryUiModel,
                     subsequentDepartures = subsequent,
-                    sharedDigits = sharedDigits
+                    sharedDigits = sharedDigits,
+                    stationId = currentStationId,
+                    stationName = currentStationName
                 )
             }.sortedBy { it.primaryDeparture.originalDeparture.secondsRemaining }
         }

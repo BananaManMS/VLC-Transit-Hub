@@ -9,6 +9,7 @@ import com.example.ui.cercanias.LiveVehicleInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 import com.example.data.mapper.CercaniasDepartureMapper
@@ -55,19 +56,25 @@ class RenfeRepository(
         return gtfsCacheManager.getLiveTripUpdates()
     }
 
+    init {
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            try {
+                kotlinx.coroutines.delay(4000L)
+                syncManager.ensureScheduleLoadedInMemory()
+            } catch (_: Exception) {}
+        }
+    }
+
     suspend fun getDeparturesForStation(
         stopId: String,
         gtfsRtUpdates: Map<String, GtfsRtTripUpdate>? = null,
         gtfsVehiclePositions: Map<String, LiveVehicleInfo>? = null
     ): List<CercaniasDeparture> = withContext(Dispatchers.IO) {
+        syncManager.ensureScheduleLoadedInMemory()
         val updates = try { gtfsRtUpdates ?: fetchGtfsRtTripUpdates() } catch (e: Exception) { emptyMap() }
-        val positions = try { gtfsVehiclePositions ?: fetchGtfsRtVehiclePositions() } catch (e: Exception) { emptyMap() }
+        val vehicles = try { gtfsVehiclePositions ?: fetchGtfsRtVehiclePositions() } catch (e: Exception) { emptyMap() }
         
-        var horarios = syncManager.getHorariosForStation(stopId)
-        if (horarios.isEmpty()) {
-            syncManager.initDatabaseFromAssetsIfNeeded()
-            horarios = syncManager.getHorariosForStation(stopId)
-        }
+        val horarios = syncManager.getHorariosForStation(stopId)
         if (horarios.isEmpty()) return@withContext emptyList()
         
         val stationNameMap = syncManager.getStationNameMap()
@@ -78,25 +85,20 @@ class RenfeRepository(
         val nowSecondsOfDay = madridCal.get(Calendar.HOUR_OF_DAY) * 3600 +
                               madridCal.get(Calendar.MINUTE) * 60 +
                               madridCal.get(Calendar.SECOND)
-        val nowHour = madridCal.get(Calendar.HOUR_OF_DAY)
+
+        val updatesIndex = HashMap<String, GtfsRtTripUpdate>(updates.size * 15)
+        for ((k, v) in updates) {
+            updatesIndex[k] = v
+            val keys = com.example.ui.cercanias.CercaniasRouteUtils.getTripKeys(k)
+            for (key in keys) {
+                updatesIndex[key] = v
+            }
+        }
 
         val list = mutableListOf<CercaniasDeparture>()
         for (h in horarios) {
             val depSeconds = parseTimeToSeconds(h.llegada)
             if (depSeconds < 0) continue
-
-            // 1. Safe filter to window [-1 hour, +4 hours] around current time
-            var timeWindowDiff = depSeconds - nowSecondsOfDay
-            // Safe midnight wrap-around check
-            if (timeWindowDiff < -43200) {
-                timeWindowDiff += 86400
-            } else if (timeWindowDiff > 43200) {
-                timeWindowDiff -= 86400
-            }
-
-            if (timeWindowDiff < -3600 || timeWindowDiff > 4 * 3600) {
-                continue
-            }
 
             val line = h.linea
             val allTripIds = if (h.trip_ids.isNotEmpty()) h.trip_ids else h.tripIds
@@ -113,113 +115,57 @@ class RenfeRepository(
                 continue
             }
 
-            // Match against any trip_id key variants across allTripIds
+            // O(1) Instant lookup for GTFS-RT trip update using full key variants
             var liveUpdate: GtfsRtTripUpdate? = null
-            var liveVehicle: LiveVehicleInfo? = null
-
-            val searchKeys = allTripIds
-                .flatMap { com.example.ui.cercanias.CercaniasRouteUtils.getTripKeys(it) }
-                .distinct()
-
-            for (k in searchKeys) {
-                if (liveUpdate == null && updates.containsKey(k)) {
-                    liveUpdate = updates[k]
-                }
-                if (liveVehicle == null && positions.containsKey(k)) {
-                    liveVehicle = positions[k]
-                }
-                if (liveUpdate != null && liveVehicle != null) break
+            for (id in allTripIds) {
+                liveUpdate = updatesIndex[id] ?: updatesIndex[id.uppercase(java.util.Locale.ROOT)]
+                if (liveUpdate != null) break
             }
-
-            // Case-insensitive or prefix-based fallback only for specific full-length keys (>= 5 chars)
-            if (liveUpdate == null || liveVehicle == null) {
-                for (k in searchKeys) {
-                    if (k.length < 5) continue
-                    if (liveUpdate == null) {
-                        liveUpdate = updates.entries.firstOrNull { (uKey, _) ->
-                            uKey.equals(k, ignoreCase = true) || 
-                            (uKey.length >= 8 && k.length >= 8 && (uKey.startsWith(k, ignoreCase = true) || k.startsWith(uKey, ignoreCase = true)))
-                        }?.value
-                    }
-                    if (liveVehicle == null) {
-                        liveVehicle = positions.entries.firstOrNull { (vKey, _) ->
-                            vKey.equals(k, ignoreCase = true) || 
-                            (vKey.length >= 8 && k.length >= 8 && (vKey.startsWith(k, ignoreCase = true) || k.startsWith(vKey, ignoreCase = true)))
-                        }?.value
-                    }
-                    if (liveUpdate != null && liveVehicle != null) break
+            if (liveUpdate == null && tripId.isNotBlank()) {
+                val depKeys = com.example.ui.cercanias.CercaniasRouteUtils.getTripKeys(tripId)
+                for (dk in depKeys) {
+                    liveUpdate = updatesIndex[dk]
+                    if (liveUpdate != null) break
                 }
             }
 
-            // A train is strictly considered live if present in the Vehicle Positions / Flota telemetry feed
-            val isLive = liveVehicle != null
+            // O(1) Look up matching live vehicle position to extract track/platform ("vía")
+            var vehicleForTrip: com.example.ui.cercanias.LiveVehicleInfo? = null
+            for (id in allTripIds) {
+                vehicleForTrip = vehicles[id] ?: vehicles[id.uppercase(java.util.Locale.ROOT)]
+                if (vehicleForTrip != null) break
+            }
+            if (vehicleForTrip == null && tripId.isNotBlank()) {
+                val depKeys = com.example.ui.cercanias.CercaniasRouteUtils.getTripKeys(tripId)
+                for (dk in depKeys) {
+                    vehicleForTrip = vehicles[dk] ?: vehicles[dk.uppercase(java.util.Locale.ROOT)]
+                    if (vehicleForTrip != null) break
+                }
+            }
+            val vehiclePlatform = if (vehicleForTrip != null && (vehicleForTrip.currentStopId == stopId || vehicleForTrip.currentStopId.isBlank())) {
+                vehicleForTrip.platform
+            } else ""
+
+            val isLive = liveUpdate != null || vehicleForTrip != null
             val isCanceled = liveUpdate?.isCanceled ?: false
             val delaySeconds = (liveUpdate?.stopDelays?.get(stopId) ?: liveUpdate?.delaySeconds ?: 0L).toInt()
             val delayMinutes = delaySeconds / 60
             val livePlatform = when {
-                liveVehicle?.currentStopId == stopId && !liveVehicle.platform.isNullOrBlank() -> {
-                    liveVehicle.platform
-                }
-                liveVehicle?.nextStopId == stopId && !liveVehicle.nextPlatform.isNullOrBlank() -> {
-                    liveVehicle.nextPlatform
-                }
-                !liveUpdate?.stopPlatforms?.get(stopId).isNullOrBlank() -> {
-                    liveUpdate?.stopPlatforms?.get(stopId) ?: ""
+                !liveUpdate?.stopPlatforms?.get(stopId).isNullOrBlank() -> liveUpdate?.stopPlatforms?.get(stopId) ?: ""
+                vehiclePlatform.isNotBlank() -> vehiclePlatform
+                !liveUpdate?.vehicleLabel.isNullOrBlank() -> {
+                    val platRegex = Regex("""PLATF\.\((\d+)\)|V[IÍ]A\s*(\d+)""", RegexOption.IGNORE_CASE)
+                    val m = platRegex.find(liveUpdate!!.vehicleLabel)
+                    m?.let { it.groupValues[1].ifBlank { it.groupValues[2] } } ?: ""
                 }
                 else -> ""
             }
             val platform = livePlatform.trim()
 
-            val vehStatus = liveVehicle?.status ?: ""
-            val currentStopId = liveVehicle?.currentStopId ?: ""
-            val nextStopId = liveVehicle?.nextStopId ?: ""
-            val currentStopName = if (currentStopId.isNotBlank()) {
-                val rawName = stationNameMap[currentStopId] ?: ""
-                CercaniasDepartureMapper.formatStationDisplayName(rawName)
-            } else ""
-            val nextStopName = if (nextStopId.isNotBlank()) {
-                val rawName = stationNameMap[nextStopId] ?: ""
-                CercaniasDepartureMapper.formatStationDisplayName(rawName)
-            } else ""
-
-            val isStoppedAt = (vehStatus == "STOPPED_AT" && currentStopId == stopId)
-            val isIncomingAt = (vehStatus == "INCOMING_AT" && (currentStopId == stopId || nextStopId == stopId))
-
-            val locationText = when {
-                isStoppedAt -> "Parado en la estación"
-                isIncomingAt -> "Llegando a la estación"
-                vehStatus == "STOPPED_AT" && currentStopName.isNotBlank() -> "Parado en $currentStopName"
-                vehStatus == "INCOMING_AT" && nextStopName.isNotBlank() -> "Llegando a $nextStopName"
-                vehStatus == "INCOMING_AT" && currentStopName.isNotBlank() -> "Llegando a $currentStopName"
-                vehStatus == "IN_TRANSIT_TO" && nextStopName.isNotBlank() -> "En trayecto hacia $nextStopName"
-                vehStatus == "IN_TRANSIT_TO" && currentStopName.isNotBlank() -> "En trayecto hacia $currentStopName"
-                isLive -> "En circulación"
-                else -> ""
-            }
+            val locationText = if (isLive) "En tiempo real" else ""
 
             val effectiveDepSeconds = depSeconds + delaySeconds
-            var diffSeconds = effectiveDepSeconds - nowSecondsOfDay
-            var isTomorrow = false
-
-            // Handle midnight wrap-around:
-            if (diffSeconds < -72000 && nowHour >= 20) {
-                diffSeconds += 86400
-                isTomorrow = true
-            }
-
-            var minutesRemaining = Math.round(diffSeconds / 60.0f)
-
-            // A departure is past if effective departure time has passed by more than 30 seconds,
-            // UNLESS the train has active vehicle telemetry at/arriving at this station (or within 3 mins max)
-            if (diffSeconds < -30) {
-                if (isStoppedAt || isIncomingAt || (isLive && diffSeconds >= -180)) {
-                    minutesRemaining = 0
-                } else {
-                    continue
-                }
-            } else if (minutesRemaining <= 0 && (isStoppedAt || isIncomingAt || isLive)) {
-                minutesRemaining = 0
-            }
+            val diffSecondsToday = effectiveDepSeconds - nowSecondsOfDay
 
             val timeHHmm = formatTimeHHmm(h.llegada)
             val estimatedTimeStr = if (isLive && !isCanceled) {
@@ -228,63 +174,94 @@ class RenfeRepository(
                 ""
             }
 
-            list.add(
-                CercaniasDeparture(
-                    routeId = line,
-                    destination = dest,
-                    minutesRemaining = minutesRemaining,
-                    delayMinutes = if (isLive) delayMinutes else 0,
-                    tripId = tripId,
-                    departureTime = timeHHmm,
-                    estimatedTime = estimatedTimeStr,
-                    isLive = isLive,
-                    platform = platform,
-                    latitude = liveVehicle?.latitude,
-                    longitude = liveVehicle?.longitude,
-                    status = vehStatus,
-                    locationText = locationText,
-                    isCanceled = isCanceled,
-                    isStoppedAt = isStoppedAt,
-                    isIncomingAt = isIncomingAt,
-                    isTomorrow = isTomorrow,
-                    allTripIds = allTripIds
-                )
-            )
-        }
+            val isStoppedAt = false
+            val isIncomingAt = false
+            val vehStatus = ""
 
-        // If all departures for today have already passed (late night after last train),
-        // fallback to tomorrow's morning departures
-        if (list.isEmpty() && horarios.isNotEmpty()) {
-            for (h in horarios) {
-                val line = h.linea
-                val allTripIds = if (h.trip_ids.isNotEmpty()) h.trip_ids else h.tripIds
-                val tripId = allTripIds.firstOrNull() ?: ""
-                val formattedDest = syncManager.formatDestinationName(h.destino)
-                val dest = if (formattedDest.isNotBlank() && !formattedDest.equals("Civis", ignoreCase = true)) {
-                    formattedDest
+            val cleanDest = dest
+                .replace("dirección", "", ignoreCase = true)
+                .replace("direccion", "", ignoreCase = true)
+                .trim()
+            val formattedDestName = com.example.data.mapper.CercaniasDepartureMapper.formatStationDisplayName(cleanDest)
+            val normRouteStr = line.uppercase().replace("-", "").trim()
+
+            // 1. Departures for TODAY (from now until end of service today)
+            val isUpcomingToday = diffSecondsToday >= -30 || (isLive && diffSecondsToday >= -180)
+            if (isUpcomingToday) {
+                val minutesRemaining = if (diffSecondsToday < 0 && isLive) {
+                    0
                 } else {
-                    syncManager.getTripDestination(tripId, line, currentStationName)
+                    Math.round(diffSecondsToday / 60.0f).coerceAtLeast(0)
                 }
-                if (CercaniasDepartureMapper.isTerminalArrival(currentStationName, dest)) continue
-                val depSeconds = parseTimeToSeconds(h.llegada)
-                if (depSeconds < 0) continue
-
-                val diffSeconds = (depSeconds + 86400) - nowSecondsOfDay
-                val minutesRemaining = Math.round(diffSeconds / 60.0f)
-                val timeHHmm = formatTimeHHmm(h.llegada)
 
                 list.add(
                     CercaniasDeparture(
                         routeId = line,
                         destination = dest,
                         minutesRemaining = minutesRemaining,
+                        delayMinutes = if (isLive) delayMinutes else 0,
+                        tripId = tripId,
+                        departureTime = timeHHmm,
+                        estimatedTime = estimatedTimeStr,
+                        isLive = isLive,
+                        platform = platform,
+                        latitude = null,
+                        longitude = null,
+                        status = vehStatus,
+                        locationText = locationText,
+                        isCanceled = isCanceled,
+                        isStoppedAt = false,
+                        isIncomingAt = false,
+                        isTomorrow = false,
+                        allTripIds = allTripIds,
+                        normalizedRoute = normRouteStr,
+                        formattedDestination = formattedDestName
+                    )
+                )
+            }
+
+            // 2. Departures for TOMORROW (within 24 hours from current time)
+            val diffSecondsTomorrow = (depSeconds + 86400) - nowSecondsOfDay
+            if (diffSecondsTomorrow in 0..86400) {
+                val minutesRemainingTomorrow = Math.round(diffSecondsTomorrow / 60.0f)
+                val tomorrowCal = Calendar.getInstance(TimeZone.getTimeZone("Europe/Madrid")).apply { add(Calendar.DAY_OF_YEAR, 1) }
+                val tomorrowDateStr = String.format(java.util.Locale.ROOT, "%04d%02d%02d",
+                    tomorrowCal.get(Calendar.YEAR),
+                    tomorrowCal.get(Calendar.MONTH) + 1,
+                    tomorrowCal.get(Calendar.DAY_OF_MONTH)
+                )
+
+                var isCanceledTomorrow = false
+                for (k in allTripIds) {
+                    val keyWithDate = "${tomorrowDateStr}_$k"
+                    val keyWithDateDash = "$tomorrowDateStr-$k"
+                    val tomorrowUpdate = updatesIndex[keyWithDate] ?: updatesIndex[keyWithDateDash]
+                    if (tomorrowUpdate?.isCanceled == true) {
+                        isCanceledTomorrow = true
+                        break
+                    }
+                }
+
+                list.add(
+                    CercaniasDeparture(
+                        routeId = line,
+                        destination = dest,
+                        minutesRemaining = minutesRemainingTomorrow,
                         delayMinutes = 0,
                         tripId = tripId,
                         departureTime = timeHHmm,
                         estimatedTime = "",
                         isLive = false,
+                        platform = "",
+                        status = "",
+                        locationText = "",
+                        isCanceled = isCanceledTomorrow,
+                        isStoppedAt = false,
+                        isIncomingAt = false,
                         isTomorrow = true,
-                        allTripIds = allTripIds
+                        allTripIds = allTripIds,
+                        normalizedRoute = normRouteStr,
+                        formattedDestination = formattedDestName
                     )
                 )
             }

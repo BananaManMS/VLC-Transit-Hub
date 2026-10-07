@@ -66,7 +66,7 @@ fun TransitCardsSummaryWidget(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Les Meues Targetes SUMA" else "Mis Tarjetas SUMA",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.cards_summary_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -85,7 +85,7 @@ fun TransitCardsSummaryWidget(
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Afegir" else "Añadir",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_add),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
@@ -124,15 +124,12 @@ fun TransitCardsSummaryWidget(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Comprova el teu saldo SUMA" else "Comprueba tu saldo SUMA",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.cards_summary_check_balance),
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Text(
-                                text = if (appLanguage == AppLanguage.CA)
-                                    "Afegeix la teua targeta física per NFC o número de suport"
-                                else
-                                    "Añade tu tarjeta física por NFC o número de soporte",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.cards_summary_add_instruction),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

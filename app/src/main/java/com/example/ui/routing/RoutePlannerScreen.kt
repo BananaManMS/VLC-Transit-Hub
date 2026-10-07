@@ -186,11 +186,11 @@ fun RoutePlannerScreen(
                         onClick = handlePlannerBack,
                         modifier = Modifier.testTag("route_planner_back_button")
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -255,10 +255,7 @@ fun RoutePlannerScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA)
-                                "Sense connexió a internet. No es poden calcular rutes."
-                            else
-                                "Sin conexión a internet. No se pueden calcular rutas.",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.routing_offline_banner),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onErrorContainer
@@ -354,9 +351,9 @@ fun RoutePlannerScreen(
                                     Spacer(modifier = Modifier.height(14.dp))
                                     Text(
                                         text = if (isOfflineError) {
-                                            if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet"
+                                            androidx.compose.ui.res.stringResource(com.example.R.string.offline_banner_title)
                                         } else {
-                                            if (appLanguage == AppLanguage.CA) "No s'han trobat rutes" else "No se encontraron rutas"
+                                            androidx.compose.ui.res.stringResource(com.example.R.string.routing_no_routes_found)
                                         },
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
@@ -365,10 +362,7 @@ fun RoutePlannerScreen(
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
                                         text = if (isOfflineError) {
-                                            if (appLanguage == AppLanguage.CA)
-                                                "La cerca i càlcul d'itineraris necessita connexió a internet. Comprova la teua xarxa i torna-ho a provar."
-                                            else
-                                                "La búsqueda y cálculo de itinerarios necesita conexión a internet. Comprueba tu red y vuelve a intentarlo."
+                                            androidx.compose.ui.res.stringResource(com.example.R.string.routing_offline_explanation)
                                         } else {
                                             state.message
                                         },
@@ -390,9 +384,9 @@ fun RoutePlannerScreen(
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = if (isOnline) {
-                                                if (appLanguage == AppLanguage.CA) "Tornar a provar" else "Reintentar"
+                                                androidx.compose.ui.res.stringResource(com.example.R.string.btn_retry)
                                             } else {
-                                                if (appLanguage == AppLanguage.CA) "Sense connexió" else "Sin conexión"
+                                                androidx.compose.ui.res.stringResource(com.example.R.string.no_connection_short)
                                             }
                                         )
                                     }
@@ -454,8 +448,8 @@ fun RoutePlannerScreen(
                                         },
                                         onStartTrip = if (onStartTrip != null) {
                                             { it ->
-                                                val origName = origin?.title ?: if (appLanguage == AppLanguage.ES) "Tu ubicación" else "La teua ubicació"
-                                                val destName = destination?.title ?: if (appLanguage == AppLanguage.ES) "Destino" else "Destinació"
+                                                val origName = origin?.title ?: context.getString(com.example.R.string.your_location)
+                                                val destName = destination?.title ?: context.getString(com.example.R.string.destination_label)
                                                 onStartTrip(it, origName, destName)
                                             }
                                         } else null
@@ -495,8 +489,8 @@ fun RoutePlannerScreen(
                 },
                 onStartTrip = if (onStartTrip != null) {
                     {
-                        val origName = origin?.title ?: if (appLanguage == AppLanguage.ES) "Tu ubicación" else "La teua ubicació"
-                        val destName = destination?.title ?: if (appLanguage == AppLanguage.ES) "Destino" else "Destinació"
+                        val origName = origin?.title ?: context.getString(com.example.R.string.your_location)
+                        val destName = destination?.title ?: context.getString(com.example.R.string.destination_label)
                         viewModel.selectItinerary(null)
                         onStartTrip(itinerary, origName, destName)
                     }
@@ -546,7 +540,7 @@ fun PlannerIdleState(
         }
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = if (appLanguage == AppLanguage.ES) "¿A dónde te diriges hoy?" else "On et dirigeixes hui?",
+            text = androidx.compose.ui.res.stringResource(com.example.R.string.route_destination_prompt),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -563,7 +557,7 @@ fun PlannerIdleState(
 
         // Quick presets
         Text(
-            text = if (appLanguage == AppLanguage.ES) "Destinos populares:" else "Destinacions populars:",
+            text = androidx.compose.ui.res.stringResource(com.example.R.string.route_popular_destinations),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -710,7 +704,7 @@ fun PlannerLoadingCard(
 
             // Main header title
             Text(
-                text = if (appLanguage == AppLanguage.ES) "Calculando mejor ruta" else "Calculant millor ruta",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.route_calculating_best),
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 18.sp

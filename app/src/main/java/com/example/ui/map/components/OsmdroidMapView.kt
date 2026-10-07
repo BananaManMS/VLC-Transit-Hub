@@ -26,9 +26,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -104,7 +106,9 @@ fun OsmdroidMapView(
     onCameraPositionChanged: ((GeoPoint, Double) -> Unit)? = null,
     onZoomLevelChanged: ((Double) -> Unit)? = null,
     onShowDisambiguationMenu: ((List<SelectedMapItem>) -> Unit)? = null,
-    onMapLongClick: ((GeoPoint) -> Unit)? = null
+    onMapLongClick: ((GeoPoint) -> Unit)? = null,
+    isCellTowerLocation: Boolean = false,
+    isFollowingUser: Boolean = false
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -171,8 +175,36 @@ fun OsmdroidMapView(
                 }
             }
 
-            controller.setZoom(cameraZoom)
-            controller.setCenter(cameraTarget)
+            val routePoints = selectedItinerary?.legs?.flatMap { leg ->
+                val pts = mutableListOf<GeoPoint>()
+                if (leg.fromLat != 0.0 && leg.fromLon != 0.0) pts.add(GeoPoint(leg.fromLat, leg.fromLon))
+                pts.addAll(leg.geometry)
+                if (leg.toLat != 0.0 && leg.toLon != 0.0) pts.add(GeoPoint(leg.toLat, leg.toLon))
+                pts
+            }?.filter { it.latitude in 38.0..41.0 && it.longitude in -2.0..1.0 }
+
+            if (!routePoints.isNullOrEmpty()) {
+                val minLat = routePoints.minOf { it.latitude }
+                val maxLat = routePoints.maxOf { it.latitude }
+                val minLon = routePoints.minOf { it.longitude }
+                val maxLon = routePoints.maxOf { it.longitude }
+                val centerLat = (minLat + maxLat) / 2.0
+                val centerLon = (minLon + maxLon) / 2.0
+                controller.setCenter(GeoPoint(centerLat, centerLon))
+                val maxSpan = maxOf(maxLat - minLat, maxLon - minLon)
+                val estimatedZoom = when {
+                    maxSpan > 0.35 -> 10.5
+                    maxSpan > 0.18 -> 11.5
+                    maxSpan > 0.09 -> 12.5
+                    maxSpan > 0.045 -> 13.5
+                    maxSpan > 0.02 -> 14.5
+                    else -> 15.0
+                }
+                controller.setZoom(estimatedZoom)
+            } else {
+                controller.setZoom(cameraZoom)
+                controller.setCenter(cameraTarget)
+            }
 
             setOnTouchListener(
                 MapGestureTouchHandler.createTouchListener(
@@ -216,6 +248,8 @@ fun OsmdroidMapView(
                     try {
                         mapView.onPause()
                         stopLiveLocationUpdates()
+                        LiveTrainMarkerManager.clearLiveTrain(mapView)
+                        cercaniasTrainOverlayManagerRef?.clear()
                     } catch (_: Exception) {}
                 }
                 Lifecycle.Event.ON_DESTROY -> {
@@ -281,10 +315,33 @@ fun OsmdroidMapView(
         return if (center != null) GeoPoint(center.latitude, center.longitude) else MapConfig.VALENCIA_CENTER
     }
 
-    // Animate camera when target changes programmatically
+    // Animate camera when target changes programmatically (only when no itinerary is active or after initial itinerary framing settles)
+    var hasHandledInitialItineraryFraming by remember(selectedItinerary?.id) { mutableStateOf(false) }
+
+    LaunchedEffect(selectedItinerary?.id) {
+        if (selectedItinerary != null) {
+            kotlinx.coroutines.delay(600L)
+            hasHandledInitialItineraryFraming = true
+        } else {
+            hasHandledInitialItineraryFraming = false
+        }
+    }
+
+    var isInitialUserCenteringDone by remember { mutableStateOf(false) }
+
     LaunchedEffect(cameraAnimTrigger) {
         if (cameraAnimTrigger > 0) {
-            mapView.controller.animateTo(cameraTarget, cameraZoom, 500L)
+            if (selectedItinerary == null) {
+                if (!isInitialUserCenteringDone && isFollowingUser) {
+                    mapView.controller.setZoom(cameraZoom)
+                    mapView.controller.setCenter(cameraTarget)
+                    isInitialUserCenteringDone = true
+                } else {
+                    mapView.controller.animateTo(cameraTarget, cameraZoom, 500L)
+                }
+            } else if (hasHandledInitialItineraryFraming && isFollowingUser) {
+                mapView.controller.animateTo(cameraTarget, cameraZoom, 500L)
+            }
         }
     }
 
@@ -331,6 +388,7 @@ fun OsmdroidMapView(
     val currentWorkLocation by rememberUpdatedState(workLocation)
     val currentMapFilter by rememberUpdatedState(mapFilter)
     val currentUserLocation by rememberUpdatedState(userLocation)
+    val currentIsCellTowerLocation by rememberUpdatedState(isCellTowerLocation)
     val currentDestinationLocation by rememberUpdatedState(destinationLocation)
     val currentDestinationTitle by rememberUpdatedState(destinationTitle)
     val currentIsDarkMode by rememberUpdatedState(isDarkMode)
@@ -401,7 +459,7 @@ fun OsmdroidMapView(
     // Update Markers on state change or when transit line overlays finish lazy loading
     LaunchedEffect(
         busStops, metrobusStops, metroStations, cercaniasStations, valenbisiStations,
-        customFavorites, homeLocation, workLocation, mapFilter, userLocation,
+        customFavorites, homeLocation, workLocation, mapFilter, userLocation, isCellTowerLocation,
         destinationLocation, destinationTitle, isDarkMode, busStopAliases,
         appLanguage, selectedItinerary, onShowDisambiguationMenu, onMapLongClick,
         isMetroLoaded, isCercaniasLoaded, isEmtLoaded, selectedMapItem, selectedBusLineFilters, selectedMetrobusShapes
@@ -433,7 +491,8 @@ fun OsmdroidMapView(
             onSelectItem = onSelectItem,
             onMapClick = onMapClick,
             onShowDisambiguationMenu = onShowDisambiguationMenu,
-            onMapLongClick = onMapLongClick
+            onMapLongClick = onMapLongClick,
+            isCellTowerLocation = isCellTowerLocation
         )
     }
 
@@ -471,7 +530,8 @@ fun OsmdroidMapView(
                     onSelectItem = currentOnSelectItem,
                     onMapClick = currentOnMapClick,
                     onShowDisambiguationMenu = currentOnShowDisambiguationMenu,
-                    onMapLongClick = currentOnMapLongClick
+                    onMapLongClick = currentOnMapLongClick,
+                    isCellTowerLocation = currentIsCellTowerLocation
                 )
                 // Redraw live trains on zoom or pan so they do not get cleared by composeOverlays
                 cercaniasTrainOverlayManager.updateLiveTrains(
@@ -536,6 +596,9 @@ fun OsmdroidMapView(
         }
 
         onDispose {
+            try {
+                mapView.overlays.clear()
+            } catch (_: Exception) {}
             pendingUpdateRunnable?.let { handler.removeCallbacks(it) }
             try {
                 mapView.removeOnFirstLayoutListener(firstLayoutListener)

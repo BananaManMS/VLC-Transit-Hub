@@ -187,23 +187,24 @@ object AppTexts {
 
         aboutTitle = "Acerca de esta app",
         aboutSubtitle = "Información legal y fuentes de datos",
-        aboutDevTitle = "Desarrollo y Autoría",
+        aboutDevTitle = "Desarrollo y autoría",
         aboutDevBody = "Esta aplicación ha sido creada y desarrollada de forma independiente.",
-        aboutDisclaimerTitle = "Desvinculación Oficial y Marcas",
-        aboutDisclaimerBody = "Aviso importante: Esta aplicación es un proyecto independiente de desarrollo de software. NO existe ningún tipo de vinculación, afiliación, patrocinio, asociación comercial ni respaldo oficial con:\n\n• Renfe Operadora (Cercanías Renfe)\n• Ferrocarrils de la Generalitat Valenciana (FGV / Metrovalencia)\n• Empresa Municipal de Transportes de València (EMT València) ni el Ajuntament de València\n• Valenbisi / JCDecaux España\n• Autoritat de Transport Metropolità de València (ATMV / Título SUMA)\n\nTodos los nombres comerciales, logotipos, marcas registradas y denominaciones de líneas, estaciones, paradas o tarifas pertenecen de forma exclusiva a sus respectivos titulares.",
-        aboutSourcesTitle = "Fuentes de Datos, APIs y Atribución",
+        aboutDisclaimerTitle = "Desvinculación oficial y marcas",
+        aboutDisclaimerBody = "Aviso importante: Esta aplicación es un proyecto independiente de desarrollo de software. NO existe ningún tipo de vinculación, afiliación, patrocinio, asociación comercial ni respaldo oficial con:\n\n• Renfe Operadora (Cercanías Renfe)\n• Ferrocarrils de la Generalitat Valenciana (FGV / Metrovalencia)\n• Empresa Municipal de Transportes de València (EMT València) ni el Ajuntament de València\n• Autoritat de Transport Metropolità de València (ATMV / Metrobús / Título SUMA)\n• Valenbisi / JCDecaux España\n\nTodos los nombres comerciales, logotipos, marcas registradas y denominaciones de líneas, estaciones, paradas o tarifas pertenecen de forma exclusiva a sus respectivos titulares.",
+        aboutSourcesTitle = "Fuentes de datos, APIs y atribución",
         aboutSourcesBody = "Esta aplicación funciona gracias a la reutilización de datos abiertos procedentes de plataformas oficiales e iniciativas comunitarias. Se reconoce y agradece expresamente la labor de los siguientes proveedores y proyectos:",
-        aboutExemptionTitle = "Exención de Responsabilidad y Datos Offline",
+        aboutExemptionTitle = "Exención de responsabilidad y datos offline",
         aboutExemptionItems = listOf(
             "Carácter orientativo" to "La información sobre horarios programados, itinerarios y estimaciones en tiempo real se ofrece «tal cual» (as is) con fines puramente informativos. La precisión de los tiempos de llegada y avisos depende de la disponibilidad y actualización de las APIs públicas de origen.",
             "Horarios teóricos locales" to "Los horarios programados offline proceden de la última base de datos integrada en la aplicación. Pueden sufrir variaciones imprevistas por festividades, eventos especiales u obras en la red.",
             "Conexión a red" to "El acceso a la información en tiempo real, mapas y estado de los servicios requiere conexión activa a Internet.",
             "Limitación de responsabilidad" to "No se garantiza la ausencia absoluta de errores, variaciones imprevistas o fallos de conexión en los servidores externos de datos. Quien ha desarrollado esta aplicación no se hace responsable de las consecuencias derivadas de transportes o transbordos perdidos, cambios imprevistos de vía/andén, retrasos no reflejados o decisiones tomadas a partir de la información mostrada."
         ),
-        aboutPrivacyTitle = "Privacidad y Tratamiento de Datos",
+        aboutPrivacyTitle = "Privacidad y tratamiento de datos",
         aboutPrivacyItems = listOf(
             "Sin registro de datos personales" to "Esta aplicación no recopila, no almacena ni comparte ningún tipo de dato personal con servidores externos ni terceros.",
-            "Geolocalización" to "El acceso a la ubicación del dispositivo se utiliza de manera exclusivamente local, instantánea y anónima para ordenar y mostrar las estaciones o paradas más cercanas. Las coordenadas no se guardan ni se rastrean en ningún historial.",
+            "Geolocalización anónima" to "El acceso a la ubicación del dispositivo se utiliza de manera exclusivamente local, instantánea y anónima para ordenar y mostrar las estaciones o paradas más cercanas. Las coordenadas no se guardan ni se rastrean en ningún historial.",
+            "Lectura NFC de tarjetas SUMA" to "La lectura y consulta de saldo de tarjetas de transporte mediante NFC se procesa íntegramente de forma local y offline en el dispositivo. Ningún dato de tu tarjeta es transmitido a la red.",
             "Almacenamiento local" to "Las preferencias configuradas dentro de la app (como las estaciones guardadas en favoritos o la elección del tema visual) se almacenan únicamente de forma privada dentro de tu propio dispositivo."
         ),
         aboutLicensesTitle = "Licencias",
@@ -292,7 +293,7 @@ object AppTexts {
         eventsLabel = "Eventos",
         noEventsToday = "No hay eventos hoy",
         viewOnMapsDesc = "Ver en Google Maps",
-        liveIndicatorDesc = "En Vivo",
+        liveIndicatorDesc = "En directo",
         searchLabel = "Buscar",
 
         queryingWeatherForecast = "Consultando previsión en directo...",
@@ -340,29 +341,30 @@ object AppTexts {
         settingAboutTitle = "Quant a l'app",
         settingAboutSubtitle = "Autoria, fonts de dades, exempció de responsabilitat i privacitat",
 
-        aboutTitle = "Quant a aquesta app",
+        aboutTitle = "Quant a esta app",
         aboutSubtitle = "Informació legal i fonts de dades",
-        aboutDevTitle = "Desenvolupament i Autoria",
-        aboutDevBody = "Aquesta aplicació ha sigut creada i desenvolupada de forma independent.",
-        aboutDisclaimerTitle = "Desvinculació Oficial i Marques",
-        aboutDisclaimerBody = "Avís important: Aquesta aplicació és un projecte independent de desenvolupament de programari. NO existeix cap tipus de vinculació, afiliació, patrocini, associació comercial ni suport oficial amb:\n\n• Renfe Operadora (Rodalia Renfe)\n• Ferrocarrils de la Generalitat Valenciana (FGV / Metrovalencia)\n• Empresa Municipal de Transports de València (EMT València) ni l'Ajuntament de València\n• Valenbisi / JCDecaux España\n• Autoritat de Transport Metropolità de València (ATMV / Títol SUMA)\n\nTots els noms comercials, logotips, marques registrades i denominacions de línies, estacions, parades o tarifes pertanyen de forma exclusiva als seus respectius titulars.",
-        aboutSourcesTitle = "Fonts de Dades, APIs i Atribució",
-        aboutSourcesBody = "Aquesta aplicació funciona gràcies a la reutilització de dades obertes procedents de plataformes oficials i iniciatives comunitàries. Es reconeix i agraeix expressament la tasca dels següents proveïdors i projectes:",
-        aboutExemptionTitle = "Exempció de Responsabilitat i Dades Offline",
+        aboutDevTitle = "Desenvolupament i autoria",
+        aboutDevBody = "Esta aplicació ha sigut creada i desenvolupada de forma independent.",
+        aboutDisclaimerTitle = "Desvinculació oficial i marques",
+        aboutDisclaimerBody = "Avís important: Esta aplicació és un projecte independent de desenvolupament de programari. NO existix cap tipus de vinculació, afiliació, patrocini, associació comercial ni suport oficial amb:\n\n• Renfe Operadora (Rodalia Renfe)\n• Ferrocarrils de la Generalitat Valenciana (FGV / Metrovalencia)\n• Empresa Municipal de Transports de València (EMT València) ni l'Ajuntament de València\n• Autoritat de Transport Metropolità de València (ATMV / Metrobús / Títol SUMA)\n• Valenbisi / JCDecaux España\n\nTots els noms comercials, logotips, marques registrades i denominacions de línies, estacions, parades o tarifes pertanyen de forma exclusiva als seus respectius titulars.",
+        aboutSourcesTitle = "Fonts de dades, APIs i atribució",
+        aboutSourcesBody = "Esta aplicació funciona gràcies a la reutilització de dades obertes procedents de plataformes oficials i iniciatives comunitàries. Es reconeix i agraïx expressament la tasca dels següents proveïdors i projectes:",
+        aboutExemptionTitle = "Exempció de responsabilitat i dades offline",
         aboutExemptionItems = listOf(
             "Caràcter orientatiu" to "La informació sobre horaris programats, itineraris i estimacions en temps real s'ofereix «tal qual» (as is) amb fins purament informatius. La precisió dels temps d'arribada i avisos depén de la disponibilitat i actualització de les APIs públiques d'origen.",
             "Horaris teòrics locals" to "Els horaris programats offline procedeixen de la darrera base de dades integrada en l'aplicació. Poden patir variacions imprevistes per festivitats, esdeveniments especials o obres a la xarxa.",
             "Connexió a xarxa" to "L'accés a la informació en temps real, mapes i estat dels serveis requereix connexió activa a Internet.",
-            "Limitació de responsabilitat" to "No es garanteix l'absència absoluta d'errors, variacions imprevistes o fallades de connexió en els servidors externs de dades. Qui ha desenvolupat aquesta aplicació no es fa responsable de les conseqüències d'haver perdut transports o transbords, canvis imprevistos de via/andana, retards no reflectits o decisions preses a partir de la informació mostrada."
+            "Limitació de responsabilitat" to "No es garanteix l'absència absoluta d'errors, variacions imprevistes o fallades de connexió en els servidors externs de dades. Qui ha desenvolupat esta aplicació no es fa responsable de les conseqüències d'haver perdut transports o transbords, canvis imprevistos de via/andana, retards no reflectits o decisions preses a partir de la informació mostrada."
         ),
-        aboutPrivacyTitle = "Privacitat i Tractament de Dades",
+        aboutPrivacyTitle = "Privacitat i tractament de dades",
         aboutPrivacyItems = listOf(
-            "Sense registre de dades personals" to "Aquesta aplicació no recopila, no emmagatzema ni comparteix cap tipus de dada personal amb servidors externs ni tercers.",
-            "Geolocalització" to "L'accés a la ubicació del dispositiu s'utilitza de manera exclusivament local, instantània i anònima per a ordenar i mostrar les estacions o parades més properes. Les coordenades no es guarden ni es rastregen en cap historial.",
+            "Sense registre de dades personals" to "Esta aplicació no recopila, no emmagatzema ni comparteix cap tipus de dada personal amb servidors externs ni tercers.",
+            "Geolocalització anònima" to "L'accés a la ubicació del dispositiu s'utilitza de manera exclusivament local, instantània i anònima per a ordenar i mostrar les estacions o parades més properes. Les coordenades no es guarden ni es rastregen en cap historial.",
+            "Lectura NFC de targetes SUMA" to "La lectura i consulta de saldo de targetes de transport mitjançant NFC es processa íntegrament de manera local i offline en el dispositiu. Cap dada de la teua targeta és transmesa a la xarxa.",
             "Emmagatzematge local" to "Les preferències configurades dins de l'app (com les estacions guardades en favorits o l'elecció de l'aspecte o tema visual) s'emmagatzemen únicament de forma privada dins del teu propi dispositiu."
         ),
         aboutLicensesTitle = "Llicències",
-        aboutLicensesBody = "Aquesta aplicació fa ús de llibreries i components de codi obert sota les seues corresponents llicències de programari lliure (Apache 2.0 / MIT).",
+        aboutLicensesBody = "Esta aplicació fa ús de llibreries i components de codi obert sota les seues corresponents llicències de programari lliure (Apache 2.0 / MIT).",
         aboutUnderstood = "Entés",
         searchPlaceholder = "Cercar i afegir estacions favorites...",
 
@@ -409,12 +411,12 @@ object AppTexts {
         operatorLabel = "Operador",
         validityZonesLabel = "Zones de validesa",
         unlimitedTripsValue = "Viatges il·limitats",
-        historyNotAvailableDesc = "Historial de trajectes no disponible per a aquest tipus de targeta",
+        historyNotAvailableDesc = "Historial de trajectes no disponible per a este tipus de targeta",
         historyLabel = "Historial de trajectes",
         closeBtn = "Tancar",
         saveAndCloseBtn = "Guardar i tancar",
         deleteCardConfirmTitle = "Eliminar targeta?",
-        deleteCardConfirmDesc = "Estàs segur que vols eliminar aquesta targeta de transport de la teua llista?",
+        deleteCardConfirmDesc = "Estàs segur que vols eliminar esta targeta de transport de la teua llista?",
         deleteBtn = "Eliminar",
         notAvailableValue = "No disponible",
         editNameAssignedLabel = "Editar nom assignat",
@@ -427,13 +429,13 @@ object AppTexts {
         addCardNfcDesc = "Aproxima la targeta física a la part posterior del telèfon",
         nfcScanningTitle = "Aproxima la teua targeta",
         nfcScanningDesc = "Mantingues la targeta Móbilis / SUMA pegada a la part posterior del mòbil fins que vibre.",
-        nfcNotSupported = "Aquest dispositiu no disposa de tecnologia NFC.",
+        nfcNotSupported = "Este dispositiu no disposa de tecnologia NFC.",
         nfcDisabled = "L'NFC està desactivat al dispositiu. Activa'l a Ajustos per a escanejar.",
         nfcReadingCard = "Llegint targeta i consultant saldo...",
         nfcSuccess = "Targeta llegida correctament",
 
         selectMetroStationLabel = "Selecciona estació de metro:",
-        addMetroFavDesc = "Afig estacions de metro favorites per a utilitzar aquest filtre.",
+        addMetroFavDesc = "Afig estacions de metro favorites per a utilitzar este filtre.",
         searchStopPlaceholder = "Cercar parada",
         clearSearchDesc = "Netejar",
         noStopsActive = "No s'han trobat parades actives",
@@ -442,7 +444,7 @@ object AppTexts {
         noStopsNearMetro = "No s'han trobat parades prop de l'estació seleccionada",
         nextBusesLabel = "PRÒXIMS AUTOBUSOS",
         noArrivalEstimates = "No hi ha estimacions d'arribada disponibles.",
-        immediateValue = "Inmediat",
+        immediateValue = "Immediat",
         calendarTitle = "Calendari",
         eventsLabel = "Esdeveniments",
         noEventsToday = "No hi ha esdeveniments hui",
@@ -459,7 +461,7 @@ object AppTexts {
         searchStationLabel = "Cercar estació...",
         queryingLiveDepartures = "Consultant previsió en directe...",
         noLiveDepartures = "Sense previsions en directe",
-        noLiveDeparturesDesc = "No hi ha previsions de trens en directe en aquest moment per a l'estació seleccionada."
+        noLiveDeparturesDesc = "No hi ha previsions de trens en directe en este moment per a l'estació seleccionada."
     )
 
     fun get(language: AppLanguage): Translation {

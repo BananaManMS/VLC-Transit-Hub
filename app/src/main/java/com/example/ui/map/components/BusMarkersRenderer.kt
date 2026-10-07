@@ -249,12 +249,23 @@ object BusMarkersRenderer {
         currentZoom: Double = 18.0
     ): List<MergedBusStopGroup> {
         if ((!showBus && !showMetrobus) || isFavoritesMode || (currentZoom < 13.0 && selectedMapItem == null)) return emptyList()
+        if (busStopsInViewport.isEmpty() || metrobusStopsInViewport.isEmpty()) return emptyList()
 
         val selectedBusStopId = (selectedMapItem as? SelectedMapItem.BusStop)?.stop?.id_parada
         val selectedMbStopId = (selectedMapItem as? SelectedMapItem.MetrobusStopItem)?.stop?.id_parada
 
         val result = mutableListOf<MergedBusStopGroup>()
         val matchedMbIds = mutableSetOf<String>()
+
+        // Fast spatial grid bucketing for Metrobús stops (~200m cells)
+        val gridSize = 0.002
+        val mbGrid = HashMap<Long, MutableList<MetrobusStopEntity>>(metrobusStopsInViewport.size)
+        for (mb in metrobusStopsInViewport) {
+            val gx = (mb.lat / gridSize).toInt()
+            val gy = (mb.lon / gridSize).toInt()
+            val cellKey = (gx.toLong() shl 32) or (gy.toLong() and 0xFFFFFFFFL)
+            mbGrid.getOrPut(cellKey) { mutableListOf() }.add(mb)
+        }
 
         for (busStop in busStopsInViewport) {
             // When an individual EMT stop is selected, do not merge it into a joint badge
@@ -263,38 +274,48 @@ object BusMarkersRenderer {
             var bestCandidate: MetrobusStopEntity? = null
             var bestDistance = Double.MAX_VALUE
 
-            for (mb in metrobusStopsInViewport) {
-                if (matchedMbIds.contains(mb.id_parada)) continue
-                // When an individual Metrobús stop is selected, do not merge it into a joint badge
-                if (selectedMbStopId != null && mb.id_parada == selectedMbStopId) continue
+            val bgx = (busStop.lat / gridSize).toInt()
+            val bgy = (busStop.lon / gridSize).toInt()
 
-                // Fast bounding-box pre-check: 85 meters in Valencia latitude is ~0.0008 deg lat, ~0.0011 deg lon
-                val dLat = Math.abs(busStop.lat - mb.lat)
-                if (dLat > 0.0009) continue
-                val dLon = Math.abs(busStop.lon - mb.lon)
-                if (dLon > 0.0012) continue
+            for (dx in -1..1) {
+                for (dy in -1..1) {
+                    val cellKey = ((bgx + dx).toLong() shl 32) or ((bgy + dy).toLong() and 0xFFFFFFFFL)
+                    val candidates = mbGrid[cellKey] ?: continue
 
-                val cacheKey = "${busStop.id_parada}_${mb.id_parada}"
-                val cachedMatch = mergeMatchCache.get(cacheKey)
+                    for (mb in candidates) {
+                        if (matchedMbIds.contains(mb.id_parada)) continue
+                        // When an individual Metrobús stop is selected, do not merge it into a joint badge
+                        if (selectedMbStopId != null && mb.id_parada == selectedMbStopId) continue
 
-                val isMatch = if (cachedMatch != null) {
-                    cachedMatch
-                } else {
-                    val distMeters = LocationUtils.calculateDistanceMeters(busStop.lat, busStop.lon, mb.lat, mb.lon)
-                    val match = if (distMeters <= 85.0) {
-                        areStopNamesSimilar(busStop.denominacion, mb.denominacion, distMeters)
-                    } else {
-                        false
-                    }
-                    mergeMatchCache.put(cacheKey, match)
-                    match
-                }
+                        // Fast bounding-box pre-check: 85 meters in Valencia latitude is ~0.0008 deg lat, ~0.0011 deg lon
+                        val dLat = Math.abs(busStop.lat - mb.lat)
+                        if (dLat > 0.0009) continue
+                        val dLon = Math.abs(busStop.lon - mb.lon)
+                        if (dLon > 0.0012) continue
 
-                if (isMatch) {
-                    val distMeters = LocationUtils.calculateDistanceMeters(busStop.lat, busStop.lon, mb.lat, mb.lon)
-                    if (distMeters < bestDistance) {
-                        bestDistance = distMeters
-                        bestCandidate = mb
+                        val cacheKey = "${busStop.id_parada}_${mb.id_parada}"
+                        val cachedMatch = mergeMatchCache.get(cacheKey)
+
+                        val isMatch = if (cachedMatch != null) {
+                            cachedMatch
+                        } else {
+                            val distMeters = LocationUtils.calculateDistanceMeters(busStop.lat, busStop.lon, mb.lat, mb.lon)
+                            val match = if (distMeters <= 85.0) {
+                                areStopNamesSimilar(busStop.denominacion, mb.denominacion, distMeters)
+                            } else {
+                                false
+                            }
+                            mergeMatchCache.put(cacheKey, match)
+                            match
+                        }
+
+                        if (isMatch) {
+                            val distMeters = LocationUtils.calculateDistanceMeters(busStop.lat, busStop.lon, mb.lat, mb.lon)
+                            if (distMeters < bestDistance) {
+                                bestDistance = distMeters
+                                bestCandidate = mb
+                            }
+                        }
                     }
                 }
             }

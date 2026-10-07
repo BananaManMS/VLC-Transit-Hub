@@ -239,7 +239,7 @@ fun TarjetasTab(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = if (appLanguage == AppLanguage.CA) "Organitzar" else "Organizar",
+                                            text = androidx.compose.ui.res.stringResource(com.example.R.string.cards_organize_btn),
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.secondary
@@ -352,7 +352,7 @@ fun ManageCardsDialog(
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "Organitzar targetes" else "Organizar tarjetas",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cards_organize_title),
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                     color = if (isDarkMode) Color.White else Color.Black
@@ -366,10 +366,7 @@ fun ManageCardsDialog(
                     .padding(top = 8.dp)
             ) {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA)
-                        "Mantén i arrossega la icona '=' per reordenar les targetes:"
-                    else
-                        "Manten presionado y arrastra el icono '=' para reordenar:",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cards_organize_instruction),
                     fontSize = 12.sp,
                     color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
                     modifier = Modifier.padding(bottom = 16.dp)
@@ -411,7 +408,7 @@ fun ManageCardsDialog(
                                 // Drag handle icon
                                 Icon(
                                     imageVector = Icons.Default.DragHandle,
-                                    contentDescription = "Arrastrar y reordenar",
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.drag_reorder_desc),
                                     tint = if (isBeingDragged) {
                                         MaterialTheme.colorScheme.primary
                                     } else {
@@ -482,7 +479,7 @@ fun ManageCardsDialog(
                                 ) {
 
                                     Text(
-                                        text = if (appLanguage == AppLanguage.CA) "A l'Inici" else "En Inicio",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.cards_show_on_home_label),
                                         style = MaterialTheme.typography.bodySmall.copy(
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold
@@ -527,7 +524,7 @@ fun ManageCardsDialog(
                 }
             ) {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "Fet" else "Listo",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_done),
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )

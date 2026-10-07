@@ -22,6 +22,7 @@ import com.example.util.TripItineraryTimeSyncEngine
 import com.example.util.TripRealTimeReconciler
 import com.example.util.TripSensoryAlertManager
 import com.example.util.TripStepProgressionEngine
+import com.example.util.TripTimeParser
 import com.example.util.UnifiedActiveTripStateTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -129,28 +130,37 @@ class ActiveTripTrackingService : Service() {
     }
 
     private fun startForegroundTracking() {
-        if (!LocationUtils.hasLocationPermission(applicationContext)) {
-            android.util.Log.w(TAG, "Location permission not granted. Cannot start Foreground Service.")
-            stopSelf()
-            return
-        }
-
+        val hasLoc = LocationUtils.hasLocationPermission(applicationContext)
         val initialNotification = tripNotificationManager.buildInitialFallbackNotification()
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                val fgsType = if (hasLoc) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                } else {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                }
                 startForeground(
                     TripNotificationManager.NOTIFICATION_ID,
                     initialNotification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                    fgsType
+                )
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    TripNotificationManager.NOTIFICATION_ID,
+                    initialNotification,
+                    if (hasLoc) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
                 )
             } else {
                 startForeground(TripNotificationManager.NOTIFICATION_ID, initialNotification)
             }
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Failed to startForeground: ${e.message}", e)
-            stopSelf()
-            return
+            try {
+                startForeground(TripNotificationManager.NOTIFICATION_ID, initialNotification)
+            } catch (e2: Exception) {
+                android.util.Log.e(TAG, "Fallback startForeground failed: ${e2.message}", e2)
+            }
         }
 
         // Cancel previous job if running
@@ -164,6 +174,8 @@ class ActiveTripTrackingService : Service() {
                     if (trip == null) {
                         stopForegroundTracking()
                         stopSelf()
+                    } else if (trip.status == com.example.data.database.ActiveTripEntity.STATUS_COMPLETED || hasAlertedFinalArrival) {
+                        // Do not overwrite arrival notification or re-trigger tracking
                     } else {
                         geofenceGpsController.checkAndSyncGeofenceForLeg(trip, latestLocation)
                         updateSnapshotAndNotification(trip)
@@ -176,7 +188,7 @@ class ActiveTripTrackingService : Service() {
                 while (coroutineContext.isActive) {
                     val trip = currentActiveTrip
                     val loc = latestLocation
-                    if (trip != null) {
+                    if (trip != null && trip.status != com.example.data.database.ActiveTripEntity.STATUS_COMPLETED && !hasAlertedFinalArrival) {
                         val status = tripReconciler.reconcile(
                             activeTrip = trip,
                             userLat = loc?.latitude,
@@ -256,7 +268,9 @@ class ActiveTripTrackingService : Service() {
                             TransitMode.SUBWAY,
                             TransitMode.BUS,
                             TransitMode.TRAM,
-                            TransitMode.RAIL
+                            TransitMode.RAIL,
+                            TransitMode.METROBUS,
+                            TransitMode.CERCANIAS
                         )
                         if (isTransit) {
                             TripStepProgressionEngine.evaluateProgression(
@@ -269,23 +283,33 @@ class ActiveTripTrackingService : Service() {
                             updateSnapshotAndNotification(trip)
                         }
 
-                        // Grace period monitoring for departed/disappeared transit vehicle
+                        val now = System.currentTimeMillis()
+                        val targetTransitLegIndex = if (currentLeg?.mode == TransitMode.WALK && trip.currentLegIndex + 1 < trip.itinerary.legs.size) {
+                            trip.currentLegIndex + 1
+                        } else {
+                            trip.currentLegIndex
+                        }
+                        val targetLeg = trip.itinerary.legs.getOrNull(targetTransitLegIndex)
+                        val targetMode = targetLeg?.mode ?: TransitMode.SUBWAY
+                        val isTargetLegTransit = targetMode in listOf(
+                            TransitMode.SUBWAY,
+                            TransitMode.BUS,
+                            TransitMode.TRAM,
+                            TransitMode.RAIL,
+                            TransitMode.METROBUS,
+                            TransitMode.CERCANIAS
+                        )
+
+                        // 1. Live Grace period monitoring for departed/disappeared transit vehicle
                         if (tripReconciler.isGracePeriodActive()) {
-                            val now = System.currentTimeMillis()
                             val graceUntilMs = tripReconciler.getGracePeriodUntilMs() ?: (now + 120_000L)
-                            val targetTransitLegIndex = if (currentLeg?.mode == TransitMode.WALK && trip.currentLegIndex + 1 < trip.itinerary.legs.size) {
-                                trip.currentLegIndex + 1
-                            } else {
-                                trip.currentLegIndex
-                            }
-                            val targetMode = trip.itinerary.legs.getOrNull(targetTransitLegIndex)?.mode ?: TransitMode.SUBWAY
                             val rawVehicleName = tripReconciler.getGracePeriodVehicleName()
-                                ?: trip.itinerary.legs.getOrNull(targetTransitLegIndex)?.routeShortName
+                                ?: targetLeg?.routeShortName
                                 ?: "Metro"
                             val vehicleName = formatVehicleNameForNotification(rawVehicleName, targetMode)
 
                             // Prompt user via notification immediately when vehicle departs/disappears from departures board
-                            if (!hasAlertedBoardingConfirmation) {
+                            if (!hasAlertedBoardingConfirmation && latestRealTimeStatus?.isLive == true) {
                                 android.util.Log.i(TAG, "Grace period: vehicle departed/disappeared from board, prompting user for boarding confirmation: $vehicleName (leg $targetTransitLegIndex)")
                                 hasAlertedBoardingConfirmation = true
                                 tripNotificationManager.showBoardingConfirmationNotification(vehicleName, targetTransitLegIndex)
@@ -298,6 +322,28 @@ class ActiveTripTrackingService : Service() {
                                 tripReconciler.clearGracePeriod()
                                 hasAlertedBoardingConfirmation = false
                                 UnifiedActiveTripStateTracker.triggerImmediateReconcile()
+                            }
+                        } else if (isTargetLegTransit && targetLeg != null && latestRealTimeStatus?.isLive != true) {
+                            // 2. Scheduled Departure window for trips WITHOUT live feed
+                            val scheduledStartMs = TripTimeParser.parseTimeToMillis(targetLeg.scheduledStartTime ?: targetLeg.formattedStartTime)
+                            val progressState = ActiveTripProgressTracker.progressState.value
+                            if (scheduledStartMs != null && !progressState.isBoarded) {
+                                val elapsedSinceScheduled = now - scheduledStartMs
+                                if (elapsedSinceScheduled in 0..120_000L) {
+                                    if (!hasAlertedBoardingConfirmation) {
+                                        val rawVehicleName = targetLeg.routeShortName ?: "Metro"
+                                        val vehicleName = formatVehicleNameForNotification(rawVehicleName, targetMode)
+                                        android.util.Log.i(TAG, "Scheduled departure time reached, prompting user for boarding confirmation: $vehicleName (leg $targetTransitLegIndex)")
+                                        hasAlertedBoardingConfirmation = true
+                                        tripNotificationManager.showBoardingConfirmationNotification(vehicleName, targetTransitLegIndex)
+                                    }
+                                } else if (hasAlertedBoardingConfirmation && elapsedSinceScheduled > 120_000L) {
+                                    tripNotificationManager.dismissBoardingConfirmationNotification()
+                                    hasAlertedBoardingConfirmation = false
+                                }
+                            } else if (hasAlertedBoardingConfirmation && progressState.isBoarded) {
+                                tripNotificationManager.dismissBoardingConfirmationNotification()
+                                hasAlertedBoardingConfirmation = false
                             }
                         } else if (hasAlertedBoardingConfirmation) {
                             val progressState = ActiveTripProgressTracker.progressState.value
@@ -330,6 +376,9 @@ class ActiveTripTrackingService : Service() {
             gatedLocationFlow.collectLatest { location ->
                 latestLocation = location
                 val trip = currentActiveTrip ?: return@collectLatest
+                if (hasAlertedFinalArrival || trip.status == com.example.data.database.ActiveTripEntity.STATUS_COMPLETED) {
+                    return@collectLatest
+                }
                 val legs = trip.itinerary.legs
                 val currentLeg = legs.getOrNull(trip.currentLegIndex)
 
@@ -354,6 +403,9 @@ class ActiveTripTrackingService : Service() {
                 when (result) {
                     is StepProgressionResult.LegCompleted -> {
                         if (result.isFinalLeg) {
+                            if (hasAlertedFinalArrival) return@collectLatest
+                            hasAlertedFinalArrival = true
+
                             val isEs = tripNotificationManager.getAppLanguage() == com.example.ui.dashboard.AppLanguage.ES
                             val arrivalTitle = if (isEs) "¡Has llegado a tu destino!" else "¡Has arribat al teu destí!"
                             val arrivalContent = if (isEs) "Viaje completado con éxito · ${trip.destinationName}" else "Viatge completat amb èxit · ${trip.destinationName}"
@@ -361,11 +413,7 @@ class ActiveTripTrackingService : Service() {
                             activeTripRepository.markTripCompleted()
                             tripNotificationManager.updateNotificationSimple(arrivalTitle, arrivalContent)
                             geofenceGpsController.closeHighAccuracyGate("Final leg arrival completed")
-
-                            if (!hasAlertedFinalArrival) {
-                                hasAlertedFinalArrival = true
-                                TripSensoryAlertManager.triggerLevel2AttentionCall(applicationContext, playAudio = true)
-                            }
+                            TripSensoryAlertManager.triggerLevel2AttentionCall(applicationContext, playAudio = true)
 
                             serviceScope.launch {
                                 delay(45_000L)
@@ -513,10 +561,6 @@ class ActiveTripTrackingService : Service() {
         private const val BOARDING_CONFIDENCE_THRESHOLD = 0.75f
 
         fun start(context: Context) {
-            if (!LocationUtils.hasLocationPermission(context)) {
-                android.util.Log.w(TAG, "Cannot start ActiveTripTrackingService: Location permission not granted.")
-                return
-            }
             val intent = Intent(context, ActiveTripTrackingService::class.java).apply {
                 action = ACTION_START
             }

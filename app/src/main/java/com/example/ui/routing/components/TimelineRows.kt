@@ -228,7 +228,7 @@ fun TransitRideTimelineRow(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (appLanguage == AppLanguage.ES) "En vivo" else "En viu",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_status_live_timeline),
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     color = Color(0xFF00A86B),
                                     fontWeight = FontWeight.Bold,
@@ -252,7 +252,7 @@ fun TransitRideTimelineRow(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (appLanguage == AppLanguage.ES) "Programado" else "Programat",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_status_scheduled_timeline),
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = FontWeight.Medium,
@@ -297,7 +297,7 @@ fun TransitRideTimelineRow(
                             Spacer(modifier = Modifier.width(6.dp))
                             Column {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.ES) "Aviso de servicio" else "Avís de servei",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.service_alert_timeline),
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Color(0xFFFFD180) else Color(0xFFE65100)
@@ -325,7 +325,7 @@ fun TransitRideTimelineRow(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "${leg.intermediateStops.size + 1} ${if (appLanguage == AppLanguage.ES) "paradas" else "parades"} (${leg.formattedDuration})",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.stops_count_plural_format, leg.intermediateStops.size + 1) + " (${leg.formattedDuration})",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
@@ -462,7 +462,7 @@ fun TransferTimelineRow(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = if (appLanguage == AppLanguage.ES) "Transbordo en ${item.stationName} (${item.durationStr})" else "Transbord a ${item.stationName} (${item.durationStr})",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.timeline_transfer_format, item.stationName, item.durationStr),
                     style = MaterialTheme.typography.labelMedium.copy(
                         color = if (item.isRisk) Color(0xFFE65100) else MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
@@ -490,7 +490,7 @@ fun TransferTimelineRow(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (appLanguage == AppLanguage.ES) "Transbordo en riesgo" else "Transbord en risc",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.timeline_transfer_at_risk),
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = if (isDark) Color(0xFFFFD180) else Color(0xFFE65100)
@@ -503,11 +503,7 @@ fun TransferTimelineRow(
                             val lineLabel = item.outgoingLine ?: ""
                             val destLabel = item.destination ?: ""
                             val lineDisp = if (lineLabel.startsWith("L") || lineLabel.isBlank()) lineLabel else "L$lineLabel"
-                            val nextText = if (appLanguage == AppLanguage.ES) {
-                                "Siguiente $lineDisp a $destLabel: ${item.nextScheduledDepartureTime} (Horario programado)"
-                            } else {
-                                "Següent $lineDisp a $destLabel: ${item.nextScheduledDepartureTime} (Horari programat)"
-                            }
+                            val nextText = androidx.compose.ui.res.stringResource(com.example.R.string.timeline_next_scheduled_format, lineDisp, destLabel, item.nextScheduledDepartureTime ?: "")
 
                             Text(
                                 text = nextText,
@@ -547,7 +543,7 @@ fun TransferTimelineRow(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = if (appLanguage == AppLanguage.ES) "Buscando alternativas..." else "Buscant alternatives...",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.timeline_searching_alternatives),
                                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                                     )
                                 } else {
@@ -558,7 +554,7 @@ fun TransferTimelineRow(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = if (appLanguage == AppLanguage.ES) "Buscar alternativas" else "Buscar alternatives",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.timeline_search_alternatives),
                                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                                     )
                                 }
@@ -670,9 +666,9 @@ fun WalkTimelineRow(
             )
             Spacer(modifier = Modifier.width(6.dp))
             val walkLabel = if (item.isTransfer) {
-                if (appLanguage == AppLanguage.ES) "Transbordo (${leg.formattedDuration})" else "Transbord (${leg.formattedDuration})"
+                androidx.compose.ui.res.stringResource(com.example.R.string.timeline_transfer_with_duration, leg.formattedDuration)
             } else {
-                "${if (appLanguage == AppLanguage.ES) "Camina" else "Camina"} ${leg.formattedDuration} (${leg.distanceMeters.toInt()} m)"
+                androidx.compose.ui.res.stringResource(com.example.R.string.timeline_walk_with_duration, leg.formattedDuration, leg.distanceMeters.toInt())
             }
             Text(
                 text = walkLabel,

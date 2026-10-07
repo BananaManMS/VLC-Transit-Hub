@@ -153,7 +153,7 @@ fun MetroDeparturesEmptyState(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Ver programados", fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_view_scheduled), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         } else {
@@ -238,7 +238,7 @@ fun MetroDeparturesEmptyState(
                                         fontSize = 10.sp
                                     )
                                 } else {
-                                    val lineLabel = if (appLanguage == AppLanguage.CA) "Incidència de circulació" else "Incidencia de circulación"
+                                    val lineLabel = androidx.compose.ui.res.stringResource(com.example.R.string.metro_circulation_incident)
                                     Text(
                                         text = lineLabel,
                                         fontWeight = FontWeight.Bold,

@@ -401,13 +401,13 @@ fun ValenbisiStationBottomSheet(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Bicicletes" else "Bicicletas",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_bikes_label),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Disponibles" else "Disponibles",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_bikes_available_sub),
                             style = MaterialTheme.typography.bodySmall,
                             color = subtextColor
                         )
@@ -433,13 +433,13 @@ fun ValenbisiStationBottomSheet(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Buits" else "Huecos",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_slots_label),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Lliures" else "Libres",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_slots_free_sub),
                             style = MaterialTheme.typography.bodySmall,
                             color = subtextColor
                         )
@@ -467,7 +467,7 @@ fun ValenbisiStationBottomSheet(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Distància: ${station.distanceText}" else "Distancia: ${station.distanceText}",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_distance_format, station.distanceText),
                             style = MaterialTheme.typography.bodyMedium,
                             color = subtextColor,
                             fontWeight = FontWeight.Medium
@@ -483,7 +483,7 @@ fun ValenbisiStationBottomSheet(
                     modifier = Modifier.padding(horizontal = 4.dp)
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Capacitat: ${station.total}" else "Capacidad: ${station.total}",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_capacity_format, station.total),
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = textColor

@@ -163,7 +163,7 @@ fun MapTopBar(
                         decorationBox = { innerTextField ->
                             if (searchQuery.isEmpty()) {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Buscar parades o línies..." else "Buscar paradas o líneas...",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.map_search_placeholder),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = if (isDarkMode) Color(0xFF64748B) else Color(0xFF94A3B8),
                                     maxLines = 1
@@ -228,9 +228,9 @@ fun MapTopBar(
                         Icon(
                             imageVector = if (isSatelliteMode) Icons.Default.Map else Icons.Default.Layers,
                             contentDescription = if (isSatelliteMode) {
-                                if (appLanguage == AppLanguage.CA) "Canviar a vista mapa" else "Cambiar a vista plano"
+                                androidx.compose.ui.res.stringResource(com.example.R.string.map_switch_to_map_view)
                             } else {
-                                if (appLanguage == AppLanguage.CA) "Canviar a vista satèl·lit" else "Cambiar a vista satélite"
+                                androidx.compose.ui.res.stringResource(com.example.R.string.map_switch_to_sat_view)
                             },
                             tint = if (isSatelliteMode) MaterialTheme.colorScheme.primary else (if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)),
                             modifier = Modifier.size(22.dp)

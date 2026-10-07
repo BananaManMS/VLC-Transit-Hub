@@ -118,7 +118,7 @@ fun AboutAppDialog(
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = if (appLanguage == AppLanguage.ES) "Cerrar" else "Tancar",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
                             tint = subtextColor
                         )
                     }
@@ -188,29 +188,31 @@ fun AboutAppDialog(
                         
                         val attributions = if (appLanguage == AppLanguage.ES) {
                             listOf(
-                                "Renfe Operadora & GTFS-RT" to "Datos de horarios, paradas, trayectos y posiciones/retrasos de trenes en tiempo real desde data.renfe.com y gtfsrt.renfe.com.",
-                                "Ministerio de Transportes y Movilidad Sostenible" to "Información integrada conforme al Punto de Acceso Nacional de Información de Transporte (NAP) (https://nap.transportes.gob.es/licencia-datos).",
-                                "EMT València / Ajuntament de València" to "Datos de red, líneas, paradas y estimaciones en tiempo real de la plataforma municipal de datos abiertos (https://opendata.vlci.valencia.es/es/dataset/emt).",
-                                "Geoportal Ajuntament de València (Valenbisi)" to "Disponibilidad en tiempo real de estaciones y anclajes de bicicletas públicas Valenbisi (https://geoportal.valencia.es/).",
-                                "Ferrocarrils de la Generalitat Valenciana (FGV)" to "Trazado cartográfico, accesos y geometría de estaciones de Metrovalencia derivados de datos públicos del operador.",
-                                "Servidores y fuentes propias del desarrollador" to "Servicios e infraestructura privada para la optimización de datos estáticos GTFS, trazados de líneas e intermediación segura de estimaciones en tiempo real.",
+                                "Renfe Operadora & GTFS-RT (NAP)" to "Datos de horarios oficiales, líneas, paradas y actualizaciones/posiciones en tiempo real (GTFS-RT) de la red de Cercanías de Valencia desde data.renfe.com, gtfsrt.renfe.com y el Punto de Acceso Nacional de Transporte (NAP) (https://nap.transportes.gob.es/).",
+                                "Ferrocarrils de la Generalitat Valenciana (FGV)" to "Horarios programados, esquemas de líneas, estaciones, tarifas y avisos de incidencias de Metrovalencia derivados de datos públicos del operador.",
+                                "EMT València / Ajuntament de València" to "Datos de red, líneas, paradas, alertas y estimaciones de llegada en tiempo real desde el portal municipal de datos abiertos (https://opendata.vlci.valencia.es/).",
+                                "Autoritat de Transport Metropolità de València (ATMV) & Metrobús" to "Líneas, recorridos, horarios y paradas de autobuses metropolitanos de Metrobús y zonificación integrada SUMA (https://atmv.gva.es/ y https://geoportal.valencia.es/).",
+                                "Valenbisi (Geoportal Ajuntament de València)" to "Disponibilidad en tiempo real de estaciones, bicicletas y anclajes libres del servicio público Valenbisi (https://geoportal.valencia.es/).",
+                                "Albert Guillaumes (albertguillaumes.cat)" to "Planos axonométricos y esquemas tridimensionales de los intercambiadores de transporte del área metropolitana (https://albertguillaumes.cat/).",
+                                "Transitous & MOTIS Project" to "Motor de enrutamiento multimodal y planificación de itinerarios proporcionado por la red abierta y comunitaria Transitous y MOTIS (https://transitous.org/ - https://motis-project.de/).",
+                                "OpenStreetMap & Nominatim" to "Búsqueda de direcciones, lugares de interés y geocodificación © Colaboradores de OpenStreetMap, bajo licencia ODbL (https://www.openstreetmap.org/copyright).",
+                                "Cartografía CARTO" to "Teselas de mapas base CartoDB Voyager y Dark Matter facilitadas por CARTO (https://carto.com/basemaps/).",
                                 "Open-Meteo" to "Previsión meteorológica y datos de clima bajo licencia Creative Commons BY 4.0 (https://open-meteo.com/).",
-                                "Transitous & MOTIS" to "Motor de enrutamiento multimodal proporcionado por la red comunitaria Transitous y MOTIS (https://transitous.org/ - https://motis-project.de/).",
-                                "OpenStreetMap & Nominatim" to "Búsqueda de destinos y geocodificación © Colaboradores de OpenStreetMap, bajo licencia ODbL (https://www.openstreetmap.org/copyright).",
-                                "Cartografía CARTO" to "Teselas de mapas base CartoDB Voyager y Dark Matter facilitadas por CARTO (https://carto.com/basemaps/)."
+                                "Wikipedia / Wikimedia" to "Información contextual, histórica y resúmenes de estaciones vía la API de Wikipedia bajo licencia CC BY-SA 4.0 (https://www.wikipedia.org/)."
                             )
                         } else {
                             listOf(
-                                "Renfe Operadora & GTFS-RT" to "Dades d'horaris, parades, trajectes i posicions/retards de trens en temps real des de data.renfe.com i gtfsrt.renfe.com.",
-                                "Ministeri de Transports i Mobilitat Sostenible" to "Informació integrada conforme al Punt d'Accés Nacional d'Informació de Transport (NAP) (https://nap.transportes.gob.es/licencia-datos).",
-                                "EMT València / Ajuntament de València" to "Dades de xarxa, línies, parades i estimacions en temps real de la plataforma municipal de dades obertes (https://opendata.vlci.valencia.es/es/dataset/emt).",
-                                "Geoportal Ajuntament de València (Valenbisi)" to "Disponibilitat en temps real d'estacions i ancoratges de bicicletes públiques Valenbisi (https://geoportal.valencia.es/).",
-                                "Ferrocarrils de la Generalitat Valenciana (FGV)" to "Tratçat cartogràfic, accessos i geometria d'estacions de Metrovalencia derivats de dades públiques de l'operador.",
-                                "Servidors i fonts pròpies del desenvolupador" to "Serveis i infraestructura privada per a l'optimització de dades estàtiques GTFS, traçats de línies i intermediació segura de previsions en temps real.",
+                                "Renfe Operadora & GTFS-RT (NAP)" to "Dades d'horaris oficials, línies, parades i actualitzacions/posicions en temps real (GTFS-RT) de la xarxa de Rodalia de València des de data.renfe.com, gtfsrt.renfe.com i el Punt d'Accés Nacional de Transport (NAP) (https://nap.transportes.gob.es/).",
+                                "Ferrocarrils de la Generalitat Valenciana (FGV)" to "Horaris programats, esquemes de línies, estacions, tarifes i avisos d'incidències de Metrovalencia derivats de dades públiques de l'operador.",
+                                "EMT València / Ajuntament de València" to "Dades de xarxa, línies, parades, alertes i estimacions d'arribada en temps real des del portal municipal de dades obertes (https://opendata.vlci.valencia.es/).",
+                                "Autoritat de Transport Metropolità de València (ATMV) & Metrobús" to "Línies, recorreguts, horaris i parades d'autobusos metropolitans de Metrobús i zonificació integrada SUMA (https://atmv.gva.es/ i https://geoportal.valencia.es/).",
+                                "Valenbisi (Geoportal Ajuntament de València)" to "Disponibilitat en temps real d'estacions, bicicletes i ancoratges lliures del servici públic Valenbisi (https://geoportal.valencia.es/).",
+                                "Albert Guillaumes (albertguillaumes.cat)" to "Plànols axonomètrics i esquemes tridimensionals dels intercanviadors de transport de l'àrea metropolitana (https://albertguillaumes.cat/).",
+                                "Transitous & MOTIS Project" to "Motor d'enrutament multimodal i planificació d'itineraris proporcionat per la xarxa oberta i comunitària Transitous i MOTIS (https://transitous.org/ - https://motis-project.de/).",
+                                "OpenStreetMap & Nominatim" to "Cercador d'adreces, llocs d'interés i geocodificació © Col·laboradors d'OpenStreetMap, sota llicència ODbL (https://www.openstreetmap.org/copyright).",
+                                "Cartografia CARTO" to "Tessel·les de mapes base CartoDB Voyager i Dark Matter facilitades per CARTO (https://carto.com/basemaps/).",
                                 "Open-Meteo" to "Previsió meteorològica i dades de clima sota llicència Creative Commons BY 4.0 (https://open-meteo.com/).",
-                                "Transitous & MOTIS" to "Motor d'enrutament multimodal proporcionat per la xarxa comunitària Transitous i MOTIS (https://transitous.org/ - https://motis-project.de/).",
-                                "OpenStreetMap & Nominatim" to "Cercador de destinacions i geocodificació © Col·laboradors d'OpenStreetMap, sota llicència ODbL (https://www.openstreetmap.org/copyright).",
-                                "Cartografia CARTO" to "Tessel·les de mapes base CartoDB Voyager i Dark Matter facilitades per CARTO (https://carto.com/basemaps/)."
+                                "Wikipedia / Wikimedia" to "Informació contextual, històrica i resums d'estacions via l'API de Wikipedia sota llicència CC BY-SA 4.0 (https://www.wikipedia.org/)."
                             )
                         }
 

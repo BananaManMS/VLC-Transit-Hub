@@ -74,7 +74,8 @@ data class RealTimeDeparture(
     val destinationWebId: Int? = null,
     val targetArrivalEpochMs: Long = System.currentTimeMillis() + (secondsRemaining.coerceAtLeast(-10) * 1000L),
     val id: String = "${lineId}_${destination}_${targetArrivalEpochMs / 30_000L}",
-    val isRealTime: Boolean = true
+    val isRealTime: Boolean = true,
+    val originStationId: String? = null
 ) {
     val liveSecondsRemaining: Int
         get() = ((targetArrivalEpochMs - System.currentTimeMillis()) / 1000L).toInt()

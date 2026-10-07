@@ -17,10 +17,13 @@ data class CercaniasLineStationInfo(
 object CercaniasRouteUtils {
 
     private var lineStationsMap: Map<String, List<CercaniasLineStationInfo>> = emptyMap()
+    @Volatile
     private var tripScheduleMap: Map<String, Map<String, String>> = emptyMap()
+    private var appContext: Context? = null
     private var isInitialized = false
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (isInitialized) return
         try {
             // 1. Load line stations
@@ -64,13 +67,18 @@ object CercaniasRouteUtils {
             }
 
             lineStationsMap = tempMap
-
-            // 2. Load trip schedules for station arrival times
-            loadScheduleJsonMap(context)
-
             isInitialized = true
         } catch (e: Exception) {
             Log.e("CercaniasRouteUtils", "Error loading cercanias route data", e)
+        }
+    }
+
+    private fun ensureScheduleLoaded() {
+        if (tripScheduleMap.isNotEmpty()) return
+        synchronized(this) {
+            if (tripScheduleMap.isNotEmpty()) return
+            val ctx = appContext ?: return
+            loadScheduleJsonMap(ctx)
         }
     }
 
@@ -227,6 +235,7 @@ object CercaniasRouteUtils {
 
     fun getStationScheduledTime(tripId: String, stationId: String, stationName: String): String? {
         if (tripId.isBlank()) return null
+        ensureScheduleLoaded()
         val exactK = tripId.trim()
         val baseK = getBaseTripKey(exactK)
         val trainNo = extractTrainNumber(exactK)
@@ -454,12 +463,14 @@ object CercaniasRouteUtils {
     }
 
     fun hasTripInSchedule(tripId: String, trainNum: String? = null): Boolean {
+        ensureScheduleLoaded()
         val keys = getTripKeys(tripId) + (if (trainNum != null) getTripKeys(trainNum) else emptyList())
         return keys.any { tripScheduleMap.containsKey(it) }
     }
 
     fun getTripOriginAndDestination(tripId: String, routeId: String, trainNum: String? = null): Pair<String, String>? {
         if (tripId.isBlank() && (trainNum == null || trainNum.isBlank())) return null
+        ensureScheduleLoaded()
         val keys = getTripKeys(tripId) + (if (!trainNum.isNullOrBlank()) getTripKeys(trainNum) else emptyList())
         var subMap: Map<String, String>? = null
         for (k in keys) {

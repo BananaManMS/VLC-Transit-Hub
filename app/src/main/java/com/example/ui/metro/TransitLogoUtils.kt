@@ -113,7 +113,7 @@ fun MetroLineBadge(
     if (logoRes != null) {
         Image(
             painter = painterResource(id = logoRes),
-            contentDescription = "Línea $lineId",
+            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.line_number_format, lineId),
             modifier = modifier.size(size),
             contentScale = ContentScale.Fit
         )
@@ -152,7 +152,7 @@ fun CercaniasLineBadge(
     if (logoRes != null) {
         Image(
             painter = painterResource(id = logoRes),
-            contentDescription = "Línea $routeId",
+            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.line_number_format, routeId),
             modifier = modifier
                 .height(size)
                 .widthIn(min = size, max = size * 1.6f),

@@ -2,11 +2,23 @@ package com.example.ui.cercanias
 
 import android.app.Application
 import android.content.Context
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Refresh
@@ -15,10 +27,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -36,6 +56,9 @@ import com.example.ui.map.components.CercaniasMapOverlayLoader
 import com.example.ui.map.components.CercaniasStationBottomSheet
 import com.example.ui.map.components.DetailSheetState
 import com.example.ui.map.components.MetroMarkersRenderer
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.osmdroid.util.GeoPoint
@@ -50,115 +73,89 @@ import java.util.concurrent.atomic.AtomicBoolean
 fun CercaniasLiveMapDialog(
     viewModel: CercaniasViewModel,
     isDarkMode: Boolean,
+    bottomPadding: Dp = 0.dp,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val appLanguage by viewModel.appLanguage.collectAsState()
     val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
-    
+
     val liveTrains by viewModel.liveCercaniasVehicles.collectAsState()
     val isMapLoading by viewModel.isLiveMapLoading.collectAsState()
     val favoriteStations by viewModel.cercaniasFavoriteStations.collectAsState()
     val allStations by viewModel.allCercaniasStations.collectAsState()
 
-    // Setup local state for bottom sheet selections
-    var selectedStationEntity by remember { mutableStateOf<CercaniasStationEntity?>(null) }
-    var stationDepartures by remember { mutableStateOf<List<CercaniasDeparture>>(emptyList()) }
-    var isStationLoading by remember { mutableStateOf(false) }
-    
-    var selectedTrainVehicle by remember { mutableStateOf<LiveVehicleInfo?>(null) }
-    var trainSheetState by remember { mutableStateOf(DetailSheetState.HALF_EXPANDED) }
+        // Setup local state for bottom sheet selections
+        var selectedStationEntity by remember { mutableStateOf<CercaniasStationEntity?>(null) }
+        var displayedStationEntity by remember { mutableStateOf<CercaniasStationEntity?>(null) }
+        var stationSheetState by remember { mutableStateOf(DetailSheetState.HALF_EXPANDED) }
+        var stationDepartures by remember { mutableStateOf<List<CercaniasDeparture>>(emptyList()) }
+        var isStationLoading by remember { mutableStateOf(false) }
+        
+        var selectedTrainVehicle by remember { mutableStateOf<LiveVehicleInfo?>(null) }
+        var displayedTrainVehicle by remember { mutableStateOf<LiveVehicleInfo?>(null) }
+        var trainSheetState by remember { mutableStateOf(DetailSheetState.HALF_EXPANDED) }
 
-    LaunchedEffect(selectedTrainVehicle) {
-        if (selectedTrainVehicle != null) {
-            trainSheetState = DetailSheetState.HALF_EXPANDED
-        }
-    }
-
-    val renfeRepository = remember { RenfeRepository(context.applicationContext as Application, com.example.data.database.AppDatabase.getDatabase(context)) }
-
-    var redrawTrigger by remember { mutableStateOf(0) }
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-
-    // Load departures for clicked station in a separate coroutine
-    LaunchedEffect(selectedStationEntity) {
-        val station = selectedStationEntity
-        if (station != null) {
-            isStationLoading = true
-            try {
-                val rawDeps = renfeRepository.getDeparturesForStation(station.stop_id)
-                stationDepartures = CercaniasDepartureMapper.sortDeparturesChronologically(rawDeps)
-            } catch (e: Exception) {
-                stationDepartures = emptyList()
-            } finally {
-                isStationLoading = false
+        LaunchedEffect(selectedStationEntity) {
+            if (selectedStationEntity != null) {
+                displayedStationEntity = selectedStationEntity
+                stationSheetState = DetailSheetState.HALF_EXPANDED
             }
-        } else {
-            stationDepartures = emptyList()
         }
-    }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
+        LaunchedEffect(selectedTrainVehicle) {
+            if (selectedTrainVehicle != null) {
+                displayedTrainVehicle = selectedTrainVehicle
+                trainSheetState = DetailSheetState.HALF_EXPANDED
+            }
+        }
+
+        val renfeRepository = remember { RenfeRepository(context.applicationContext as Application, com.example.data.database.AppDatabase.getDatabase(context)) }
+
+        var redrawTrigger by remember { mutableStateOf(0) }
+        val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+
+        // Load departures for clicked station in a separate coroutine
+        LaunchedEffect(selectedStationEntity) {
+            val station = selectedStationEntity
+            if (station != null) {
+                isStationLoading = true
+                try {
+                    val rawDeps = renfeRepository.getDeparturesForStation(station.stop_id)
+                    stationDepartures = CercaniasDepartureMapper.sortDeparturesChronologically(rawDeps)
+                } catch (e: Exception) {
+                    stationDepartures = emptyList()
+                } finally {
+                    isStationLoading = false
+                }
+            } else {
+                stationDepartures = emptyList()
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF1F5F9))
                 .testTag("cercanias_live_map_dialog")
         ) {
-            // Force the dialog's window to draw edge-to-edge behind system bars with zero offsets
-            val view = androidx.compose.ui.platform.LocalView.current
-            DisposableEffect(view) {
-                fun findDialogWindow(): android.view.Window? {
-                    var ctx: android.content.Context? = view.context
-                    while (ctx is android.content.ContextWrapper) {
-                        if (ctx is androidx.compose.ui.window.DialogWindowProvider) {
-                            return ctx.window
-                        }
-                        ctx = ctx.baseContext
-                    }
-                    var p = view.parent
-                    while (p != null) {
-                        if (p is androidx.compose.ui.window.DialogWindowProvider) {
-                            return p.window
-                        }
-                        p = p.parent
-                    }
-                    return null
-                }
-
-                val window = findDialogWindow()
-                if (window != null) {
-                    window.setLayout(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    window.setBackgroundDrawableResource(android.R.color.transparent)
-                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-                    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
-                    window.statusBarColor = android.graphics.Color.TRANSPARENT
-                    window.navigationBarColor = android.graphics.Color.TRANSPARENT
-
-                    // Set light/dark icons on the status bar and navigation bar to be perfectly legible
-                    val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, view)
-                    insetsController.isAppearanceLightStatusBars = !isDarkMode
-                    insetsController.isAppearanceLightNavigationBars = !isDarkMode
-                }
-                onDispose {}
+        BackHandler {
+            if (selectedStationEntity != null) {
+                selectedStationEntity = null
+            } else if (selectedTrainVehicle != null) {
+                selectedTrainVehicle = null
+            } else {
+                onDismiss()
             }
+        }
+
+            // Default center showing almost the entire Cercanías network, ignoring user GPS for initial view
+            val initialCenter = MapConfig.VALENCIA_CENTER
+            val initialZoom = 10.2
 
             // Keep persistent lists of recycled markers for the lifecycle of this Dialog to avoid memory leaks
             val recycledCercaniasMarkers = remember { mutableListOf<Marker>() }
-            var currentZoom by remember { mutableStateOf(10.5) }
+            var currentZoom by remember { mutableStateOf(initialZoom) }
             val handler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
                 
             val mapView = remember {
@@ -174,8 +171,8 @@ fun CercaniasLiveMapDialog(
                     isTilesScaledToDpi = true
                     setBackgroundColor(if (isDarkMode) android.graphics.Color.parseColor("#0F172A") else android.graphics.Color.parseColor("#F1F5F9"))
                     
-                    controller.setZoom(10.5)
-                    controller.setCenter(MapConfig.VALENCIA_CENTER)
+                    controller.setZoom(initialZoom)
+                    controller.setCenter(initialCenter)
 
                     setOnTouchListener(
                         com.example.ui.map.components.MapGestureTouchHandler.createTouchListener(
@@ -293,6 +290,20 @@ fun CercaniasLiveMapDialog(
                 }
             }
 
+            var stationsList by remember { mutableStateOf(allStations) }
+            LaunchedEffect(allStations) {
+                if (allStations.isNotEmpty()) {
+                    stationsList = allStations
+                } else {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        val loaded = renfeRepository.getAllStations()
+                        if (loaded.isNotEmpty()) {
+                            stationsList = loaded
+                        }
+                    }
+                }
+            }
+
             val isStaticRendered = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
             val markerLOD = remember(currentZoom) {
                 when {
@@ -304,9 +315,9 @@ fun CercaniasLiveMapDialog(
             val showPill = markerLOD >= 2
 
             // Draw station markers - ONLY when load state, theme, stations, or LOD threshold changes
-            LaunchedEffect(isCercaniasLoaded, allStations, isDarkMode, redrawTrigger, markerLOD) {
-                if (allStations.isNotEmpty() && isCercaniasLoaded) {
-                    val cercaniasPositions = allStations.associate { s ->
+            LaunchedEffect(isCercaniasLoaded, stationsList, isDarkMode, redrawTrigger, markerLOD) {
+                if (stationsList.isNotEmpty() && isCercaniasLoaded) {
+                    val cercaniasPositions = stationsList.associate { s ->
                         s.stop_id to com.example.data.repository.StaticTransitDataCache.getVisualPositionForCercanias(
                             s.stop_id,
                             GeoPoint(s.lat, s.lon)
@@ -316,7 +327,7 @@ fun CercaniasLiveMapDialog(
                     MetroMarkersRenderer.renderCercaniasMarkers(
                         context = context,
                         mapView = mapView,
-                        validCercaniasStations = allStations,
+                        validCercaniasStations = stationsList,
                         cercaniasPositions = cercaniasPositions,
                         currentZoom = currentZoom,
                         isDarkMode = isDarkMode,
@@ -325,9 +336,9 @@ fun CercaniasLiveMapDialog(
                         appLanguage = appLanguage,
                         recycledCercaniasMarkers = recycledCercaniasMarkers,
                         onTapHandler = { _, _, position ->
-                            val clickedStation = allStations.find { s ->
+                            val clickedStation = stationsList.find { s ->
                                 val pos = cercaniasPositions[s.stop_id] ?: GeoPoint(s.lat, s.lon)
-                                pos.latitude == position.latitude && pos.longitude == position.longitude
+                                Math.abs(pos.latitude - position.latitude) < 0.0001 && Math.abs(pos.longitude - position.longitude) < 0.0001
                             }
                             if (clickedStation != null) {
                                 selectedTrainVehicle = null
@@ -336,21 +347,32 @@ fun CercaniasLiveMapDialog(
                             true
                         }
                     )
+
+                    // Add all rendered Cercanías station markers to osmdroid mapView overlays
+                    recycledCercaniasMarkers.forEach { marker ->
+                        if (!mapView.overlays.contains(marker)) {
+                            mapView.overlays.add(marker)
+                        }
+                    }
+
                     trainOverlayManager.bringTrainsToTop()
                     mapView.invalidate()
                     isStaticRendered.set(true)
                 }
             }
 
-            // Update live trains with smooth real-time interpolation animations while dialog is active
+            // Update live trains with smooth real-time interpolation animations only while app is in foreground
+            val lifecycleOwner = LocalLifecycleOwner.current
             LaunchedEffect(liveTrains, isStaticRendered.get()) {
                 if (isStaticRendered.get() && liveTrains.isNotEmpty()) {
-                    while (isActive) {
-                        trainOverlayManager.updateLiveTrains(
-                            trains = liveTrains,
-                            isCercaniasOnlyFilter = true
-                        )
-                        delay(250L) // 4 updates/sec for silky-smooth train movement along track overlays
+                    lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                        while (true) {
+                            trainOverlayManager.updateLiveTrains(
+                                trains = liveTrains,
+                                isCercaniasOnlyFilter = true
+                            )
+                            delay(250L) // 4 updates/sec for silky-smooth train movement along track overlays
+                        }
                     }
                 }
             }
@@ -362,15 +384,15 @@ fun CercaniasLiveMapDialog(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Top gradient scrim extending to physical top behind status bar
+            // Top status-bar gradient scrim matching MapScreen.kt EXACTLY
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(96.dp)
+                    .height(100.dp)
                     .background(
-                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                        Brush.verticalGradient(
                             colors = listOf(
-                                if (isDarkMode) Color.Black.copy(alpha = 0.65f) else Color.Black.copy(alpha = 0.3f),
+                                if (isDarkMode) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.25f),
                                 Color.Transparent
                             )
                         )
@@ -378,68 +400,7 @@ fun CercaniasLiveMapDialog(
                     .align(Alignment.TopCenter)
             )
 
-            // Sleek Floating Header Card at Top Start
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isDarkMode) Color(0xEC1E293B) else Color(0xECFFFFFF)
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                modifier = Modifier
-                    .statusBarsPadding()
-                    .padding(top = 16.dp, start = 16.dp, end = 76.dp)
-                    .fillMaxWidth()
-                    .align(Alignment.TopStart)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(Color(0xFF22C55E), CircleShape)
-                    )
-                    Column {
-                        Text(
-                            text = "Trenes en Vivo",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDarkMode) Color.White else Color(0xFF1E293B)
-                        )
-                        Text(
-                            text = "Telemetría en tiempo real de Cercanías Valencia",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
-                            fontSize = 11.sp
-                        )
-                    }
-                }
-            }
-
-            // Close Button in Top Right
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .statusBarsPadding()
-                    .padding(16.dp)
-                    .size(44.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                        shape = CircleShape
-                    )
-                    .align(Alignment.TopEnd)
-                    .testTag("close_live_map_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Cerrar Mapa",
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            // Right-side Floating Action Controls & Attribution Bar (Only shown when no bottom sheet is active to prevent collision)
+            // Right-side Floating Action Controls & Attribution Bar (Only shown when no bottom sheet is active)
             if (selectedTrainVehicle == null && selectedStationEntity == null) {
                 // Right-side Floating Action Controls (Manual Refresh and Recenter GPS)
                 Column(
@@ -447,8 +408,7 @@ fun CercaniasLiveMapDialog(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .navigationBarsPadding()
-                        .padding(end = 16.dp, bottom = 44.dp)
+                        .padding(end = 16.dp, bottom = bottomPadding + 52.dp)
                 ) {
                     // Manual Refresh Button
                     IconButton(
@@ -458,14 +418,14 @@ fun CercaniasLiveMapDialog(
                         modifier = Modifier
                             .size(44.dp)
                             .background(
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
                                 shape = CircleShape
                             )
                             .testTag("refresh_live_map_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "Recargar Trenes",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_reload_trains),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -473,8 +433,14 @@ fun CercaniasLiveMapDialog(
                     // Recenter GPS Button
                     IconButton(
                         onClick = {
-                            mapView.controller.animateTo(MapConfig.VALENCIA_CENTER)
-                            mapView.controller.setZoom(10.5)
+                            val loc = viewModel.lastLocation.value
+                            if (loc != null) {
+                                mapView.controller.animateTo(GeoPoint(loc.first, loc.second))
+                                mapView.controller.setZoom(14.5)
+                            } else {
+                                mapView.controller.animateTo(MapConfig.VALENCIA_CENTER)
+                                mapView.controller.setZoom(10.5)
+                            }
                         },
                         modifier = Modifier
                             .size(44.dp)
@@ -486,7 +452,7 @@ fun CercaniasLiveMapDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Default.GpsFixed,
-                            contentDescription = "Centrar Valencia",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_center_valencia),
                             tint = Color.White
                         )
                     }
@@ -499,8 +465,7 @@ fun CercaniasLiveMapDialog(
                     contentColor = if (isDarkMode) Color(0xCCCBD5E1) else Color(0xCC334155),
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .navigationBarsPadding()
-                        .padding(start = 12.dp, bottom = 12.dp)
+                        .padding(start = 16.dp, bottom = bottomPadding + 40.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -524,51 +489,250 @@ fun CercaniasLiveMapDialog(
                 }
             }
 
-            // Loading Indicator (Sleek Linear Indicator at the top of the map)
-            if (isMapLoading) {
-                LinearProgressIndicator(
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = Color.Transparent,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .align(Alignment.TopCenter)
-                )
+            // Bottom Bar / Franja inferior elevated safely above bottom navigation bar
+            val barBg = if (isDarkMode) Color(0xFF171717) else Color.White
+            val barBorder = if (isDarkMode) Color(0xFF262C38) else Color(0xFFE2E8F0)
+            val textPrimary = if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+
+            AnimatedVisibility(
+                visible = selectedTrainVehicle == null && selectedStationEntity == null,
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(tween(180)),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(tween(180)),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp, start = 12.dp, end = 12.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = barBg,
+                    tonalElevation = 4.dp,
+                    shadowElevation = 8.dp,
+                    border = BorderStroke(1.dp, barBorder)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // 1. Back button on the left
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isDarkMode) Color(0xFF262C38) else Color(0xFFF1F5F9),
+                            border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF333E50) else Color(0xFFE2E8F0)),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            IconButton(
+                                onClick = onDismiss,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .testTag("cercanias_live_map_back_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_back),
+                                    tint = textPrimary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        // 2. Logo + Title + Subtitle in center
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isDarkMode) Color(0xFF262C38) else Color(0xFFF1F5F9),
+                                border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF333E50) else Color(0xFFE2E8F0)),
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(3.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = com.example.R.drawable.logo_cercanias),
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                Text(
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_live_map_title),
+                                    fontFamily = com.example.ui.theme.SpaceGroteskFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (liveTrains.isNotEmpty()) {
+                                    Text(
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_live_trains_count, liveTrains.size),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = Color(0xFF10B981),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                } else if (!isMapLoading) {
+                                    Text(
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_live_map_no_gps),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Loading Card Overlay matching Network Plans style
+            AnimatedVisibility(
+                visible = isMapLoading,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { -it }),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 16.dp, start = 16.dp, end = 16.dp)
+                    .testTag("cercanias_live_map_loading_card")
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF222222) else Color.White
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Cargando mapa en vivo de Cercanías...",
+                                    fontFamily = com.example.ui.theme.SpaceGroteskFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.5.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        )
+                    }
+                }
             }
 
             // --- BOTTOM SHEETS DISPLAY FOR SELECTIONS ---
 
-            // 1. Station Selected Bottom Sheet
-            selectedStationEntity?.let { station ->
-                val isFavorite = favoriteStations.any { it.stop_id == station.stop_id }
-                CercaniasStationBottomSheet(
-                    station = station,
-                    departures = stationDepartures,
-                    isLoading = isStationLoading,
-                    isDarkMode = isDarkMode,
-                    appLanguage = appLanguage,
-                    isFavorite = isFavorite,
-                    onToggleFavorite = { viewModel.toggleFavoriteCercaniasStation(station.stop_id) },
-                    onDismiss = { selectedStationEntity = null },
-                    maxExpandedHeight = 440.dp,
-                    sheetState = DetailSheetState.HALF_EXPANDED,
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
+            // 1. Station Selected Bottom Sheet (Animated entrance and exit)
+            AnimatedVisibility(
+                visible = selectedStationEntity != null,
+                enter = slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                ) + fadeIn(animationSpec = tween(180)),
+                exit = slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                ) + fadeOut(animationSpec = tween(180)),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                displayedStationEntity?.let { station ->
+                    val isFavorite = favoriteStations.any { it.stop_id == station.stop_id }
+                    CercaniasStationBottomSheet(
+                        station = station,
+                        departures = stationDepartures,
+                        isLoading = isStationLoading,
+                        isDarkMode = isDarkMode,
+                        appLanguage = appLanguage,
+                        isFavorite = isFavorite,
+                        onToggleFavorite = { viewModel.toggleFavoriteCercaniasStation(station.stop_id) },
+                        onDismiss = { selectedStationEntity = null },
+                        maxExpandedHeight = 440.dp,
+                        sheetState = stationSheetState,
+                        onSheetStateChanged = { stationSheetState = it },
+                        dismissOnCollapse = true,
+                        activeTripBottomPadding = bottomPadding + 20.dp,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
+                }
             }
 
-            // 2. Train Selected Bottom Sheet
-            selectedTrainVehicle?.let { vehicle ->
-                val stationNameMap = remember(allStations) { allStations.associate { it.stop_id to it.nombre } }
-                LiveTrainBottomSheet(
-                    vehicle = vehicle,
-                    stationNameMap = stationNameMap,
-                    isDarkMode = isDarkMode,
-                    onDismiss = { selectedTrainVehicle = null },
-                    sheetState = trainSheetState,
-                    onSheetStateChanged = { trainSheetState = it },
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
+            // 2. Train Selected Bottom Sheet (Animated entrance and exit)
+            AnimatedVisibility(
+                visible = selectedTrainVehicle != null,
+                enter = slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                ) + fadeIn(animationSpec = tween(180)),
+                exit = slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                ) + fadeOut(animationSpec = tween(180)),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                displayedTrainVehicle?.let { vehicle ->
+                    val stationNameMap = remember(allStations) { allStations.associate { it.stop_id to it.nombre } }
+                    LiveTrainBottomSheet(
+                        vehicle = vehicle,
+                        stationNameMap = stationNameMap,
+                        isDarkMode = isDarkMode,
+                        onDismiss = { selectedTrainVehicle = null },
+                        sheetState = trainSheetState,
+                        onSheetStateChanged = { trainSheetState = it },
+                        bottomPadding = bottomPadding + 20.dp,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
+                }
             }
         }
     }
-}

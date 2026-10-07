@@ -87,10 +87,7 @@ fun NearbyDeparturesWidget(
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = if (appLanguage == AppLanguage.CA)
-                                    "Activa la ubicació per a afinar les teues parades."
-                                else
-                                    "Activa la ubicación para afinar tus paradas cercanas.",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_gps_banner_text),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -101,7 +98,7 @@ fun NearbyDeparturesWidget(
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                         ) {
-                            Text(if (appLanguage == AppLanguage.CA) "Activar" else "Activar", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.setting_gps_permission_action), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -151,7 +148,7 @@ fun NearbyDeparturesWidget(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Icon(
                                             imageVector = Icons.Default.Star,
-                                            contentDescription = "Favorita",
+                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.favorite_badge_desc),
                                             tint = Color(0xFFF59E0B),
                                             modifier = Modifier.size(14.dp)
                                         )
@@ -223,9 +220,10 @@ fun NearbyDeparturesWidget(
                                     .background(Color(0xFF702B7B).copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
+                                val cercaniasBrand = androidx.compose.ui.res.stringResource(com.example.R.string.header_cercanias_title)
                                 Image(
                                     painter = painterResource(id = com.example.R.drawable.logo_cercanias),
-                                    contentDescription = "Renfe Cercanías",
+                                    contentDescription = cercaniasBrand,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
@@ -243,16 +241,17 @@ fun NearbyDeparturesWidget(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Icon(
                                             imageVector = Icons.Default.Star,
-                                            contentDescription = "Favorita",
+                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.favorite_badge_desc),
                                             tint = Color(0xFFF59E0B),
                                             modifier = Modifier.size(14.dp)
                                         )
                                     }
                                 }
+                                val cercaniasBrand = androidx.compose.ui.res.stringResource(com.example.R.string.header_cercanias_title)
                                 Text(
                                     text = if (nearestCercaniasDistance != null) {
-                                        "${LocationUtils.formatDistance(nearestCercaniasDistance)} · Renfe Cercanías"
-                                    } else "Renfe Cercanías",
+                                        "${LocationUtils.formatDistance(nearestCercaniasDistance)} · $cercaniasBrand"
+                                    } else cercaniasBrand,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -273,7 +272,7 @@ fun NearbyDeparturesWidget(
                                     if (logoRes != null) {
                                         Image(
                                             painter = painterResource(id = logoRes),
-                                            contentDescription = "Línea $line",
+                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.line_format_desc, line),
                                             modifier = Modifier.size(22.dp)
                                         )
                                     } else {
@@ -369,7 +368,7 @@ fun NearbyDeparturesWidget(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Icon(
                                             imageVector = Icons.Default.Star,
-                                            contentDescription = "Favorita",
+                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.favorite_badge_desc),
                                             tint = Color(0xFFF59E0B),
                                             modifier = Modifier.size(14.dp)
                                         )
@@ -477,7 +476,7 @@ fun NearbyDeparturesWidget(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Icon(
                                             imageVector = Icons.Default.Star,
-                                            contentDescription = "Favorita",
+                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.favorite_badge_desc),
                                             tint = Color(0xFFF59E0B),
                                             modifier = Modifier.size(14.dp)
                                         )
@@ -557,10 +556,7 @@ fun NearbyDeparturesWidget(
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA)
-                                "Sense parades o estacions a menys de 1 km."
-                            else
-                                "Sin paradas ni estaciones a menos de 1 km.",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_no_stops_within_1km),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

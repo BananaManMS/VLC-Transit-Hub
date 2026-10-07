@@ -10,6 +10,9 @@ import java.util.TimeZone
  */
 object TripTimeParser {
 
+    val MADRID_TIME_ZONE: TimeZone = TimeZone.getTimeZone("Europe/Madrid")
+    val MADRID_ZONE_ID: java.time.ZoneId = java.time.ZoneId.of("Europe/Madrid")
+
     private val TIME_PATTERNS = listOf(
         "yyyy-MM-dd'T'HH:mm:ss",
         "yyyy-MM-dd'T'HH:mm:ss.SSS",
@@ -22,7 +25,7 @@ object TripTimeParser {
 
     /**
      * Parses a timestamp string (epoch millis, ISO-8601, or HH:mm) into epoch milliseconds.
-     * If the format is only HH:mm, it reconciles with today's date (or tomorrow if the time is past midnight).
+     * If the format is only HH:mm, it reconciles with today's date in Europe/Madrid timezone.
      */
     fun parseTimeToMillis(timeStr: String?): Long? {
         if (timeStr.isNullOrBlank()) return null
@@ -43,7 +46,12 @@ object TripTimeParser {
                         try {
                             val parsed = java.time.format.DateTimeFormatter.ISO_DATE_TIME.parse(trimmed)
                             return java.time.OffsetDateTime.from(parsed).toInstant().toEpochMilli()
-                        } catch (_: Exception) {}
+                        } catch (_: Exception) {
+                            try {
+                                val ldt = java.time.LocalDateTime.parse(trimmed)
+                                return ldt.atZone(MADRID_ZONE_ID).toInstant().toEpochMilli()
+                            } catch (_: Exception) {}
+                        }
                     }
                 }
             }
@@ -53,33 +61,35 @@ object TripTimeParser {
         if (trimmed.contains("T")) {
             try {
                 if (trimmed.contains("+") || trimmed.contains("-", true)) {
-                    val sdfX = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault())
+                    val sdfX = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault()).apply {
+                        timeZone = MADRID_TIME_ZONE
+                    }
                     sdfX.parse(trimmed)?.time?.let { return it }
                 }
                 val isUtc = trimmed.endsWith("Z")
                 val cleanIso = trimmed.substringBefore("Z").substringBefore("+")
                 val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).apply {
-                    if (isUtc) timeZone = TimeZone.getTimeZone("UTC")
+                    timeZone = if (isUtc) TimeZone.getTimeZone("UTC") else MADRID_TIME_ZONE
                 }
                 sdf.parse(cleanIso)?.time?.let { return it }
             } catch (_: Exception) {}
         }
 
-        // 3. Short time format (HH:mm or HH:mm:ss)
+        // 3. Short time format (HH:mm or HH:mm:ss) in Madrid local transport time
         if (!trimmed.contains("-") && (trimmed.length == 5 || trimmed.length == 8 || trimmed.contains(":"))) {
             val parts = trimmed.split(":")
             if (parts.size >= 2) {
                 val h = parts[0].toIntOrNull()
                 val m = parts[1].toIntOrNull()
                 if (h != null && m != null) {
-                    val nowCal = Calendar.getInstance()
-                    val targetCal = Calendar.getInstance().apply {
+                    val nowCal = Calendar.getInstance(MADRID_TIME_ZONE)
+                    val targetCal = Calendar.getInstance(MADRID_TIME_ZONE).apply {
                         set(Calendar.HOUR_OF_DAY, h)
                         set(Calendar.MINUTE, m)
                         set(Calendar.SECOND, 0)
                         set(Calendar.MILLISECOND, 0)
                     }
-                    // If parsed time is > 6h in the past compared to now, assume tomorrow
+                    // If parsed time is > 6h in the past compared to now in Madrid, assume tomorrow
                     if (targetCal.timeInMillis < nowCal.timeInMillis - 6 * 3600 * 1000L) {
                         targetCal.add(Calendar.DAY_OF_YEAR, 1)
                     }
@@ -88,7 +98,7 @@ object TripTimeParser {
             }
         }
 
-        // 4. Fallback SimpleDateFormat patterns for local datetime strings
+        // 4. Fallback SimpleDateFormat patterns for local datetime strings in Europe/Madrid
         val timePatterns = listOf(
             "yyyy-MM-dd'T'HH:mm:ss",
             "yyyy-MM-dd'T'HH:mm",
@@ -97,7 +107,9 @@ object TripTimeParser {
         )
         for (pattern in timePatterns) {
             try {
-                val sdf = SimpleDateFormat(pattern, Locale.getDefault())
+                val sdf = SimpleDateFormat(pattern, Locale.getDefault()).apply {
+                    timeZone = MADRID_TIME_ZONE
+                }
                 val date = sdf.parse(trimmed)
                 if (date != null) {
                     return date.time
@@ -137,12 +149,14 @@ object TripTimeParser {
     }
 
     /**
-     * Formats current time plus given minutes into HH:mm format.
+     * Formats current time in Spain plus given minutes into HH:mm format.
      */
     fun addMinutesToNow(minutesToAdd: Int): String {
-        val cal = Calendar.getInstance()
+        val cal = Calendar.getInstance(MADRID_TIME_ZONE)
         cal.add(Calendar.MINUTE, minutesToAdd.coerceAtLeast(0))
-        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
+            timeZone = MADRID_TIME_ZONE
+        }
         return sdf.format(cal.time)
     }
 }

@@ -1,10 +1,5 @@
 package com.example.ui.metro.cards
 
-import android.content.Context
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,12 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,77 +23,11 @@ import com.example.ui.dashboard.AppLanguage
 import com.example.ui.dashboard.TransitCardUiModel
 import com.example.ui.metro.CardCategory
 import com.example.ui.metro.formatCardNumber
-import kotlin.math.abs
 
 enum class CardDisplayFormat {
     HERO,     // Large card used in Onboarding & Detail Dialog
     LIST,     // Full width list item used in MetroCardsTab
     COMPACT   // Carousel item used in DashboardHomeTab
-}
-
-data class CardTilt2D(val x: Float = 0f, val y: Float = 0f)
-
-/**
- * Ultra-lightweight low-pass filtered sensor hook to track 2D phone tilt (Roll + Pitch).
- * Uses Exponential Moving Average smoothing to eliminate jitter with zero CPU lag.
- */
-@Composable
-fun rememberLightweightCardTilt2D(): State<CardTilt2D> {
-    val context = LocalContext.current
-    val tiltState = remember { mutableStateOf(CardTilt2D(0f, 0f)) }
-
-    DisposableEffect(context) {
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-        val rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-            ?: sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-
-        if (sensorManager == null || rotationSensor == null) {
-            return@DisposableEffect onDispose {}
-        }
-
-        var smoothX = 0f
-        var smoothY = 0f
-
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent?) {
-                event ?: return
-                val targetX: Float
-                val targetY: Float
-
-                if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
-                    val rotationMatrix = FloatArray(9)
-                    SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                    val orientation = FloatArray(3)
-                    SensorManager.getOrientation(rotationMatrix, orientation)
-
-                    // pitch (orientation[1]) and roll (orientation[2]) in [-1, 1] range
-                    targetX = orientation[2].coerceIn(-1f, 1f)
-                    targetY = orientation[1].coerceIn(-1f, 1f)
-                } else {
-                    targetX = (event.values[0] / 9.81f).coerceIn(-1f, 1f)
-                    targetY = (event.values[1] / 9.81f).coerceIn(-1f, 1f)
-                }
-
-                // Low-pass exponential moving average filter for liquid smooth movement
-                smoothX += (targetX - smoothX) * 0.12f
-                smoothY += (targetY - smoothY) * 0.12f
-
-                if (abs(smoothX - tiltState.value.x) > 0.005f || abs(smoothY - tiltState.value.y) > 0.005f) {
-                    tiltState.value = CardTilt2D(smoothX, smoothY)
-                }
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-
-        sensorManager.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_GAME)
-
-        onDispose {
-            sensorManager.unregisterListener(listener)
-        }
-    }
-
-    return tiltState
 }
 
 data class CardStyleDefinition(
@@ -151,9 +76,7 @@ fun getStyleForCategory(category: CardCategory): CardStyleDefinition {
 }
 
 /**
- * 100% 2D Flat, ultra-lightweight Card View.
- * Employs a subtle diagonal metallic sheen sweep calculated in the Draw phase
- * (zero recomposition overhead for zero battery/CPU drain).
+ * 100% Static, ultra-high performance Card View (Zero sensors, Zero animation/CPU overhead).
  */
 @Composable
 fun UnifiedTransitCardView(
@@ -173,9 +96,6 @@ fun UnifiedTransitCardView(
     val style = remember(category) { getStyleForCategory(category) }
     val isFaded = card.isFaded
 
-    // Lightweight 2D tilt state for specular sheen sweep
-    val tiltState = rememberLightweightCardTilt2D()
-
     val backgroundBrush = remember(style.backgroundColors, isFaded) {
         Brush.linearGradient(
             colors = if (isFaded) {
@@ -190,7 +110,15 @@ fun UnifiedTransitCardView(
 
     Card(
         modifier = modifier
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .then(
+                if (onClick != null) {
+                    Modifier
+                        .clip(cardShape)
+                        .clickable { onClick() }
+                } else {
+                    Modifier
+                }
+            )
             .border(
                 width = 1.dp,
                 color = if (isFaded) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.22f),
@@ -210,46 +138,6 @@ fun UnifiedTransitCardView(
                     }
                 )
                 .background(backgroundBrush)
-                .drawWithCache {
-                    onDrawWithContent {
-                        drawContent()
-                        if (!isFaded) {
-                            // Inverted optical response: tilting right moves light left; tilting down moves light up
-                            val tiltX = -tiltState.value.x
-                            val tiltY = -tiltState.value.y
-
-                            // Fresnel Falloff magnitude: light specular reflection grows brighter at glancing angles
-                            val tiltMagnitude = kotlin.math.sqrt(tiltX * tiltX + tiltY * tiltY).coerceIn(0f, 1f)
-                            val peakAlpha = (0.08f + tiltMagnitude * 0.16f).coerceIn(0.08f, 0.24f)
-                            val ambientAlpha = peakAlpha * 0.25f
-
-                            val w = size.width
-                            val h = size.height
-
-                            // 2D Vector offset for the specular light beam center
-                            val centerX = (0.5f + tiltX * 0.8f) * w
-                            val centerY = (0.5f + tiltY * 0.8f) * h
-
-                            // Multi-stop 5-point specular gradient with soft ambient halo and sharp core peak
-                            val sheenBrush = Brush.linearGradient(
-                                colorStops = arrayOf(
-                                    0.0f to Color.Transparent,
-                                    0.35f to style.sheenColor.copy(alpha = style.sheenColor.alpha * ambientAlpha),
-                                    0.50f to style.sheenColor.copy(alpha = style.sheenColor.alpha * peakAlpha),
-                                    0.65f to style.sheenColor.copy(alpha = style.sheenColor.alpha * ambientAlpha),
-                                    1.0f to Color.Transparent
-                                ),
-                                start = Offset(centerX - w * 0.45f, centerY - h * 0.6f),
-                                end = Offset(centerX + w * 0.45f, centerY + h * 0.6f)
-                            )
-
-                            drawRect(
-                                brush = sheenBrush,
-                                blendMode = BlendMode.Screen
-                            )
-                        }
-                    }
-                }
                 .padding(if (format == CardDisplayFormat.HERO) 16.dp else 12.dp)
         ) {
             when (format) {
@@ -365,7 +253,7 @@ private fun HeroCardContent(
             }
 
             Text(
-                text = if (isFaded) "Inactiva" else card.remainingValue,
+                text = if (isFaded) androidx.compose.ui.res.stringResource(com.example.R.string.card_status_inactive) else card.remainingValue,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Black,
                 color = if (isFaded) Color.White.copy(alpha = 0.5f) else Color.White
@@ -382,6 +270,7 @@ private fun ListCardContent(
     isFaded: Boolean,
     appLanguage: AppLanguage
 ) {
+    val inactiveStr = androidx.compose.ui.res.stringResource(com.example.R.string.card_status_inactive)
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.SpaceBetween
@@ -425,7 +314,7 @@ private fun ListCardContent(
                 color = Color.White.copy(alpha = 0.18f)
             ) {
                 Text(
-                    text = if (isFaded) "${category.label} (Inactiva)" else category.label,
+                    text = if (isFaded) "${category.label} ($inactiveStr)" else category.label,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
@@ -476,7 +365,7 @@ private fun ListCardContent(
                     Spacer(modifier = Modifier.height(2.dp))
                 }
                 Text(
-                    text = if (isFaded) "Inactiva" else card.remainingValue,
+                    text = if (isFaded) inactiveStr else card.remainingValue,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Black,
                     color = if (isFaded) Color.White.copy(alpha = 0.5f) else Color.White
@@ -494,6 +383,8 @@ private fun CompactCardContent(
     isFaded: Boolean,
     appLanguage: AppLanguage
 ) {
+    val inactiveStr = androidx.compose.ui.res.stringResource(com.example.R.string.card_status_inactive)
+    val checkBalanceStr = androidx.compose.ui.res.stringResource(com.example.R.string.cards_summary_check_balance)
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.SpaceBetween
@@ -536,7 +427,7 @@ private fun CompactCardContent(
             Spacer(modifier = Modifier.height(2.dp))
 
             Text(
-                text = if (isFaded) "Inactiva" else card.remainingValue.ifBlank { "Consultar saldo" },
+                text = if (isFaded) inactiveStr else card.remainingValue.ifBlank { checkBalanceStr },
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.ExtraBold,
                 color = if (isFaded) Color.White.copy(alpha = 0.5f) else Color.White,

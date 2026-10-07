@@ -354,7 +354,7 @@ fun AddTransitCardWizardDialog(
                                     }
                                 }
                             ) {
-                                Text("Abrir Ajustes NFC")
+                                Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_open_nfc_settings))
                             }
                         } else if (nfcProcessing) {
                             CircularProgressIndicator(
@@ -498,7 +498,7 @@ fun AddTransitCardWizardDialog(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = if (appLanguage == AppLanguage.CA) "Saldo / Viatges:" else "Saldo / Viajes:",
+                                            text = androidx.compose.ui.res.stringResource(com.example.R.string.card_balance_trips_label),
                                             fontSize = 13.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )

@@ -21,18 +21,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.R
 
 @Composable
 fun DashboardBottomNavBar(
     activeTab: DashboardTab,
     isDarkMode: Boolean,
-    texts: Translation,
     onTabSelected: (DashboardTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val tabInicio = stringResource(R.string.tab_inicio)
+    val tabMapa = stringResource(R.string.tab_mapa)
+    val tabBus = stringResource(R.string.tab_bus)
+    val tabMetro = stringResource(R.string.tab_metro)
+    val tabCercanias = stringResource(R.string.tab_cercanias)
+
     NavigationBar(
         modifier = modifier.testTag("bottom_nav_bar"),
         containerColor = if (isDarkMode) Color(0xFF000000) else Color(0xFFFFFFFF),
@@ -51,7 +58,7 @@ fun DashboardBottomNavBar(
             onClick = { onTabSelected(DashboardTab.Inicio) },
             label = {
                 Text(
-                    texts.tabInicio,
+                    text = tabInicio,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (activeTab == DashboardTab.Inicio) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,
@@ -61,7 +68,7 @@ fun DashboardBottomNavBar(
             icon = {
                 Icon(
                     imageVector = if (activeTab == DashboardTab.Inicio) Icons.Default.Home else Icons.Outlined.Home,
-                    contentDescription = texts.tabInicio
+                    contentDescription = tabInicio
                 )
             },
             colors = navColors,
@@ -73,7 +80,7 @@ fun DashboardBottomNavBar(
             onClick = { onTabSelected(DashboardTab.Mapa) },
             label = {
                 Text(
-                    texts.tabMapa,
+                    text = tabMapa,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (activeTab == DashboardTab.Mapa) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,
@@ -83,7 +90,7 @@ fun DashboardBottomNavBar(
             icon = {
                 Icon(
                     imageVector = if (activeTab == DashboardTab.Mapa) Icons.Default.Map else Icons.Outlined.Map,
-                    contentDescription = texts.tabMapa
+                    contentDescription = tabMapa
                 )
             },
             colors = navColors,
@@ -95,7 +102,7 @@ fun DashboardBottomNavBar(
             onClick = { onTabSelected(DashboardTab.Bus) },
             label = {
                 Text(
-                    texts.tabBus,
+                    text = tabBus,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (activeTab == DashboardTab.Bus) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,
@@ -105,7 +112,7 @@ fun DashboardBottomNavBar(
             icon = {
                 Icon(
                     imageVector = if (activeTab == DashboardTab.Bus) Icons.Default.DirectionsBus else Icons.Outlined.DirectionsBus,
-                    contentDescription = texts.tabBus
+                    contentDescription = tabBus
                 )
             },
             colors = navColors,
@@ -117,7 +124,7 @@ fun DashboardBottomNavBar(
             onClick = { onTabSelected(DashboardTab.Metro) },
             label = {
                 Text(
-                    texts.tabMetro,
+                    text = tabMetro,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (activeTab == DashboardTab.Metro) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,
@@ -127,7 +134,7 @@ fun DashboardBottomNavBar(
             icon = {
                 Icon(
                     imageVector = if (activeTab == DashboardTab.Metro) Icons.Default.Subway else Icons.Outlined.Subway,
-                    contentDescription = texts.tabMetro
+                    contentDescription = tabMetro
                 )
             },
             colors = navColors,
@@ -139,7 +146,7 @@ fun DashboardBottomNavBar(
             onClick = { onTabSelected(DashboardTab.Cercanias) },
             label = {
                 Text(
-                    texts.tabCercanias,
+                    text = tabCercanias,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (activeTab == DashboardTab.Cercanias) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,
@@ -149,7 +156,7 @@ fun DashboardBottomNavBar(
             icon = {
                 Icon(
                     imageVector = if (activeTab == DashboardTab.Cercanias) Icons.Default.DirectionsRailway else Icons.Outlined.DirectionsRailway,
-                    contentDescription = texts.tabCercanias
+                    contentDescription = tabCercanias
                 )
             },
             colors = navColors,

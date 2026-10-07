@@ -155,7 +155,7 @@ fun RouteScheduleDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (appLanguage == AppLanguage.ES) "Horario del trayecto" else "Horari del trajecte",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.route_schedule_title),
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -188,9 +188,9 @@ fun RouteScheduleDialog(
                 DepartureType.values().forEach { type ->
                     val isSelected = selectedType == type
                     val label = when (type) {
-                        DepartureType.LEAVE_NOW -> if (appLanguage == AppLanguage.ES) "Ahora" else "Ara"
-                        DepartureType.DEPART_AT -> if (appLanguage == AppLanguage.ES) "Salir a las" else "Eixir a les"
-                        DepartureType.ARRIVE_BY -> if (appLanguage == AppLanguage.ES) "Llegar a las" else "Arribar a les"
+                        DepartureType.LEAVE_NOW -> androidx.compose.ui.res.stringResource(com.example.R.string.route_schedule_now)
+                        DepartureType.DEPART_AT -> androidx.compose.ui.res.stringResource(com.example.R.string.route_schedule_leave_at)
+                        DepartureType.ARRIVE_BY -> androidx.compose.ui.res.stringResource(com.example.R.string.route_schedule_arrive_by)
                     }
 
                     Box(
@@ -343,17 +343,13 @@ fun RouteScheduleDialog(
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (appLanguage == AppLanguage.ES) "Salida inmediata" else "Eixida immediata",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.route_schedule_immediate),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.ES) {
-                                "Muestra las combinaciones directas y más rápidas en este instante."
-                            } else {
-                                "Mostra les combinacions directes i més ràpides en este instant."
-                            },
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.route_schedule_now_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -378,7 +374,7 @@ fun RouteScheduleDialog(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.ES) "Cancelar" else "Cancel·lar",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_cancel),
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
@@ -403,7 +399,7 @@ fun RouteScheduleDialog(
                     )
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.ES) "Aplicar horario" else "Aplicar horari",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.route_apply_schedule),
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 }

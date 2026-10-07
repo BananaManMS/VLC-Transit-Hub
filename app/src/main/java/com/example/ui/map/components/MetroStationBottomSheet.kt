@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material.icons.filled.Tram
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.ui.text.style.TextOverflow
@@ -490,6 +492,63 @@ fun MetroStationBottomSheet(
                     }
                 }
             } else {
+                val resolvedMetroViewModel = metroViewModel ?: androidx.lifecycle.viewmodel.compose.viewModel<MetroViewModel>()
+                val lineStationsMap by resolvedMetroViewModel.lineStationsState.collectAsState()
+                val lineDepartureGroups = remember(
+                    departures,
+                    station.id,
+                    station.name,
+                    lineStationsMap,
+                    appLanguage,
+                    texts,
+                    isDarkMode
+                ) {
+                    com.example.ui.metro.MetroMapper.groupDeparturesByLineAndDirection(
+                        departures = departures,
+                        currentStationId = station.id,
+                        currentStationName = station.name,
+                        lineStationsMap = lineStationsMap,
+                        appLanguage = appLanguage,
+                        texts = texts,
+                        isDarkMode = isDarkMode,
+                        sharedLineDigitsGetter = { digit -> resolvedMetroViewModel.getSharedLineDigits(digit) }
+                    )
+                }
+
+                val isMixedMetroTramStation = remember(station) {
+                    val lines = station.lines
+                    val hasMetro = lines.any { l ->
+                        val digit = l.filter { it.isDigit() }
+                        digit in setOf("1", "2", "3", "5", "7", "9")
+                    }
+                    val hasTram = lines.any { l ->
+                        val digit = l.filter { it.isDigit() }
+                        digit in setOf("4", "6", "8", "10", "11", "12")
+                    }
+                    hasMetro && hasTram
+                }
+
+                val (metroLineGroups, tramLineGroups) = remember<Pair<List<com.example.ui.metro.LineDeparturesGroupUiModel>, List<com.example.ui.metro.LineDeparturesGroupUiModel>>>(
+                    lineDepartureGroups,
+                    isMixedMetroTramStation
+                ) {
+                    if (!isMixedMetroTramStation) {
+                        Pair(lineDepartureGroups, emptyList())
+                    } else {
+                        val metro = mutableListOf<com.example.ui.metro.LineDeparturesGroupUiModel>()
+                        val tram = mutableListOf<com.example.ui.metro.LineDeparturesGroupUiModel>()
+                        lineDepartureGroups.forEach { group ->
+                            val digit = group.lineId.filter { it.isDigit() }
+                            if (digit in setOf("4", "6", "8", "10", "11", "12")) {
+                                tram.add(group)
+                            } else {
+                                metro.add(group)
+                            }
+                        }
+                        Pair(metro.toList(), tram.toList())
+                    }
+                }
+
                 LazyColumn(
                     state = listState,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp + activeTripBottomPadding),
@@ -498,17 +557,96 @@ fun MetroStationBottomSheet(
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    items(
-                        items = departures,
-                        key = { dep -> "${dep.lineId}_${dep.destination}_${dep.minutesRemaining}_${dep.secondsRemaining}_${dep.track ?: ""}" }
-                    ) { dep ->
-                        MapMetroDepartureListItem(
-                            departure = dep,
-                            appLanguage = appLanguage,
-                            texts = texts,
-                            isDarkMode = isDarkMode,
-                            metroViewModel = metroViewModel
-                        )
+                    if (isMixedMetroTramStation) {
+                        if (metroLineGroups.isNotEmpty()) {
+                            item(key = "header_metro_section") {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 2.dp, top = 2.dp, bottom = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Subway,
+                                        contentDescription = null,
+                                        tint = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Metro",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+                                    )
+                                }
+                            }
+                            items(
+                                items = metroLineGroups,
+                                key = { group -> "metro_group_${group.lineId}_${group.primaryDestination}" }
+                            ) { group ->
+                                com.example.ui.metro.MetroLineDepartureCard(
+                                    group = group,
+                                    metroViewModel = resolvedMetroViewModel,
+                                    appLanguage = appLanguage,
+                                    texts = texts,
+                                    isDarkMode = isDarkMode,
+                                    onExpired = {}
+                                )
+                            }
+                        }
+
+                        if (tramLineGroups.isNotEmpty()) {
+                            item(key = "header_tram_section") {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 2.dp, top = 6.dp, bottom = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tram,
+                                        contentDescription = null,
+                                        tint = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = if (appLanguage == AppLanguage.CA) "Tramvia" else "Tranvía",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+                                    )
+                                }
+                            }
+                            items(
+                                items = tramLineGroups,
+                                key = { group -> "tram_group_${group.lineId}_${group.primaryDestination}" }
+                            ) { group ->
+                                com.example.ui.metro.MetroLineDepartureCard(
+                                    group = group,
+                                    metroViewModel = resolvedMetroViewModel,
+                                    appLanguage = appLanguage,
+                                    texts = texts,
+                                    isDarkMode = isDarkMode,
+                                    onExpired = {}
+                                )
+                            }
+                        }
+                    } else {
+                        items(
+                            items = lineDepartureGroups,
+                            key = { group -> "group_${group.lineId}_${group.primaryDestination}" }
+                        ) { group ->
+                            com.example.ui.metro.MetroLineDepartureCard(
+                                group = group,
+                                metroViewModel = resolvedMetroViewModel,
+                                appLanguage = appLanguage,
+                                texts = texts,
+                                isDarkMode = isDarkMode,
+                                onExpired = {}
+                            )
+                        }
                     }
                 }
             }

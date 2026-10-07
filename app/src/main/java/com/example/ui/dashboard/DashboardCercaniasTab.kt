@@ -18,6 +18,7 @@ fun DashboardCercaniasTab(
     activeTripBottomPadding: Dp,
     onBackClick: (() -> Unit)?,
     onBackGesture: (() -> Unit)?,
+    onOpenMap: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     CercaniasScreen(

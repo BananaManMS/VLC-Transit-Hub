@@ -92,7 +92,7 @@ fun StationCirculationAlertBadge(
             ) {
                 Icon(
                     imageVector = Icons.Default.Warning,
-                    contentDescription = if (appLanguage == AppLanguage.CA) "Avisos de circulació" else "Avisos de circulación",
+                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.metro_circulation_alerts_title),
                     tint = redColor,
                     modifier = Modifier.size(15.dp)
                 )
@@ -207,7 +207,7 @@ fun StationCirculationIncidentsDialog(
                                 maxLines = 1
                             )
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Avisos de circulació" else "Avisos de circulación",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_circulation_alerts_title),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = redColor
@@ -223,7 +223,7 @@ fun StationCirculationIncidentsDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Tancar" else "Cerrar",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
                             tint = subtextColor,
                             modifier = Modifier.size(18.dp)
                         )
@@ -289,7 +289,7 @@ fun StationCirculationIncidentsDialog(
                     )
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Entés" else "Entendido",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.card_alert_understood),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = Color.White

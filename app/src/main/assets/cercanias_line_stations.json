@@ -239,8 +239,28 @@
       "name": "València Nord"
     },
     {
+      "id": "65002",
+      "name": "València F. S. Lluís"
+    },
+    {
       "id": "65003",
       "name": "Cabanyal"
+    },
+    {
+      "id": "65001",
+      "name": "Roca-Cúper"
+    },
+    {
+      "id": "65005",
+      "name": "Albuixech"
+    },
+    {
+      "id": "65006",
+      "name": "Massalfassar"
+    },
+    {
+      "id": "65007",
+      "name": "El Puig"
     },
     {
       "id": "65008",

@@ -71,27 +71,30 @@ object StationAccessibilityHelper {
         stationName: String,
         incident: AccessibilityIncident
     ): Boolean {
+        if (stationName.isBlank()) return false
         val normName = stationName.normalizeForSearch()
-        val stationIdInt = stationId.toIntOrNull()
-
-        if (stationIdInt != null && incident.estacionId == stationIdInt) return true
-        if (incident.estacionId != null && incident.estacionId.toString() == stationId) return true
 
         val incEstName = incident.estacionNombre?.trim()
         if (!incEstName.isNullOrEmpty()) {
             val normIncName = incEstName.normalizeForSearch()
-            if (normIncName == normName || normIncName.equals(normName, ignoreCase = true)) {
+            if (normIncName == normName ||
+                normIncName.equals(normName, ignoreCase = true) ||
+                getStationVariants(stationName).any { v -> v.normalizeForSearch() == normIncName }
+            ) {
                 return true
             }
         }
 
-        if (incident.estacionId == null && incEstName.isNullOrBlank()) {
-            val titleNorm = (incident.tituloEs + " " + incident.tituloCa).normalizeForSearch()
-            if (titleNorm.contains("estacio de $normName") || titleNorm.contains("estacion de $normName")) {
-                return true
-            }
+        val fullTextNorm = (incident.tituloEs + " " + incident.descripcionEs + " " + incident.tituloCa + " " + incident.descripcionCa).normalizeForSearch()
+        return getStationVariants(stationName).any { variant ->
+            val vNorm = variant.normalizeForSearch()
+            vNorm.isNotBlank() && (
+                fullTextNorm.contains("estacion $vNorm") ||
+                fullTextNorm.contains("estacio $vNorm") ||
+                fullTextNorm.contains("estacion de $vNorm") ||
+                fullTextNorm.contains("estacio de $vNorm")
+            )
         }
-        return false
     }
 
     fun isCercaniasStationAffected(

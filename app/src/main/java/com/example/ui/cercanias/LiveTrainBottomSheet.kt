@@ -29,10 +29,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.map.components.BottomSheetDragScrollController
 import com.example.ui.map.components.DetailSheetState
 import com.example.ui.metro.CercaniasLineBadge
 import com.example.ui.metro.TransitLogoUtils
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import kotlinx.coroutines.launch
+
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,9 +49,9 @@ fun LiveTrainBottomSheet(
     modifier: Modifier = Modifier,
     maxExpandedHeight: Dp = 640.dp,
     sheetState: DetailSheetState = DetailSheetState.HALF_EXPANDED,
-    onSheetStateChanged: (DetailSheetState) -> Unit = {}
+    onSheetStateChanged: (DetailSheetState) -> Unit = {},
+    bottomPadding: Dp = 32.dp
 ) {
-    val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
 
     val sheetBg = if (isDarkMode) Color(0xFF171717) else Color(0xFFFAFAFA)
@@ -98,124 +103,10 @@ fun LiveTrainBottomSheet(
         else -> Triple("+$delayMin min de retraso", Color(0xFFFFEBEE), Color(0xFFC62828))
     }
 
-    // Draggable bottom sheet height logic
-    var measuredHeaderPx by remember { mutableFloatStateOf(0f) }
-    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val defaultCollapsedPx = with(density) { (118.dp + navBarBottom).toPx() }
-    val collapsedPx = if (measuredHeaderPx > 0f) {
-        measuredHeaderPx + with(density) { (20.dp + navBarBottom).toPx() }
-    } else {
-        defaultCollapsedPx
-    }
-
-    // Dynamic height calculation according to available content (fits generously with ample breathing room)
-    val estimatedContentHeight = remember(vehicle, navBarBottom) {
-        val base = 100.dp
-        val statusPill = 58.dp // Delay status pill
-        val cards = 96.dp // Vía/andén and circulación cards
-        val timeline = 164.dp // Real-time tracking current stop & next stop box
-        val bottomBreathingRoom = 48.dp + navBarBottom // Ample bottom space to eliminate collision with system UI and bottom bar
-        
-        base + statusPill + cards + timeline + bottomBreathingRoom
-    }
-    
-    val halfExpandedDp = estimatedContentHeight.coerceAtMost(maxExpandedHeight)
-    val fullyExpandedDp = maxExpandedHeight.coerceAtLeast(halfExpandedDp)
-
-    val halfExpandedPx = with(density) { halfExpandedDp.toPx() }
-    val fullyExpandedPx = with(density) { fullyExpandedDp.toPx() }
-
-    val heightAnimatable = remember {
-        Animatable(
-            when (sheetState) {
-                DetailSheetState.COLLAPSED -> collapsedPx
-                DetailSheetState.HALF_EXPANDED -> halfExpandedPx
-                DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
-            }
-        )
-    }
-
-    LaunchedEffect(sheetState, collapsedPx, halfExpandedPx, fullyExpandedPx) {
-        val target = when (sheetState) {
-            DetailSheetState.COLLAPSED -> collapsedPx
-            DetailSheetState.HALF_EXPANDED -> halfExpandedPx
-            DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
-        }
-        if (kotlin.math.abs(heightAnimatable.value - target) > 1f && heightAnimatable.targetValue != target) {
-            heightAnimatable.animateTo(
-                targetValue = target,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium
-                )
-            )
-        }
-    }
-
-    val currentHeightPx = heightAnimatable.value
-    val panelHeight = with(density) { currentHeightPx.toDp() }
-
+    val dragOffsetAnimatable = remember { Animatable(0f) }
     var totalDragAmount by remember { mutableFloatStateOf(0f) }
 
-    val headerDragModifier = Modifier.pointerInput(collapsedPx, halfExpandedPx, fullyExpandedPx) {
-        detectVerticalDragGestures(
-            onDragStart = { totalDragAmount = 0f },
-            onDragEnd = {
-                val dragDistance = totalDragAmount
-                val currentH = heightAnimatable.value
-                val isUp = dragDistance < -15f
-                val isDown = dragDistance > 15f
-
-                val targetState = when {
-                    isUp -> {
-                        if (currentH < halfExpandedPx) DetailSheetState.HALF_EXPANDED else DetailSheetState.FULLY_EXPANDED
-                    }
-                    isDown -> {
-                        if (currentH > halfExpandedPx) DetailSheetState.HALF_EXPANDED else DetailSheetState.COLLAPSED
-                    }
-                    else -> {
-                        val upperMid = (halfExpandedPx + fullyExpandedPx) * 0.5f
-                        val lowerMid = (collapsedPx + halfExpandedPx) * 0.5f
-                        when {
-                            currentH >= upperMid -> DetailSheetState.FULLY_EXPANDED
-                            currentH >= lowerMid -> DetailSheetState.HALF_EXPANDED
-                            else -> DetailSheetState.COLLAPSED
-                        }
-                    }
-                }
-                
-                // If the target state is COLLAPSED (meaning the user dragged it down to dismiss), 
-                // dismiss completely! This frees up the map and prevents any invisible blocking layers.
-                if (targetState == DetailSheetState.COLLAPSED) {
-                    onDismiss()
-                } else {
-                    onSheetStateChanged(targetState)
-                    coroutineScope.launch {
-                        val targetPx = when (targetState) {
-                            DetailSheetState.COLLAPSED -> collapsedPx
-                            DetailSheetState.HALF_EXPANDED -> halfExpandedPx
-                            DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
-                        }
-                        heightAnimatable.animateTo(
-                            targetValue = targetPx,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMedium
-                            )
-                        )
-                    }
-                }
-            },
-            onVerticalDrag = { change, dragAmount ->
-                change.consume()
-                totalDragAmount += dragAmount
-                coroutineScope.launch {
-                    val newTarget = (heightAnimatable.value - dragAmount).coerceIn(collapsedPx, fullyExpandedPx)
-                    heightAnimatable.snapTo(newTarget)
-                }
-            }
-        )
-    }
+    val scrollState = rememberScrollState()
 
     Surface(
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -223,19 +114,55 @@ fun LiveTrainBottomSheet(
         shadowElevation = 8.dp,
         modifier = modifier
             .fillMaxWidth()
-            .height(panelHeight)
+            .widthIn(max = 640.dp)
+            .wrapContentHeight()
+            .offset {
+                IntOffset(0, dragOffsetAnimatable.value.roundToInt().coerceAtLeast(0))
+            }
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragStart = { totalDragAmount = 0f },
+                    onDragEnd = {
+                        val currentOffset = dragOffsetAnimatable.value
+                        if (currentOffset > 80f || totalDragAmount > 50f) {
+                            onDismiss()
+                        } else {
+                            coroutineScope.launch {
+                                dragOffsetAnimatable.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        if (dragAmount > 0 || dragOffsetAnimatable.value > 0) {
+                            change.consume()
+                            totalDragAmount += dragAmount
+                            coroutineScope.launch {
+                                val newOffset = (dragOffsetAnimatable.value + dragAmount).coerceAtLeast(0f)
+                                dragOffsetAnimatable.snapTo(newOffset)
+                            }
+                        }
+                    }
+                )
+            }
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 0.dp)
+                .fillMaxWidth()
+                .verticalScroll(scrollState)
+                .navigationBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 18.dp + bottomPadding)
         ) {
-            // Drag handle decoration & Gestures
+            // Drag handle decoration
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 10.dp, bottom = 6.dp)
-                    .then(headerDragModifier),
+                    .padding(bottom = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -251,9 +178,6 @@ fun LiveTrainBottomSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onSizeChanged { size ->
-                        measuredHeaderPx = size.height.toFloat()
-                    }
                     .padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -263,7 +187,6 @@ fun LiveTrainBottomSheet(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    // Official Cercanías Line Logo (Vector/Webp)
                     CercaniasLineBadge(
                         routeId = lineCode,
                         size = 40.dp
@@ -296,215 +219,198 @@ fun LiveTrainBottomSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Cerrar",
+                        contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
                         tint = sheetTextColor
                     )
                 }
             }
 
-            // Expanded-Only Contents (Shows when NOT collapsed)
-            if (sheetState != DetailSheetState.COLLAPSED) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .navigationBarsPadding()
-                        .padding(bottom = 36.dp)
+            // Delay Status Pill
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = statusBgColor,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_title),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = statusTextColor,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = statusTextColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
 
-                    // Delay Status Pill
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = statusBgColor,
-                        modifier = Modifier.fillMaxWidth()
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Telemetry Grid Cards
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Platform / Vía Card
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF262626) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
+                        Text(
+                            text = "VÍA / ANDÉN",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = sheetSubtextColor
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (vehicle.platform.isNotBlank()) "Vía ${vehicle.platform}" else "Por asignar",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        if (vehicle.nextPlatform.isNotBlank()) {
                             Text(
-                                text = "Estado del servicio",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = statusTextColor,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = statusText,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = statusTextColor,
-                                fontWeight = FontWeight.Bold
+                                text = "Siguiente: Vía ${vehicle.nextPlatform}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = sheetSubtextColor
                             )
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                // Circulation Status Card
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF262626) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Text(
+                            text = "CIRCULACIÓN",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = sheetSubtextColor
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val statusDesc = when (vehicle.status) {
+                            "STOPPED_AT" -> "Parado en estación"
+                            "INCOMING_AT" -> "Llegando a estación"
+                            else -> "En trayecto"
+                        }
+                        Text(
+                            text = statusDesc,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = sheetTextColor
+                        )
+                    }
+                }
+            }
 
-                    // Telemetry Grid Cards
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Progress Timeline Stepper
+            Text(
+                text = "Seguimiento en tiempo real",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = sheetTextColor
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (isDarkMode) Color(0xFF212121) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Current Station Item
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Platform / Vía Card
-                        Card(
-                            modifier = Modifier.weight(1f),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isDarkMode) Color(0xFF262626) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .background(lineColor, CircleShape)
+                        )
+                        Column {
+                            Text(
+                                text = "Estación actual / ÚLTIMA PARADA",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = sheetSubtextColor
                             )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp)
-                            ) {
-                                Text(
-                                    text = "VÍA / ANDÉN",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = sheetSubtextColor
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = if (vehicle.platform.isNotBlank()) "Vía ${vehicle.platform}" else "Por asignar",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                if (vehicle.nextPlatform.isNotBlank()) {
-                                    Text(
-                                        text = "Siguiente: Vía ${vehicle.nextPlatform}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = sheetSubtextColor
-                                    )
-                                }
-                            }
-                        }
-
-                        // Circulation Status Card
-                        Card(
-                            modifier = Modifier.weight(1f),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isDarkMode) Color(0xFF262626) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            val resolvedCurrent = stationNameMap[vehicle.currentStopId] ?: vehicle.currentStopId.ifBlank { "Estación de origen" }
+                            Text(
+                                text = resolvedCurrent,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = sheetTextColor
                             )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp)
-                            ) {
-                                Text(
-                                    text = "CIRCULACIÓN",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = sheetSubtextColor
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                val statusDesc = when (vehicle.status) {
-                                    "STOPPED_AT" -> "Parado en estación"
-                                    "INCOMING_AT" -> "Llegando a estación"
-                                    else -> "En trayectoria"
-                                }
-                                Text(
-                                    text = statusDesc,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = sheetTextColor
-                                )
-                            }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Progress Timeline Stepper
-                    Text(
-                        text = "Seguimiento en tiempo real",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = sheetTextColor
+                    // Connecting Line
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 5.dp)
+                            .width(2.dp)
+                            .height(16.dp)
+                            .background(if (isDarkMode) Color(0xFF424242) else MaterialTheme.colorScheme.outlineVariant)
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (isDarkMode) Color(0xFF212121) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                        modifier = Modifier.fillMaxWidth()
+                    // Next Station Item
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            // Current Station Item
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(12.dp)
-                                        .background(lineColor, CircleShape)
-                                )
-                                Column {
-                                    Text(
-                                        text = "Estación actual / ÚLTIMA PARADA",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = sheetSubtextColor
-                                    )
-                                    val resolvedCurrent = stationNameMap[vehicle.currentStopId] ?: vehicle.currentStopId.ifBlank { "Estación de origen" }
-                                    Text(
-                                        text = resolvedCurrent,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = sheetTextColor
-                                    )
-                                }
-                            }
-
-                            // Connecting Line
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 5.dp)
-                                    .width(2.dp)
-                                    .height(16.dp)
-                                    .background(if (isDarkMode) Color(0xFF424242) else MaterialTheme.colorScheme.outlineVariant)
+                        Icon(
+                            imageVector = Icons.Default.Place,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "PRÓXIMA ESTACIÓN",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
                             )
-
-                            // Next Station Item
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Place,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
+                            val resolvedNext = stationNameMap[vehicle.nextStopId] ?: vehicle.nextStopId.ifBlank { "En trayecto" }
+                            Text(
+                                text = resolvedNext,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (vehicle.nextArrivalTime.isNotBlank()) {
+                                val formattedArrivalTime = formatEstimatedArrivalTime(vehicle.nextArrivalTime)
+                                Text(
+                                    text = "Llegada estimada: $formattedArrivalTime",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = sheetSubtextColor
                                 )
-                                Column {
-                                    Text(
-                                        text = "PRÓXIMA ESTACIÓN",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    val resolvedNext = stationNameMap[vehicle.nextStopId] ?: vehicle.nextStopId.ifBlank { "En trayecto" }
-                                    Text(
-                                        text = resolvedNext,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    if (vehicle.nextArrivalTime.isNotBlank()) {
-                                        val formattedArrivalTime = formatEstimatedArrivalTime(vehicle.nextArrivalTime)
-                                        Text(
-                                            text = "Llegada estimada: $formattedArrivalTime",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = sheetSubtextColor
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
-
-                    // Extra bottom clearance so content never collides with navigation bars or bottom edges
-                    Spacer(modifier = Modifier.height(28.dp))
                 }
             }
         }
@@ -519,7 +425,9 @@ fun formatEstimatedArrivalTime(rawTime: String): String {
     val numericTs = trimmed.toLongOrNull()
     if (numericTs != null && numericTs > 1_000_000_000L) {
         val millis = if (numericTs < 10_000_000_000L) numericTs * 1000L else numericTs
-        val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).apply {
+            timeZone = java.util.TimeZone.getTimeZone("Europe/Madrid")
+        }
         return sdf.format(java.util.Date(millis))
     }
 

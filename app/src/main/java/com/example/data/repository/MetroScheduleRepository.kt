@@ -69,7 +69,14 @@ class MetroScheduleRepository private constructor(private val context: Context) 
             val now = System.currentTimeMillis()
             val cacheFile = File(context.filesDir, CACHE_FILE_NAME)
 
-            val needsSync = !cacheFile.exists() || (now - lastSync > 24 * 60 * 60 * 1000L)
+            val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).apply {
+                timeZone = TimeZone.getTimeZone("Europe/Madrid")
+            }
+            val todayStr = sdf.format(Date())
+            val hasTodayAsFirstDate = datesList.isNotEmpty() && datesList.firstOrNull() == todayStr
+            val isCacheStale = (now - lastSync > 6 * 60 * 60 * 1000L) || !hasTodayAsFirstDate
+
+            val needsSync = !cacheFile.exists() || isCacheStale
             if (!needsSync) {
                 return@withContext false
             }
@@ -82,7 +89,19 @@ class MetroScheduleRepository private constructor(private val context: Context) 
             conn.requestMethod = "GET"
             conn.setRequestProperty("User-Agent", "VLC-Transit/1.0")
 
+            val lastModifiedPref = prefs.getLong("last_modified_header", 0L)
+            if (cacheFile.exists() && lastModifiedPref > 0L) {
+                conn.ifModifiedSince = lastModifiedPref
+            }
+
+            if (conn.responseCode == HttpURLConnection.HTTP_NOT_MODIFIED) {
+                Log.d(TAG, "Metrovalencia schedule has not changed on GitHub (304 Not Modified)")
+                prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
+                return@withContext false
+            }
+
             if (conn.responseCode == HttpURLConnection.HTTP_OK) {
+                val lastModifiedHeader = conn.lastModified
                 val tempFile = File(context.filesDir, "$CACHE_FILE_NAME.tmp")
                 conn.inputStream.use { input ->
                     tempFile.outputStream().use { output ->
@@ -92,7 +111,10 @@ class MetroScheduleRepository private constructor(private val context: Context) 
                 if (tempFile.length() > 50000) { // Valid non-empty file
                     if (cacheFile.exists()) cacheFile.delete()
                     tempFile.renameTo(cacheFile)
-                    prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
+                    prefs.edit()
+                        .putLong(KEY_LAST_SYNC, now)
+                        .putLong("last_modified_header", lastModifiedHeader)
+                        .apply()
                     Log.d(TAG, "Metrovalencia schedule synced successfully (${cacheFile.length()} bytes)")
                     // Reload in-memory
                     loadScheduleData()
@@ -284,6 +306,9 @@ class MetroScheduleRepository private constructor(private val context: Context) 
         val cleanLine = line.replace("L", "").trim()
         val destWebId = destinationWebId ?: findWebIdByStationName(destinationName)
         val activeDateIdx = getActiveDateIndex()
+        val prevDateIdx = getPreviousDateIndex()
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("Europe/Madrid"))
+        val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
 
         val stationEntries = stopSchedules[currentStationWebId] ?: return@withContext null
 
@@ -293,7 +318,9 @@ class MetroScheduleRepository private constructor(private val context: Context) 
 
         synchronized(stationEntries) {
             for (arr in stationEntries) {
-                if (arr[0] != activeDateIdx) continue
+                val dIdx = arr[0]
+                val isValidDate = dIdx == activeDateIdx || (currentHour < 6 && prevDateIdx != null && dIdx == prevDateIdx && arr[1] >= 1440)
+                if (!isValidDate) continue
                 val lineStr = lineStringMap[arr[2]] ?: arr[2].toString()
                 if (lineStr != cleanLine) continue
 
@@ -400,7 +427,16 @@ class MetroScheduleRepository private constructor(private val context: Context) 
         }
         val todayStr = sdf.format(Date())
         val idx = datesList.indexOf(todayStr)
-        return if (idx >= 0) idx else 0
+        if (idx >= 0) return idx
+
+        // Fallback when GitHub file has not updated yet:
+        // The JSON contains 2 days [day0, day1]. If today is >= day0, day1 (index 1) represents
+        // the next day (el día siguiente) and is the closest/most recent schedule in the file.
+        return if (datesList.size > 1 && todayStr >= datesList[0]) {
+            1
+        } else {
+            datesList.lastIndex.coerceAtLeast(0)
+        }
     }
 
     private fun getPreviousDateIndex(): Int? {
@@ -412,7 +448,10 @@ class MetroScheduleRepository private constructor(private val context: Context) 
         cal.add(Calendar.DAY_OF_YEAR, -1)
         val yesterdayStr = sdf.format(cal.time)
         val idx = datesList.indexOf(yesterdayStr)
-        return if (idx >= 0) idx else null
+        if (idx >= 0) return idx
+
+        val activeIdx = getActiveDateIndex()
+        return if (activeIdx > 0) activeIdx - 1 else null
     }
 
     private fun loadScheduleData() {

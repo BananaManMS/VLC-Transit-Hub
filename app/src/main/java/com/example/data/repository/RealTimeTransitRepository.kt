@@ -353,7 +353,31 @@ object RealTimeTransitRepository {
                     val estTime = item.optString("hora_estimada", item.optString("horaEstimada", item.optString("hora", item.optString("time", "")))).ifEmpty { null }
                     val status = item.optString("estado", item.optString("status", "")).ifEmpty { null }
                     val trackStr = item.optString("via", item.optString("vía", item.optString("track", item.optString("anden", "")))).ifEmpty { null }
-                    val rawVehicle = item.optString("vehiculo", item.optString("vehículo", item.optString("vehicle", item.optString("id_vehiculo", "")))).trim()
+                    val rawVehicle = item.optString(
+                        "vehiculo",
+                        item.optString(
+                            "vehículo",
+                            item.optString(
+                                "vehicle",
+                                item.optString(
+                                    "id_vehiculo",
+                                    item.optString(
+                                        "id_circulacion",
+                                        item.optString(
+                                            "id_servicio",
+                                            item.optString(
+                                                "servicio",
+                                                item.optString(
+                                                    "id_tren",
+                                                    item.optString("tren_id", item.optString("id", ""))
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    ).trim()
                     val vehicleIdStr = if (rawVehicle.isNotEmpty() && !rawVehicle.equals("null", ignoreCase = true)) rawVehicle else null
                     val rawCapacidad = item.optInt("capacidad", item.optInt("capacity", -1)).takeIf { it > 0 }
                     

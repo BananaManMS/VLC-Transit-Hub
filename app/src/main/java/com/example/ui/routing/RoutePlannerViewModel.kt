@@ -123,6 +123,16 @@ class RoutePlannerViewModel @JvmOverloads constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val pinnedLocation: StateFlow<RecentSearch?> = dashboardRepository.getPreferenceFlow("pinned_location", "")
+        .map { json ->
+            if (json.isBlank()) null
+            else try {
+                gson.fromJson(json, RecentSearch::class.java)
+            } catch (e: Exception) {
+                null
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val customFavorites: StateFlow<List<RecentSearch>> = dashboardRepository.getPreferenceFlow("custom_favorites", "[]")
         .map { json ->
             try {
@@ -177,11 +187,12 @@ class RoutePlannerViewModel @JvmOverloads constructor(
 
             favMetros.forEach { id ->
                 metroStations.find { it.id.toString() == id }?.let { station ->
+                    val z = com.example.data.model.cleanZoneCode(station.zone)
                     list.add(RecentSearch(
                         type = "metro",
                         id = station.id.toString(),
                         title = station.name,
-                        subtitle = "Metrovalencia",
+                        subtitle = "Zona $z • Metrovalencia",
                         latitude = station.latitude ?: 39.4697,
                         longitude = station.longitude ?: -0.3734,
                         extraData = station.lines
@@ -515,15 +526,18 @@ class RoutePlannerViewModel @JvmOverloads constructor(
                     extraData = result.stop.lineas
                 )
             }
-            is MapSearchResult.Metro -> RecentSearch(
-                type = "metro",
-                id = result.station.id,
-                title = result.station.name,
-                subtitle = "Metrovalencia",
-                latitude = result.station.latitude,
-                longitude = result.station.longitude,
-                extraData = result.station.lines.joinToString(",")
-            )
+            is MapSearchResult.Metro -> {
+                val z = com.example.data.model.cleanZoneCode(result.station.zone)
+                RecentSearch(
+                    type = "metro",
+                    id = result.station.id,
+                    title = result.station.name,
+                    subtitle = "Zona $z • Metrovalencia",
+                    latitude = result.station.latitude,
+                    longitude = result.station.longitude,
+                    extraData = result.station.lines.joinToString(",")
+                )
+            }
             is MapSearchResult.Cercanias -> RecentSearch(
                 type = "cercanias",
                 id = result.station.stop_id,
@@ -533,11 +547,39 @@ class RoutePlannerViewModel @JvmOverloads constructor(
                 longitude = result.station.lon
             )
             is MapSearchResult.Address -> {
-                val isFav = result.result.type == "favorite" || result.result.category == "favorite" ||
-                        customFavorites.value.any { it.latitude == result.result.latitude && it.longitude == result.result.longitude }
-                val favItem = customFavorites.value.find { it.latitude == result.result.latitude && it.longitude == result.result.longitude }
+                val homeLoc = homeLocation.value
+                val workLoc = workLocation.value
+                val isHome = result.result.type == "home" ||
+                        result.customTitle?.equals("Casa", ignoreCase = true) == true ||
+                        result.result.placeName?.equals("Casa", ignoreCase = true) == true ||
+                        (homeLoc != null && Math.abs(homeLoc.latitude - result.result.latitude) < 0.0001 && Math.abs(homeLoc.longitude - result.result.longitude) < 0.0001)
 
-                val mainTitle = favItem?.title ?: loc.title
+                val isWork = result.result.type == "work" ||
+                        result.customTitle?.equals("Trabajo", ignoreCase = true) == true ||
+                        result.customTitle?.equals("Feina", ignoreCase = true) == true ||
+                        result.result.placeName?.equals("Trabajo", ignoreCase = true) == true ||
+                        result.result.placeName?.equals("Feina", ignoreCase = true) == true ||
+                        (workLoc != null && Math.abs(workLoc.latitude - result.result.latitude) < 0.0001 && Math.abs(workLoc.longitude - result.result.longitude) < 0.0001)
+
+                val matchingFav = customFavorites.value.find {
+                    Math.abs(it.latitude - result.result.latitude) < 0.0001 && Math.abs(it.longitude - result.result.longitude) < 0.0001
+                }
+                val isFav = isHome || isWork || result.isFavorite || result.result.type == "favorite" || result.result.category == "favorite" || matchingFav != null
+
+                val favItem = when {
+                    isHome -> homeLoc
+                    isWork -> workLoc
+                    else -> matchingFav
+                }
+
+                val mainTitle = when {
+                    isHome -> homeLoc?.title?.ifBlank { "Casa" } ?: "Casa"
+                    isWork -> workLoc?.title?.ifBlank { "Trabajo" } ?: "Trabajo"
+                    matchingFav != null -> matchingFav.title
+                    !result.customTitle.isNullOrBlank() -> result.customTitle
+                    !result.result.placeName.isNullOrBlank() -> result.result.placeName
+                    else -> loc.title
+                }
                 val subTitle = favItem?.subtitle ?: (loc.subtitle ?: "València")
 
                 RecentSearch(
@@ -632,6 +674,13 @@ class RoutePlannerViewModel @JvmOverloads constructor(
         }
     }
 
+    fun savePinnedLocation(location: RecentSearch?) {
+        viewModelScope.launch {
+            val json = if (location == null) "" else gson.toJson(location)
+            dashboardRepository.savePreference("pinned_location", json)
+        }
+    }
+
     fun swapOriginAndDestination() {
         val tempOrig = _origin.value
         val tempOrigQuery = _originQuery.value
@@ -667,11 +716,12 @@ class RoutePlannerViewModel @JvmOverloads constructor(
     fun setDepartureSchedule(type: DepartureType, time: String? = null, date: String? = null) {
         _departureType.value = type
         val now = Date()
+        val madridTz = java.util.TimeZone.getTimeZone("Europe/Madrid")
         val defaultTime = time ?: if (type != DepartureType.LEAVE_NOW) {
-            SimpleDateFormat("HH:mm", Locale.getDefault()).format(now)
+            SimpleDateFormat("HH:mm", Locale.getDefault()).apply { timeZone = madridTz }.format(now)
         } else null
         val defaultDate = date ?: if (type != DepartureType.LEAVE_NOW || !defaultTime.isNullOrEmpty()) {
-            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
+            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = madridTz }.format(now)
         } else null
         _selectedTime.value = defaultTime
         _selectedDate.value = defaultDate
@@ -723,11 +773,20 @@ class RoutePlannerViewModel @JvmOverloads constructor(
                         } else {
                             currentList.add(updatedItinerary)
                         }
-                        val sortedList = currentList.sortedWith(
-                            compareBy<PlannedItinerary> { com.example.data.repository.routing.RoutingDataMapper.getEffectiveArrivalEpochMs(it) }
-                                .thenBy { it.totalDurationSeconds }
-                                .thenBy { com.example.data.repository.routing.RoutingDataMapper.getEffectiveDepartureEpochMs(it) }
-                        )
+                        val isArriveBy = _departureType.value == DepartureType.ARRIVE_BY
+                        val sortedList = if (isArriveBy) {
+                            currentList.sortedWith(
+                                compareByDescending<PlannedItinerary> { com.example.data.repository.routing.RoutingDataMapper.getEffectiveArrivalEpochMs(it) }
+                                    .thenBy { it.totalDurationSeconds }
+                                    .thenByDescending { com.example.data.repository.routing.RoutingDataMapper.getEffectiveDepartureEpochMs(it) }
+                            )
+                        } else {
+                            currentList.sortedWith(
+                                compareBy<PlannedItinerary> { com.example.data.repository.routing.RoutingDataMapper.getEffectiveArrivalEpochMs(it) }
+                                    .thenBy { it.totalDurationSeconds }
+                                    .thenBy { com.example.data.repository.routing.RoutingDataMapper.getEffectiveDepartureEpochMs(it) }
+                            )
+                        }
                         _uiState.value = RoutePlannerUiState.Success(sortedList)
                     }
                     _transferRecalculateMessage.value = updatedItinerary.viabilityNotice
@@ -782,6 +841,9 @@ class RoutePlannerViewModel @JvmOverloads constructor(
                 ("WALK," + selectedFilters.flatMap { it.modes }.distinct().joinToString(","))
             }
 
+            val isOriginStation = orig.stopType != null || orig.stopId != null || com.example.data.repository.routing.RoutingDataMapper.isStationOrStopDescriptor(orig.title, orig.stopType, orig.stopId)
+            val isDestStation = dest.stopType != null || dest.stopId != null || com.example.data.repository.routing.RoutingDataMapper.isStationOrStopDescriptor(dest.title, dest.stopType, dest.stopId)
+
             val result = hybridRoutingRepository.planRoute(
                 fromLat = orig.latitude,
                 fromLon = orig.longitude,
@@ -793,7 +855,9 @@ class RoutePlannerViewModel @JvmOverloads constructor(
                 maxTransfers = maxTransfers,
                 modes = modes,
                 originName = orig.title,
-                destinationName = dest.title
+                destinationName = dest.title,
+                isOriginStationOrStop = isOriginStation,
+                isDestinationStationOrStop = isDestStation
             )
 
             result.fold(
@@ -805,14 +869,18 @@ class RoutePlannerViewModel @JvmOverloads constructor(
                             isOffline = isNowOffline
                         )
                     } else {
-                        if (isDepartNow) {
+                        val hasLiveEligible = isDepartNow || itineraries.any {
+                            hybridRoutingRepository.shouldAttemptLiveReconciliation(it)
+                        }
+
+                        if (hasLiveEligible) {
                             // Advance to real-time crossing stage
                             _uiState.value = RoutePlannerUiState.Loading(PlannerLoadingStage.REAL_TIME_CROSS)
                             
                             // Reconcile in background coroutine while keeping loading indicator clean
                             try {
                                 val enrichedList = withContext(Dispatchers.IO) {
-                                    hybridRoutingRepository.reconcileItineraries(itineraries, isDepartNow = true)
+                                    hybridRoutingRepository.reconcileItineraries(itineraries, isDepartNow = isDepartNow)
                                 }
                                 _uiState.value = RoutePlannerUiState.Loading(PlannerLoadingStage.BUILDING_ROUTES)
                                 delay(220) // Smooth visual transition
@@ -843,9 +911,15 @@ class RoutePlannerViewModel @JvmOverloads constructor(
 
     private fun startBackgroundRealTimeEnrichment(initialItineraries: List<PlannedItinerary>) {
         realTimeEnrichmentJob?.cancel()
+        val isDepartNow = _departureType.value == DepartureType.LEAVE_NOW
+        val hasLiveEligible = isDepartNow || initialItineraries.any {
+            hybridRoutingRepository.shouldAttemptLiveReconciliation(it)
+        }
+        if (!hasLiveEligible) return
+
         realTimeEnrichmentJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                val enrichedList = hybridRoutingRepository.reconcileItineraries(initialItineraries, isDepartNow = true)
+                val enrichedList = hybridRoutingRepository.reconcileItineraries(initialItineraries, isDepartNow = isDepartNow)
 
                 withContext(Dispatchers.Main) {
                     val currentState = _uiState.value

@@ -27,7 +27,9 @@ data class LineDeparturesGroupUiModel(
     val subsequentDepartures: List<UpcomingDepartureSummary>,
     val sharedDigits: List<String>,
     val direction: Int = 0,
-    val directionTerminusName: String? = null
+    val directionTerminusName: String? = null,
+    val stationId: String? = null,
+    val stationName: String? = null
 )
 
 /**

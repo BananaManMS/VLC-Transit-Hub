@@ -339,6 +339,32 @@ internal fun getMetroTinyDotIcon(context: Context, isDarkMode: Boolean): MarkerI
     return cached
 }
 
+internal fun getMetroWhiteDotIcon(context: Context, isDarkMode: Boolean): MarkerIconResult {
+    val key = "METRO_WHITE_DOT_SMALL"
+    var cached = metroStationIconCache.get(key)
+    if (cached == null) {
+        val density = context.resources.displayMetrics.density
+        // Transparent hit area for tap responsiveness
+        val hitSize = (36f * density).toInt().coerceAtLeast(24)
+        val bitmap = Bitmap.createBitmap(hitSize, hitSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        val center = hitSize / 2f
+        val dotRadius = 2.2f * density // Delicate small white dot (~4.5dp)
+
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.WHITE
+        }
+        canvas.drawCircle(center, center, dotRadius, fillPaint)
+
+        val drawable = BitmapDrawable(context.resources, bitmap)
+        cached = MarkerIconResult(drawable, 0.5f, 0.5f)
+        metroStationIconCache.put(key, cached)
+    }
+    return cached
+}
+
 internal fun getMetroLogoSmallIcon(context: Context, isDarkMode: Boolean): MarkerIconResult {
     val key = "METRO_LOGO_SMALL_${isDarkMode}"
     var cached = metroStationIconCache.get(key)

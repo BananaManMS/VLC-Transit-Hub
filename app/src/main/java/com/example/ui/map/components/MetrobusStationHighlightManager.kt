@@ -150,7 +150,7 @@ object MetrobusStationHighlightManager {
             val newPolylines = mutableListOf<Polyline>()
             filteredShapes.forEach { (_, points) ->
                 if (points.isEmpty()) return@forEach
-                val polyline = Polyline(mapView).apply {
+                val polyline = SafePolyline(mapView).apply {
                     setPoints(points)
                     outlinePaint.color = orangeColorInt
                     outlinePaint.isAntiAlias = true

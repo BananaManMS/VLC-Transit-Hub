@@ -60,31 +60,31 @@ import androidx.compose.ui.unit.dp
 fun Modifier.shimmerEffect(
     shape: Shape = RoundedCornerShape(12.dp)
 ): Modifier = composed {
-    val baseColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
-    val highlightColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+    val baseColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    val highlightColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f)
 
     val transition = rememberInfiniteTransition(label = "shimmer_transition")
     val translateAnim = transition.animateFloat(
-        initialValue = 0f,
+        initialValue = -300f,
         targetValue = 1000f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = 1200,
+                durationMillis = 1300,
                 easing = LinearEasing
             ),
             repeatMode = RepeatMode.Restart
         ),
-        label = "shimmer_anim"
+        label = "shimmer_translation"
     )
 
     val brush = Brush.linearGradient(
         colors = listOf(
             baseColor,
             highlightColor,
-            baseColor,
+            baseColor
         ),
-        start = Offset(translateAnim.value - 200f, translateAnim.value - 200f),
-        end = Offset(translateAnim.value, translateAnim.value)
+        start = Offset(translateAnim.value, 0f),
+        end = Offset(translateAnim.value + 250f, 250f)
     )
 
     this

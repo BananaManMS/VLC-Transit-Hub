@@ -36,35 +36,31 @@ object StaticTransitDataCache {
         return cercaniasPositions[id] ?: fallback
     }
 
-    fun initialize(context: Context) {
+    suspend fun initialize(context: Context) {
         getOrLoadEmtStops(context)
         getOrLoadMetrobusStops(context)
     }
 
-    @Synchronized
-    fun getOrLoadEmtStops(context: Context): List<GeoportalStopEntity> {
-        cachedEmtStops?.let { return it }
+    suspend fun getOrLoadEmtStops(context: Context): List<GeoportalStopEntity> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        cachedEmtStops?.let { return@withContext it }
         val db = com.example.data.database.AppDatabase.getDatabase(context)
         val fromDb = try {
-            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                db.geoportalStopDao().getAllActiveStops()
-            }
+            db.geoportalStopDao().getAllActiveStops()
         } catch (_: Exception) { emptyList() }
         if (fromDb.isNotEmpty() && fromDb.size >= 50) {
             cachedEmtStops = fromDb
-            return fromDb
+            return@withContext fromDb
         }
         val stops = BusMapper.parseStopsFromJsonDirect(context)
         cachedEmtStops = stops
-        return stops
+        stops
     }
 
-    @Synchronized
-    fun getOrLoadMetrobusStops(context: Context): List<MetrobusStopEntity> {
-        cachedMetrobusStops?.let { return it }
+    suspend fun getOrLoadMetrobusStops(context: Context): List<MetrobusStopEntity> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        cachedMetrobusStops?.let { return@withContext it }
         val stops = parseMetrobusStops(context)
         cachedMetrobusStops = stops
-        return stops
+        stops
     }
 
     private fun parseMetrobusStops(context: Context): List<MetrobusStopEntity> {

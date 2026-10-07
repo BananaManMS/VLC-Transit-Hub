@@ -18,9 +18,11 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -59,6 +61,34 @@ fun AddressDestinationHeader(
     val textPrimaryColor = if (isDarkMode) Color(0xFFF1F5F9) else Color(0xFF0F172A)
     val textSecondaryColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
 
+    val isHome = address.type.equals("home", ignoreCase = true) || title.equals("Casa", ignoreCase = true)
+    val isWork = address.type.equals("work", ignoreCase = true) || title.equals("Trabajo", ignoreCase = true) || title.equals("Feina", ignoreCase = true)
+
+    val customIcon = when {
+        isHome -> Icons.Default.Home
+        isWork -> Icons.Default.Work
+        category == PlaceCategory.FAVORITE -> Icons.Default.Star
+        else -> null
+    }
+
+    val customColor = when {
+        isHome -> Color(0xFF4F8CFF)
+        isWork -> Color(0xFFF59E0B)
+        category == PlaceCategory.FAVORITE -> {
+            address.colorHex?.let {
+                try { Color(android.graphics.Color.parseColor(it)) } catch (_: Exception) { null }
+            } ?: Color(0xFFEAB308)
+        }
+        else -> null
+    }
+
+    val customBadgeLabel = when {
+        isHome -> if (appLanguage == AppLanguage.CA) "Casa" else "Casa"
+        isWork -> if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo"
+        category == PlaceCategory.FAVORITE -> if (appLanguage == AppLanguage.CA) "Lloc preferit" else "Sitio favorito"
+        else -> null
+    }
+
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -72,7 +102,9 @@ fun AddressDestinationHeader(
                 category = category,
                 isDarkMode = isDarkMode,
                 boxSize = 46.dp,
-                iconSize = 24.dp
+                iconSize = 24.dp,
+                customIcon = customIcon,
+                customColor = customColor
             )
 
             Spacer(modifier = Modifier.width(14.dp))
@@ -108,7 +140,10 @@ fun AddressDestinationHeader(
                     PlaceCategoryBadge(
                         category = category,
                         appLanguage = appLanguage,
-                        isDarkMode = isDarkMode
+                        isDarkMode = isDarkMode,
+                        customIcon = customIcon,
+                        customColor = customColor,
+                        customLabel = customBadgeLabel
                     )
 
                     if (!address.wheelchair.isNullOrBlank()) {

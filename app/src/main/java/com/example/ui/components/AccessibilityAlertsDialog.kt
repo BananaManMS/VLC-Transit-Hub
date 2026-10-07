@@ -127,7 +127,7 @@ fun AccessibilityAlertsDialog(
                 )
             ) {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "D'acord" else "Aceptar",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_accept),
                     fontWeight = FontWeight.Bold
                 )
             }

@@ -68,11 +68,14 @@ class MapDataLoader(
     private var metrobusScheduledLimit = 5
 
     fun loadData() {
+        com.example.util.StartupProfiler.log("MapDataLoader", "loadData() invoked (5 async coroutines launched)")
         scope.launch(Dispatchers.IO) {
+            com.example.util.StartupProfiler.log("MapDataLoader", "metroRepository.loadMetroStations() start")
             // Load Metro Stations
             try {
                 val stations = metroRepository.loadMetroStations()
                 metroStations.value = stations
+                com.example.util.StartupProfiler.log("MapDataLoader", "metroRepository.loadMetroStations() done: ${stations.size} stations")
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     Log.e("MapDataLoader", "Error loading metro stations", e)
@@ -302,6 +305,8 @@ class MapDataLoader(
                             status = arrival.status,
                             track = arrival.track,
                             capacidad = arrival.capacidad,
+                            originStationName = station.name,
+                            originStationId = station.id,
                             id = "${arrival.line}_${arrival.destination}_$i",
                             isRealTime = arrival.isRealTime
                         )

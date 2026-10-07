@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.components.LinkifiedText
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.metro.CercaniasLineBadge
-import com.example.ui.metro.parseTimeAgo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,10 +76,6 @@ fun CercaniasNoticeDetailContent(
     val badgeColor = catEnum.getColor(isDarkMode)
     val badgeIcon = catEnum.icon
 
-    val formattedTime = remember(alert.timestamp, appLanguage) {
-        parseTimeAgo(alert.timestamp, appLanguage, isUpdated = false)
-    }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -88,10 +83,9 @@ fun CercaniasNoticeDetailContent(
             .padding(bottom = 32.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        // Top Category & Timestamp Row
+        // Top Category Row
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
@@ -118,23 +112,6 @@ fun CercaniasNoticeDetailContent(
                     )
                 }
             }
-
-            if (!formattedTime.isNullOrBlank()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = formattedTime,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
         }
 
         if (alert.routeIds.isNotEmpty()) {
@@ -144,7 +121,7 @@ fun CercaniasNoticeDetailContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "Línies afectades:" else "Líneas afectadas:",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_affected_lines_label),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

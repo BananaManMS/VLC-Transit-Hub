@@ -17,27 +17,24 @@ object UserAndDestinationMarkersRenderer {
         context: Context,
         mapView: MapView,
         userLocation: GeoPoint?,
-        existingUserMarker: Marker?
+        existingUserMarker: Marker?,
+        userBearing: Float? = null,
+        isCellTowerLocation: Boolean = false
     ): Marker? {
         if (userLocation != null) {
-            val marker = existingUserMarker ?: Marker(mapView).also {
-                it.title = "Tu ubicación"
-                it.infoWindow = null
-                it.setOnMarkerClickListener { _, _ -> true }
-                it.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+            val marker = (existingUserMarker as? UserLocationMarker) ?: UserLocationMarker(mapView).also {
                 mapView.overlays.add(it)
             }
             marker.infoWindow = null
             marker.setOnMarkerClickListener { _, _ -> true }
             marker.closeInfoWindow()
             marker.position = userLocation
+            marker.updateGpsBearing(userBearing)
+            marker.updateCellTowerMode(isCellTowerLocation)
             marker.setVisible(true)
-            marker.icon = createUserLiveIcon(context)
-            startLiveLocationUpdates(context)
             return marker
         } else {
             existingUserMarker?.setVisible(false)
-            stopLiveLocationUpdates()
             return existingUserMarker
         }
     }

@@ -126,19 +126,8 @@ object TripRealTimeTransferEvaluator {
                 else -> nextTransferTransitLeg.mode.displayNameCa
             }
 
-            return if (scheduledDepMs > 0 && userTransferArrivalEpochMs > (scheduledDepMs + bufferMs)) {
-                val causeEs = if (delayMinutes > 0) "Tu vehículo lleva retraso y" else "Según la hora estimada de llegada,"
-                val causeCa = if (delayMinutes > 0) "El teu transport porta retràs i" else "Segons l'hora estimada d'arribada,"
-                TransferEvaluationResult(
-                    isTransferAtRisk = true,
-                    transferWarningEs = "Posible transbordo perdido: $causeEs la salida programada de $transferModeName $transferLineName ($scheduledTime) es inalcanzable.",
-                    transferWarningCa = "Possible transbordament perdut: $causeCa la eixida programada de $transferModeNameCa $transferLineName ($scheduledTime) és inabastable.",
-                    upcomingTransferInfoEs = "Transbordo en riesgo: $transferModeName $transferLineName a las $scheduledTime",
-                    upcomingTransferInfoCa = "Transbordament en risc: $transferModeNameCa $transferLineName a les $scheduledTime",
-                    isUpcomingTransferLive = false,
-                    upcomingTransferLine = transferLineName
-                )
-            } else if (scheduledDepMs > 0 && userTransferArrivalEpochMs > scheduledDepMs) {
+            // Without live telemetry, keep planned itinerary without marking as at-risk or proposing recalculation
+            return if (scheduledDepMs > 0 && userTransferArrivalEpochMs > scheduledDepMs) {
                 TransferEvaluationResult(
                     isTransferAtRisk = false,
                     transferWarningEs = "Transbordo ajustado: Conexión con $transferModeName $transferLineName a las $scheduledTime muy justa.",

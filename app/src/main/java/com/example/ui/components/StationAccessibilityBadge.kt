@@ -91,10 +91,18 @@ fun cleanAccessibilityText(rawText: String, stationName: String? = null): String
 
     if (!stationName.isNullOrBlank()) {
         val escapedName = java.util.regex.Pattern.quote(stationName.trim())
-        cleaned = cleaned.replace(Regex("^Afectaci[oó]n?.*?$escapedName\\s*:\\s*", RegexOption.IGNORE_CASE), "").trim()
+        cleaned = cleaned
+            .replace(Regex("^Aver[ií]a\\s+en\\s+ascensor\\s+en\\s+$escapedName\\s*", RegexOption.IGNORE_CASE), "Avería en ascensor ")
+            .replace(Regex("^Afectaci[oó]n?.*?$escapedName\\s*:\\s*", RegexOption.IGNORE_CASE), "")
+            .trim()
     }
 
-    return cleaned.ifBlank { rawText.trim() }
+    val lower = cleaned.lowercase(java.util.Locale.ROOT)
+    if (lower.isBlank() || lower == "ascensor" || lower == "ascensores" || lower == "ascensor.") {
+        return "Avería en ascensor - Fuera de servicio"
+    }
+
+    return cleaned
 }
 
 fun groupAccessibilityIssues(issues: List<String>, stationName: String? = null): List<GroupedAccessibilityIssue> {
@@ -107,7 +115,12 @@ fun groupAccessibilityIssues(issues: List<String>, stationName: String? = null):
         if (cleaned.isBlank()) continue
 
         val parts = cleaned.split(Regex("\\s*[-–—:]\\s+"), 2)
-        val title = parts[0].trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() }
+        val rawTitle = parts[0].trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() }
+        val title = if (rawTitle.equals("ascensor", ignoreCase = true) || rawTitle.equals("ascensores", ignoreCase = true)) {
+            "Avería en ascensor"
+        } else {
+            rawTitle
+        }
         val detail = if (parts.size > 1) parts[1].trim() else null
 
         val detailsList = map.getOrPut(title) { mutableListOf() }
@@ -126,29 +139,8 @@ fun computeMetroStationAccessibility(
     stationName: String,
     incidents: List<AccessibilityIncident>
 ): StationAccessibilityInfo {
-    val normName = stationName.normalizeForSearch()
-    val stationIdInt = stationId.toIntOrNull()
-
     val matching = incidents.filter { inc ->
-        if (stationIdInt != null && inc.estacionId == stationIdInt) return@filter true
-        if (inc.estacionId != null && inc.estacionId.toString() == stationId) return@filter true
-
-        val incEstName = inc.estacionNombre?.trim()
-        if (!incEstName.isNullOrEmpty()) {
-            val normIncName = incEstName.normalizeForSearch()
-            if (normIncName == normName || normIncName.equals(normName, ignoreCase = true)) {
-                return@filter true
-            }
-        }
-
-        // Only fallback if both estacionId and estacionNombre are completely null/empty
-        if (inc.estacionId == null && incEstName.isNullOrBlank()) {
-            val titleNorm = (inc.tituloEs + " " + inc.tituloCa).normalizeForSearch()
-            if (titleNorm.contains("estacio de $normName") || titleNorm.contains("estacion de $normName")) {
-                return@filter true
-            }
-        }
-        false
+        com.example.util.StationAccessibilityHelper.isMetroStationAffected(stationId, stationName, inc)
     }
 
     val issues = matching.mapNotNull { inc ->
@@ -248,9 +240,9 @@ fun StationAccessibilityBadge(
     val activeBorder = if (accessibilityInfo.isAccessible) greenColor.copy(alpha = 0.35f) else redColor.copy(alpha = 0.45f)
 
     val contentDesc = if (accessibilityInfo.isAccessible) {
-        if (appLanguage == AppLanguage.CA) "Estació accessible" else "Estación accesible"
+        androidx.compose.ui.res.stringResource(com.example.R.string.accessibility_station_accessible)
     } else {
-        if (appLanguage == AppLanguage.CA) "Incidència d'accessibilitat" else "Incidencia de accesibilidad"
+        androidx.compose.ui.res.stringResource(com.example.R.string.accessibility_incident_reported)
     }
 
     // Accessible icons are non-clickable (no dialog popup). Only non-accessible (red) icons are clickable.
@@ -409,7 +401,7 @@ fun AccessibilityBocadilloDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Tancar" else "Cerrar",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
                             tint = subtextColor,
                             modifier = Modifier.size(18.dp)
                         )
@@ -434,11 +426,7 @@ fun AccessibilityBocadilloDialog(
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) {
-                                "Sense avisos actius d'accessibilitat"
-                            } else {
-                                "Sin avisos activos de accesibilidad"
-                            },
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.accessibility_no_active_notices),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,
                             color = textColor,
@@ -453,7 +441,7 @@ fun AccessibilityBocadilloDialog(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Avisos reportats en esta estació:" else "Avisos reportados en esta estación:",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.accessibility_notices_reported),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = subtextColor
@@ -528,7 +516,7 @@ fun AccessibilityBocadilloDialog(
                     )
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Entés" else "Entendido",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_understood),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = Color.White

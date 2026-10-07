@@ -223,11 +223,9 @@ fun MetroStretchPullPromptCard(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 val promptText = if (isThresholdReached) {
-                    if (appLanguage == AppLanguage.CA) "Deixa anar per mostrar trens programats"
-                    else "Suelta para mostrar trenes programados"
+                    androidx.compose.ui.res.stringResource(com.example.R.string.metro_pull_release_show_scheduled)
                 } else {
-                    if (appLanguage == AppLanguage.CA) "Estira cap amunt per veure trens programats"
-                    else "Estira hacia arriba para ver trenes programados"
+                    androidx.compose.ui.res.stringResource(com.example.R.string.metro_pull_up_show_scheduled)
                 }
 
                 Text(
@@ -278,10 +276,7 @@ fun MetroScheduledHeaderAndFilters(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (appLanguage == AppLanguage.CA)
-                        "Següents trens programats ($scheduledDeparturesCount)"
-                    else
-                        "Siguientes trenes programados ($scheduledDeparturesCount)",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_next_trains_scheduled_count, scheduledDeparturesCount),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -294,7 +289,7 @@ fun MetroScheduledHeaderAndFilters(
             ) {
                 Icon(
                     imageVector = Icons.Default.ExpandLess,
-                    contentDescription = "Plegar",
+                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_collapse),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )
@@ -354,7 +349,7 @@ fun MetroScheduledHeaderAndFilters(
                                 tint = if (isAllSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Totes (Pròx. 3h)" else "Todas (Próx. 3h)",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_filter_all_lines_3h),
                                 fontSize = 12.5.sp,
                                 fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
                                 color = if (isAllSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
@@ -425,11 +420,10 @@ fun MetroScheduledHeaderAndFilters(
             }
 
             val scopeCaption = if (selectedLineFilter == null || selectedLineFilter.isBlank() || selectedLineFilter.equals("ALL", ignoreCase = true)) {
-                if (appLanguage == AppLanguage.CA) "Mostrant eixides de les pròximes 3 hores" else "Mostrando salidas de las próximas 3 horas"
+                androidx.compose.ui.res.stringResource(com.example.R.string.metro_scope_next_3h)
             } else {
                 val cleanLine = selectedLineFilter.replace("L", "", ignoreCase = true).trim()
-                if (appLanguage == AppLanguage.CA) "Mostrant tots els trens programats de la L$cleanLine de hui"
-                else "Mostrando todos los trenes programados de la L$cleanLine de hoy"
+                androidx.compose.ui.res.stringResource(com.example.R.string.metro_scope_line_today, "L$cleanLine")
             }
 
             Text(
@@ -441,11 +435,7 @@ fun MetroScheduledHeaderAndFilters(
             Spacer(modifier = Modifier.height(4.dp))
         } else if (availableLines.size == 1) {
             val singleLine = availableLines.first()
-            val singleLineCaption = if (appLanguage == AppLanguage.CA) {
-                "Mostrant tots els trens programats de la L$singleLine de hui"
-            } else {
-                "Mostrando todos los trenes programados de la L$singleLine de hoy"
-            }
+            val singleLineCaption = androidx.compose.ui.res.stringResource(com.example.R.string.metro_scope_line_today, "L$singleLine")
             Text(
                 text = singleLineCaption,
                 fontSize = 11.5.sp,
@@ -471,10 +461,7 @@ fun MetroScheduledEmptyCard(
             .padding(bottom = 8.dp)
     ) {
         Text(
-            text = if (appLanguage == AppLanguage.CA)
-                "No hi ha més trens programats per a hui que no estiguen ja en circulació."
-            else
-                "No hay más trenes programados para hoy que no estén ya en circulación.",
+            text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_no_more_scheduled_today),
             fontSize = 12.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(16.dp),
@@ -500,7 +487,8 @@ fun MetroStretchPullUpFooter(
     availableLines: List<String> = emptyList(),
     selectedLineFilter: String? = null,
     onLineFilterSelected: ((String?) -> Unit)? = null,
-    onDepartureClick: ((MetroScheduledDeparture) -> Unit)? = null
+    onDepartureClick: ((MetroScheduledDeparture) -> Unit)? = null,
+    onDepartureLongClick: ((MetroScheduledDeparture) -> Unit)? = null
 ) {
     Column(
         modifier = modifier
@@ -562,7 +550,10 @@ fun MetroStretchPullUpFooter(
                                         item = item,
                                         appLanguage = appLanguage,
                                         isDarkMode = isDarkMode,
-                                        onClick = { onDepartureClick?.invoke(item) }
+                                        onClick = { onDepartureClick?.invoke(item) },
+                                        onLongClick = if (onDepartureLongClick != null) {
+                                            { onDepartureLongClick(item) }
+                                        } else null
                                     )
                                 }
                             }

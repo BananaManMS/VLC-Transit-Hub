@@ -82,7 +82,7 @@ fun UnifiedTransitStopHeader(
                     }
 
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Parada ${stop.id}" else "Parada ${stop.id}",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.stop_id_format, stop.id),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = subtextColor
@@ -142,7 +142,7 @@ fun UnifiedTransitStopHeader(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Directions,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Com arribar" else "Cómo llegar",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.bus_directions_btn),
                             tint = Color(0xFF0284C7),
                             modifier = Modifier.size(22.dp)
                         )

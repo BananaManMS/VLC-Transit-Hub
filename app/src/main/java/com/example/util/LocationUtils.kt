@@ -23,6 +23,9 @@ import java.util.Locale
 import kotlin.coroutines.resume
 
 object LocationUtils {
+    @Volatile
+    var lastKnownLocationCache: Location? = null
+
     @JvmStatic
     fun hasLocationPermission(context: Context): Boolean {
         val hasFine = ContextCompat.checkSelfPermission(context, "android.permission.ACCESS_FINE_LOCATION") == PackageManager.PERMISSION_GRANTED
@@ -49,6 +52,9 @@ object LocationUtils {
                 val fusedClient = LocationServices.getFusedLocationProviderClient(context)
                 fusedClient.lastLocation
                     .addOnSuccessListener { loc ->
+                        if (loc != null) {
+                            lastKnownLocationCache = loc
+                        }
                         if (continuation.isActive) {
                             continuation.resume(loc ?: getLocationFromLocationManager(context))
                         }
@@ -79,6 +85,9 @@ object LocationUtils {
                     bestLocation = loc
                 }
             } catch (_: Exception) {}
+        }
+        if (bestLocation != null) {
+            lastKnownLocationCache = bestLocation
         }
         return bestLocation
     }
@@ -111,18 +120,100 @@ object LocationUtils {
         try {
             context.startActivity(intent)
         } catch (_: Exception) {
-            Toast.makeText(context, "No se pudo abrir Google Maps.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(com.example.R.string.toast_cannot_open_maps), Toast.LENGTH_SHORT).show()
         }
     }
 
     fun requestDeviceLocation(context: Context, onLocationResult: (Double, Double) -> Unit) {
         if (!hasLocationPermission(context)) return
-        CoroutineScope(Dispatchers.Main).launch {
-            val loc = getBestLastLocation(context)
-            if (loc != null) {
-                onLocationResult(loc.latitude, loc.longitude)
+
+        val wrappedResult: (Double, Double) -> Unit = { lat, lon ->
+            val temp = Location("cached").apply {
+                latitude = lat
+                longitude = lon
+                time = System.currentTimeMillis()
             }
+            lastKnownLocationCache = temp
+            onLocationResult(lat, lon)
         }
+
+        // 1. Immediate synchronous check from LocationManager (0ms latency, never hangs)
+        val immediateLoc = getLocationFromLocationManager(context)
+        if (immediateLoc != null) {
+            lastKnownLocationCache = immediateLoc
+            wrappedResult(immediateLoc.latitude, immediateLoc.longitude)
+        }
+
+        CoroutineScope(Dispatchers.Main).launch {
+            // 2. Query Fused client's lastLocation asynchronously
+            try {
+                val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+                fusedClient.lastLocation.addOnSuccessListener { loc ->
+                    if (loc != null) {
+                        lastKnownLocationCache = loc
+                        if (immediateLoc == null || loc.time > immediateLoc.time) {
+                            wrappedResult(loc.latitude, loc.longitude)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // 3. Always request a single update via LocationManager to ensure we catch hardware GPS / Network fixes
+            requestSingleLocationManagerUpdate(context, onLocationResult)
+
+            // 4. Also request via Fused Location with a CancellationTokenSource that times out after 6 seconds
+            try {
+                val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+                val cts = com.google.android.gms.tasks.CancellationTokenSource()
+                fusedClient.getCurrentLocation(
+                    com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY,
+                    cts.token
+                ).addOnSuccessListener { freshLoc ->
+                    if (freshLoc != null) {
+                        onLocationResult(freshLoc.latitude, freshLoc.longitude)
+                    }
+                }
+                launch {
+                    kotlinx.coroutines.delay(6000L)
+                    try { cts.cancel() } catch (_: Exception) {}
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun requestSingleLocationManagerUpdate(
+        context: Context,
+        onLocationResult: (Double, Double) -> Unit
+    ) {
+        if (!hasLocationPermission(context)) return
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+        val listener = object : android.location.LocationListener {
+            override fun onLocationChanged(location: Location) {
+                onLocationResult(location.latitude, location.longitude)
+                try {
+                    locationManager.removeUpdates(this)
+                } catch (_: Exception) {}
+            }
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+        }
+        val mainLooper = android.os.Looper.getMainLooper()
+        try {
+            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, listener, mainLooper)
+            }
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000L, 0f, listener, mainLooper)
+            }
+            CoroutineScope(Dispatchers.Main).launch {
+                kotlinx.coroutines.delay(15000L)
+                try {
+                    locationManager.removeUpdates(listener)
+                } catch (_: Exception) {}
+            }
+        } catch (_: SecurityException) {}
     }
 
     fun getLocationUpdates(context: Context, intervalMs: Long = 12000L, minDistanceMeters: Float = 10.0f): Flow<Location> = callbackFlow {
@@ -130,10 +221,34 @@ object LocationUtils {
             close()
             return@callbackFlow
         }
+        // Emit best last known location immediately on collection
+        getLocationFromLocationManager(context)?.let { trySend(it) }
+
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         val listener = android.location.LocationListener { loc ->
             trySend(loc)
         }
+        var fusedCallback: com.google.android.gms.location.LocationCallback? = null
+        var fusedClient: com.google.android.gms.location.FusedLocationProviderClient? = null
+        try {
+            val fc = LocationServices.getFusedLocationProviderClient(context)
+            fusedClient = fc
+            fc.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) trySend(loc)
+            }
+            val request = com.google.android.gms.location.LocationRequest.Builder(
+                com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY,
+                intervalMs
+            ).setMinUpdateDistanceMeters(minDistanceMeters).build()
+            val cb = object : com.google.android.gms.location.LocationCallback() {
+                override fun onLocationResult(result: com.google.android.gms.location.LocationResult) {
+                    result.lastLocation?.let { trySend(it) }
+                }
+            }
+            fusedCallback = cb
+            fc.requestLocationUpdates(request, cb, android.os.Looper.getMainLooper())
+        } catch (_: Exception) {}
+
         try {
             val mainLooper = android.os.Looper.getMainLooper()
             if (locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true) {
@@ -153,6 +268,11 @@ object LocationUtils {
         awaitClose {
             try {
                 locationManager?.removeUpdates(listener)
+            } catch (_: Exception) {}
+            try {
+                if (fusedCallback != null && fusedClient != null) {
+                    fusedClient.removeLocationUpdates(fusedCallback)
+                }
             } catch (_: Exception) {}
         }
     }

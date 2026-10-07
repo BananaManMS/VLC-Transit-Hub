@@ -82,6 +82,10 @@ fun AjustesScreen(
     var showAboutDialog by remember { mutableStateOf(false) }
     var isCalendarConnected by remember { mutableStateOf(false) }
 
+    val allActiveAnnouncements by viewModel.allActiveAnnouncements.collectAsState()
+    val isAnnouncementsLoading by viewModel.isAnnouncementsLoading.collectAsState()
+    var showActiveAnnouncementsDialog by remember { mutableStateOf(false) }
+
     val cardBg = if (isDarkMode) Color(0xFF222222) else Color.White
     val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
     val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
@@ -101,9 +105,9 @@ fun AjustesScreen(
         if (isGranted) {
             isCalendarConnected = true
             viewModel.syncGoogleCalendarEvents()
-            Toast.makeText(context, "Sincronizando eventos de Google Calendar...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(com.example.R.string.setting_syncing_events), Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(context, "Permiso de calendario denegado.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(com.example.R.string.toast_calendar_permission_denied), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -146,11 +150,37 @@ fun AjustesScreen(
                 .fillMaxSize()
                 .testTag("ajustes_screen")
         ) {
-            ScreenHeader(
-                title = texts.headerAjustesTitle,
-                subtitle = texts.headerAjustesSubtitle,
-                onBackClick = onBackClick
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    ScreenHeader(
+                        title = texts.headerAjustesTitle,
+                        subtitle = texts.headerAjustesSubtitle,
+                        onBackClick = onBackClick
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        viewModel.loadAllActiveAnnouncements()
+                        showActiveAnnouncementsDialog = true
+                    },
+                    modifier = Modifier
+                        .testTag("ajustes_bell_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = if (appLanguage == AppLanguage.ES) "Avisos activos" else "Avís actius",
+                        tint = textColor,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            }
 
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -219,94 +249,96 @@ fun AjustesScreen(
                     )
                 }
 
-                // 1. Location Permission Card
+                // 1. Location Permission Card (only show if not granted)
                 val hasLocationPermission = LocationUtils.hasLocationPermission(context)
                 val isFineLocation = LocationUtils.hasFineLocationPermission(context)
                 val isOnlyCoarse = LocationUtils.hasOnlyCoarseLocationPermission(context)
 
-                item {
-                    UnifiedAppCard(
-                        modifier = Modifier,
-                        startContent = {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isDarkMode) Color(0xFF221F13) else Color(0xFFFFF9C4)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = if (isDarkMode) Color(0xFFFFC107) else Color(0xFFF57F17),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        },
-                        centerContent = {
-                            Column {
-                                Text(
-                                    text = texts.settingGpsPermissionTitle,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = textColor
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = when {
-                                        isOnlyCoarse -> if (appLanguage == AppLanguage.CA) "Ubicació no precisa (aproximada). Es recomana la precisa." else "Ubicación no precisa (aproximada). Se recomienda la precisa."
-                                        isFineLocation -> if (appLanguage == AppLanguage.CA) "Ubicació precisa activada" else "Ubicación precisa activada"
-                                        else -> texts.settingGpsPermissionSubtitle
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isOnlyCoarse) MaterialTheme.colorScheme.error else subtextColor
-                                )
-                            }
-                        },
-                        endContent = {
-                            Button(
-                                onClick = {
-                                    if (!isFineLocation) {
-                                        locationPermissionLauncher.launch(
-                                            arrayOf(
-                                                android.Manifest.permission.ACCESS_FINE_LOCATION,
-                                                android.Manifest.permission.ACCESS_COARSE_LOCATION
-                                            )
-                                        )
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = when {
-                                        isFineLocation -> MaterialTheme.colorScheme.primaryContainer
-                                        isOnlyCoarse -> MaterialTheme.colorScheme.secondaryContainer
-                                        else -> accentColor
-                                    },
-                                    contentColor = when {
-                                        isFineLocation -> MaterialTheme.colorScheme.onPrimaryContainer
-                                        isOnlyCoarse -> MaterialTheme.colorScheme.onSecondaryContainer
-                                        else -> Color.White
-                                    }
-                                ),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                if (isFineLocation) {
+                if (!isFineLocation) {
+                    item {
+                        UnifiedAppCard(
+                            modifier = Modifier,
+                            startContent = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isDarkMode) Color(0xFF221F13) else Color(0xFFFFF9C4)),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Icon(
-                                        imageVector = Icons.Default.Check,
+                                        imageVector = Icons.Default.LocationOn,
                                         contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                } else {
-                                    Text(
-                                        text = when {
-                                            isOnlyCoarse -> if (appLanguage == AppLanguage.CA) "Millorar ubicació" else "Mejorar ubicación"
-                                            else -> texts.settingGpsPermissionAction
-                                        },
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
+                                        tint = if (isDarkMode) Color(0xFFFFC107) else Color(0xFFF57F17),
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
+                            },
+                            centerContent = {
+                                Column {
+                                    Text(
+                                        text = texts.settingGpsPermissionTitle,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = textColor
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = when {
+                                            isOnlyCoarse -> androidx.compose.ui.res.stringResource(com.example.R.string.setting_gps_coarse_warning)
+                                            isFineLocation -> androidx.compose.ui.res.stringResource(com.example.R.string.setting_gps_fine_active)
+                                            else -> texts.settingGpsPermissionSubtitle
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isOnlyCoarse) MaterialTheme.colorScheme.error else subtextColor
+                                    )
+                                }
+                            },
+                            endContent = {
+                                Button(
+                                    onClick = {
+                                        if (!isFineLocation) {
+                                            locationPermissionLauncher.launch(
+                                                arrayOf(
+                                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                                )
+                                            )
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = when {
+                                            isFineLocation -> MaterialTheme.colorScheme.primaryContainer
+                                            isOnlyCoarse -> MaterialTheme.colorScheme.secondaryContainer
+                                            else -> accentColor
+                                        },
+                                        contentColor = when {
+                                            isFineLocation -> MaterialTheme.colorScheme.onPrimaryContainer
+                                            isOnlyCoarse -> MaterialTheme.colorScheme.onSecondaryContainer
+                                            else -> Color.White
+                                        }
+                                    ),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    if (isFineLocation) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    } else {
+                                        Text(
+                                            text = when {
+                                                isOnlyCoarse -> androidx.compose.ui.res.stringResource(com.example.R.string.setting_gps_improve_btn)
+                                                else -> texts.settingGpsPermissionAction
+                                            },
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
 
                 // 2. Light/Dark Mode Setting Card
@@ -450,89 +482,91 @@ fun AjustesScreen(
                     )
                 }
 
-                // 4. Google Calendar Connection Card
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = cardBg)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                // 4. Google Calendar Connection Card (only show if not connected)
+                if (!isCalendarConnected) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = cardBg)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(if (isDarkMode) Color(0xFF1D3B3F) else Color(0xFFE0F7FA), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Event,
-                                        contentDescription = null,
-                                        tint = if (isDarkMode) Color(0xFF00ACC1) else Color(0xFF006064),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = texts.settingGoogleCalendarTitle,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                        color = textColor
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = texts.settingGoogleCalendarSubtitle,
-                                        fontSize = 11.sp,
-                                        color = subtextColor
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            val buttonContainerColor = if (isCalendarConnected) {
-                                if (isDarkMode) Color(0xFF132219) else Color(0xFFE8F5E9)
-                            } else {
-                                accentColor
-                            }
-                            val buttonContentColor = if (isCalendarConnected) {
-                                Color(0xFF2ECC71)
-                            } else {
-                                Color.White
-                            }
-
-                            Button(
-                                onClick = {
-                                    if (isCalendarConnected) {
-                                        viewModel.syncGoogleCalendarEvents()
-                                        Toast.makeText(context, if (appLanguage == AppLanguage.ES) "Sincronizando eventos..." else "Sincronitzant esdeveniments...", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        calendarPermissionLauncher.launch(android.Manifest.permission.READ_CALENDAR)
-                                    }
-                                },
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .testTag("connect_google_calendar_button"),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = buttonContainerColor,
-                                    contentColor = buttonContentColor
-                                ),
-                                shape = RoundedCornerShape(18.dp),
-                                border = if (isCalendarConnected) BorderStroke(1.dp, Color(0xFF2ECC71).copy(alpha = 0.3f)) else null
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text(
-                                    text = if (isCalendarConnected) texts.settingGoogleCalendarConnected else texts.settingGoogleCalendarConnect,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .background(if (isDarkMode) Color(0xFF1D3B3F) else Color(0xFFE0F7FA), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Event,
+                                            contentDescription = null,
+                                            tint = if (isDarkMode) Color(0xFF00ACC1) else Color(0xFF006064),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = texts.settingGoogleCalendarTitle,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = textColor
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = texts.settingGoogleCalendarSubtitle,
+                                            fontSize = 11.sp,
+                                            color = subtextColor
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                val buttonContainerColor = if (isCalendarConnected) {
+                                    if (isDarkMode) Color(0xFF132219) else Color(0xFFE8F5E9)
+                                } else {
+                                    accentColor
+                                }
+                                val buttonContentColor = if (isCalendarConnected) {
+                                    Color(0xFF2ECC71)
+                                } else {
+                                    Color.White
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (isCalendarConnected) {
+                                            viewModel.syncGoogleCalendarEvents()
+                                            Toast.makeText(context, context.getString(com.example.R.string.setting_syncing_events), Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            calendarPermissionLauncher.launch(android.Manifest.permission.READ_CALENDAR)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("connect_google_calendar_button"),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = buttonContainerColor,
+                                        contentColor = buttonContentColor
+                                    ),
+                                    shape = RoundedCornerShape(18.dp),
+                                    border = if (isCalendarConnected) BorderStroke(1.dp, Color(0xFF2ECC71).copy(alpha = 0.3f)) else null
+                                ) {
+                                    Text(
+                                        text = if (isCalendarConnected) texts.settingGoogleCalendarConnected else texts.settingGoogleCalendarConnect,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
@@ -562,16 +596,13 @@ fun AjustesScreen(
                         centerContent = {
                             Column {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Guia de Benvinguda" else "Guía de Bienvenida",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.setting_onboarding_title),
                                     style = MaterialTheme.typography.titleMedium,
                                     color = textColor
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA)
-                                        "Torna a veure el tutorial, parades favorites i novetats"
-                                    else
-                                        "Vuelve a ver el tutorial, paradas favoritas y novedades",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.setting_onboarding_sub),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = subtextColor
                                 )
@@ -580,7 +611,7 @@ fun AjustesScreen(
                         endContent = {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = if (appLanguage == AppLanguage.ES) "Ver guía" else "Veure guia",
+                                contentDescription = null,
                                 tint = subtextColor,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -627,7 +658,7 @@ fun AjustesScreen(
                         endContent = {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = if (appLanguage == AppLanguage.ES) "Ver detalles" else "Veure detalls",
+                                contentDescription = null,
                                 tint = subtextColor,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -637,7 +668,7 @@ fun AjustesScreen(
             }
 
             Text(
-                text = if (appLanguage == AppLanguage.CA) "Versió ${BuildConfig.VERSION_NAME}" else "Versión ${BuildConfig.VERSION_NAME}",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.setting_version_format, BuildConfig.VERSION_NAME),
                 style = MaterialTheme.typography.bodySmall,
                 color = subtextColor.copy(alpha = 0.7f),
                 modifier = Modifier
@@ -645,6 +676,16 @@ fun AjustesScreen(
                     .padding(vertical = 12.dp)
             )
         }
+    }
+
+    if (showActiveAnnouncementsDialog) {
+        com.example.ui.components.ActiveAnnouncementsDialog(
+            announcements = allActiveAnnouncements,
+            isLoading = isAnnouncementsLoading,
+            appLanguage = appLanguage,
+            isDarkMode = isDarkMode,
+            onDismiss = { showActiveAnnouncementsDialog = false }
+        )
     }
 }
 

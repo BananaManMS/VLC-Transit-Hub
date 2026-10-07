@@ -101,7 +101,7 @@ fun UnifiedScheduledSection(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "Veure eixides programades" else "Ver salidas programadas",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_view_scheduled_departures),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = accentColor
@@ -127,7 +127,7 @@ fun UnifiedScheduledSection(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Eixides programades" else "Salidas programadas",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_scheduled_departures_title),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = titleColor
@@ -154,7 +154,7 @@ fun UnifiedScheduledSection(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Amagar" else "Ocultar",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_hide),
                             style = MaterialTheme.typography.labelSmall,
                             color = subtextColor
                         )
@@ -193,15 +193,13 @@ fun UnifiedScheduledSection(
                                 modifier = Modifier.size(24.dp)
                             )
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.offline_banner_title),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = titleColor
                             )
                             Text(
-                                text = if (appLanguage == AppLanguage.CA)
-                                    "No es poden carregar els horaris programats sense connexió."
-                                    else "No se pueden cargar los horarios programados sin conexión.",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_check_connection_departures),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = subtextColor,
                                 textAlign = TextAlign.Center
@@ -212,7 +210,7 @@ fun UnifiedScheduledSection(
                                 modifier = Modifier.padding(top = 4.dp)
                             ) {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Reintentar" else "Reintentar",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_retry),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor
@@ -221,7 +219,7 @@ fun UnifiedScheduledSection(
                         }
                     } else {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "No hi ha més eixides programades per a hui." else "No hay más salidas programadas para hoy.",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_no_more_departures_today),
                             style = MaterialTheme.typography.bodyMedium,
                             color = subtextColor
                         )

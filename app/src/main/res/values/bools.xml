@@ -2,4 +2,5 @@
 <resources>
     <!-- Default for phones: lock orientation to portrait -->
     <bool name="allow_land_rotation">false</bool>
+    <bool name="is_tablet">false</bool>
 </resources>

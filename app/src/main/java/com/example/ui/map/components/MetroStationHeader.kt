@@ -81,9 +81,10 @@ fun MetroStationHeader(
                         )
                     }
 
-                    if (station.zone.isNotBlank()) {
+                    val displayZone = com.example.data.model.cleanZoneCode(station.zone)
+                    if (displayZone.isNotBlank()) {
                         Text(
-                            text = "Zona ${station.zone}",
+                            text = "Zona $displayZone",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = subtextColor

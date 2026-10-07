@@ -37,16 +37,14 @@ fun EditBusStopAliasDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = if (appLanguage == AppLanguage.CA) "Nom personalitzat" else "Nombre personalizado",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_title),
                 fontWeight = FontWeight.Bold
             )
         },
         text = {
             Column {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA)
-                        "Assigna un nom per identificar la Parada ${stopToEdit.id_parada} més fàcilment:"
-                    else "Asigna un nombre para identificar la Parada ${stopToEdit.id_parada} más fácilmente:",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_desc_format, stopToEdit.id_parada),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -54,12 +52,12 @@ fun EditBusStopAliasDialog(
                 OutlinedTextField(
                     value = aliasInput,
                     onValueChange = { if (it.length <= 32) aliasInput = it },
-                    label = { Text(if (appLanguage == AppLanguage.CA) "Nom/Alias (màx. 32 lletres)" else "Nombre/Alias (máx. 32 letras)") },
-                    placeholder = { Text("Ej: Casa, Trabajo, Universidad...") },
+                    label = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_field_label)) },
+                    placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.alias_placeholder)) },
                     singleLine = true,
                     supportingText = {
                         Text(
-                            text = "${aliasInput.length}/32 ${if (appLanguage == AppLanguage.CA) "lletres" else "letras"}",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_length_format, aliasInput.length),
                             modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.End,
                             style = MaterialTheme.typography.labelSmall
@@ -79,14 +77,14 @@ fun EditBusStopAliasDialog(
                 },
                 modifier = Modifier.testTag("save_alias_button")
             ) {
-                Text(if (appLanguage == AppLanguage.CA) "Desar" else "Guardar")
+                Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_save))
             }
         },
         dismissButton = {
             TextButton(
                 onClick = onDismiss
             ) {
-                Text(if (appLanguage == AppLanguage.CA) "Cancel·lar" else "Cancelar")
+                Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_cancel))
             }
         }
     )

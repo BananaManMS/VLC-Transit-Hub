@@ -18,16 +18,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -89,7 +92,8 @@ fun CercaniasStationBottomSheet(
     sheetState: DetailSheetState = DetailSheetState.HALF_EXPANDED,
     onSheetStateChanged: (DetailSheetState) -> Unit = {},
     onHeightPxChanged: ((Float) -> Unit)? = null,
-    activeTripBottomPadding: Dp = 0.dp
+    activeTripBottomPadding: Dp = 0.dp,
+    dismissOnCollapse: Boolean = false
 ) {
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
@@ -158,41 +162,26 @@ fun CercaniasStationBottomSheet(
 
     val listState = rememberLazyListState()
 
-    val settleSheetState = remember(collapsedPx, halfExpandedPx, fullyExpandedPx) {
-        { velocity: Float ->
-            val currentHeight = heightAnimatable.value
-            val targetState = if (kotlin.math.abs(velocity) > 300f) {
-                if (velocity < 0f) {
-                    if (currentHeight < halfExpandedPx) DetailSheetState.HALF_EXPANDED else DetailSheetState.FULLY_EXPANDED
-                } else {
-                    if (currentHeight > halfExpandedPx) DetailSheetState.HALF_EXPANDED else DetailSheetState.COLLAPSED
-                }
-            } else {
-                val upperMid = (halfExpandedPx + fullyExpandedPx) * 0.5f
-                val lowerMid = (collapsedPx + halfExpandedPx) * 0.5f
-                when {
-                    currentHeight >= upperMid -> DetailSheetState.FULLY_EXPANDED
-                    currentHeight >= lowerMid -> DetailSheetState.HALF_EXPANDED
-                    else -> DetailSheetState.COLLAPSED
-                }
-            }
+    val controller = remember(collapsedPx, halfExpandedPx, fullyExpandedPx, sheetState, dismissOnCollapse) {
+        BottomSheetDragScrollController(
+            heightAnimatable = heightAnimatable,
+            collapsedPx = collapsedPx,
+            halfExpandedPx = halfExpandedPx,
+            fullyExpandedPx = fullyExpandedPx,
+            dismissOnCollapse = dismissOnCollapse,
+            onSheetStateChanged = onSheetStateChanged,
+            onDismiss = onDismiss,
+            coroutineScope = coroutineScope
+        )
+    }
 
-            onSheetStateChanged(targetState)
-            coroutineScope.launch {
-                val targetPx = when (targetState) {
-                    DetailSheetState.COLLAPSED -> collapsedPx
-                    DetailSheetState.HALF_EXPANDED -> halfExpandedPx
-                    DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
-                }
-                heightAnimatable.animateTo(
-                    targetValue = targetPx,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                )
-            }
+    val nestedScrollConnection = remember(controller) {
+        controller.createNestedScrollConnection {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
         }
+    }
+    val headerDragModifier = remember(controller) {
+        controller.createHeaderDragModifier()
     }
 
     LaunchedEffect(listState.isScrollInProgress) {
@@ -202,128 +191,7 @@ fun CercaniasStationBottomSheet(
                            kotlin.math.abs(currentHeight - halfExpandedPx) < 2f ||
                            kotlin.math.abs(currentHeight - fullyExpandedPx) < 2f
             if (!isStable && currentHeight > 0f) {
-                settleSheetState(0f)
-            }
-        }
-    }
-
-    var totalDragAmount by remember { mutableFloatStateOf(0f) }
-
-    val headerDragModifier = Modifier.pointerInput(collapsedPx, halfExpandedPx, fullyExpandedPx) {
-        detectVerticalDragGestures(
-            onDragStart = { totalDragAmount = 0f },
-            onDragEnd = {
-                val dragDistance = totalDragAmount
-                val currentH = heightAnimatable.value
-                val isUp = dragDistance < -15f
-                val isDown = dragDistance > 15f
-
-                val targetState = when {
-                    isUp -> {
-                        if (currentH < halfExpandedPx) DetailSheetState.HALF_EXPANDED else DetailSheetState.FULLY_EXPANDED
-                    }
-                    isDown -> {
-                        if (currentH > halfExpandedPx) DetailSheetState.HALF_EXPANDED else DetailSheetState.COLLAPSED
-                    }
-                    else -> {
-                        val upperMid = (halfExpandedPx + fullyExpandedPx) * 0.5f
-                        val lowerMid = (collapsedPx + halfExpandedPx) * 0.5f
-                        when {
-                            currentH >= upperMid -> DetailSheetState.FULLY_EXPANDED
-                            currentH >= lowerMid -> DetailSheetState.HALF_EXPANDED
-                            else -> DetailSheetState.COLLAPSED
-                        }
-                    }
-                }
-                onSheetStateChanged(targetState)
-                coroutineScope.launch {
-                    val targetPx = when (targetState) {
-                        DetailSheetState.COLLAPSED -> collapsedPx
-                        DetailSheetState.HALF_EXPANDED -> halfExpandedPx
-                        DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
-                    }
-                    heightAnimatable.animateTo(
-                        targetValue = targetPx,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMedium
-                        )
-                    )
-                }
-            },
-            onVerticalDrag = { change, dragAmount ->
-                change.consume()
-                totalDragAmount += dragAmount
-                coroutineScope.launch {
-                    val newTarget = (heightAnimatable.value - dragAmount).coerceIn(collapsedPx, fullyExpandedPx)
-                    heightAnimatable.snapTo(newTarget)
-                }
-            }
-        )
-    }
-
-    val nestedScrollConnection = remember(collapsedPx, halfExpandedPx, fullyExpandedPx) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                val delta = available.y
-
-                // Si movemos el dedo hacia arriba (delta < 0), expandimos el panel primero
-                if (delta < 0f && heightAnimatable.value < fullyExpandedPx - 0.5f) {
-                    val newHeightToSet = (heightAnimatable.value - delta).coerceIn(collapsedPx, fullyExpandedPx)
-                    val consumed = heightAnimatable.value - newHeightToSet
-                    coroutineScope.launch {
-                        heightAnimatable.snapTo(newHeightToSet)
-                    }
-                    return Offset(0f, consumed)
-                }
-
-                return Offset.Zero
-            }
-
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                val delta = available.y
-                // Si movemos el dedo hacia abajo (delta > 0) y la lista ya ha alcanzado el tope superior -> contraer panel
-                if (delta > 0f && heightAnimatable.value > collapsedPx) {
-                    val newHeightToSet = (heightAnimatable.value - delta).coerceIn(collapsedPx, fullyExpandedPx)
-                    val consumedHeight = heightAnimatable.value - newHeightToSet
-                    coroutineScope.launch {
-                        heightAnimatable.snapTo(newHeightToSet)
-                    }
-                    return Offset(0f, consumedHeight)
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                val velocityY = available.y
-                val currentHeight = heightAnimatable.value
-
-                // Fling UP para expandir el panel antes de que la lista interna haga fling
-                if (velocityY < 0f && currentHeight < fullyExpandedPx - 1f) {
-                    settleSheetState(velocityY)
-                    return available
-                }
-                // Fling DOWN cuando el panel no está completamente expandido
-                if (velocityY > 0f && currentHeight < fullyExpandedPx - 1f) {
-                    settleSheetState(velocityY)
-                    return available
-                }
-
-                return Velocity.Zero
-            }
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                val velocityY = available.y
-                val currentHeight = heightAnimatable.value
-                if (velocityY > 0f && currentHeight > collapsedPx) {
-                    settleSheetState(velocityY)
-                    return available
-                }
-                return Velocity.Zero
+                controller.settleSheetState(0f)
             }
         }
     }
@@ -334,6 +202,7 @@ fun CercaniasStationBottomSheet(
         shadowElevation = 8.dp,
         modifier = modifier
             .fillMaxWidth()
+            .widthIn(max = 640.dp)
             .height(panelHeight)
             .testTag("cercanias_station_bottom_sheet")
     ) {
@@ -382,7 +251,7 @@ fun CercaniasStationBottomSheet(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = if (appLanguage == AppLanguage.CA) "Pròximes Salides" else "Próximas Salidas",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_next_departures_title),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = sheetTextColor
@@ -403,57 +272,119 @@ fun CercaniasStationBottomSheet(
                 }
             }
 
-            if (isLoading) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    repeat(3) {
+            val todayDepartures = remember(filteredDepartures) { filteredDepartures.filter { !it.isTomorrow } }
+            val tomorrowDepartures = remember(filteredDepartures) { filteredDepartures.filter { it.isTomorrow } }
+
+            LazyColumn(
+                state = listState,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 28.dp + activeTripBottomPadding),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (isLoading) {
+                    items(3) {
                         CercaniasDepartureSkeletonCard()
                     }
-                }
-            } else if (filteredDepartures.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(100.dp + activeTripBottomPadding)
-                        .padding(bottom = activeTripBottomPadding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (selectedLineFilters.isNotEmpty()) {
-                            if (appLanguage == AppLanguage.CA) "No hi ha eixides per a la línia seleccionada" else "No hay salidas para la línea seleccionada"
-                        } else {
-                            if (appLanguage == AppLanguage.CA) "No hi ha eixides programades en aquest moment" else "No hay salidas programadas en este momento"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = sheetSubtextColor
-                    )
-                }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp + activeTripBottomPadding),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(
-                        count = filteredDepartures.size,
-                        key = { index ->
-                            val dep = filteredDepartures[index]
-                            "${dep.tripId}_${dep.departureTime}_${dep.routeId}_$index"
+                } else if (filteredDepartures.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(100.dp + activeTripBottomPadding)
+                                .padding(bottom = activeTripBottomPadding),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (selectedLineFilters.isNotEmpty()) {
+                                    androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_no_departures_for_line)
+                                } else {
+                                    androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_no_departures_scheduled_now)
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = sheetSubtextColor
+                            )
                         }
-                    ) { index ->
-                        val departure = filteredDepartures[index]
-                        CercaniasDepartureCard(
-                            departure = departure,
-                            alerts = alerts,
-                            isDarkMode = isDarkMode,
-                            appLanguage = appLanguage,
-                            onClick = {}
-                        )
+                    }
+                } else {
+                    if (todayDepartures.isNotEmpty()) {
+                        items(
+                            count = todayDepartures.size,
+                            key = { index ->
+                                val dep = todayDepartures[index]
+                                "${dep.tripId}_${dep.departureTime}_${dep.routeId}_today_$index"
+                            }
+                        ) { index ->
+                            val departure = todayDepartures[index]
+                            CercaniasDepartureCard(
+                                departure = departure,
+                                alerts = alerts,
+                                isDarkMode = isDarkMode,
+                                appLanguage = appLanguage,
+                                onClick = {}
+                            )
+                        }
+                    }
+
+                    if (tomorrowDepartures.isNotEmpty()) {
+                        item(key = "sheet_header_tomorrow_departures") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = if (todayDepartures.isNotEmpty()) 10.dp else 2.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CalendarToday,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_tomorrow),
+                                            style = MaterialTheme.typography.titleSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp
+                                            ),
+                                            color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                        )
+                                    }
+                                }
+                                HorizontalDivider(
+                                    modifier = Modifier.weight(1f),
+                                    color = if (isDarkMode) Color(0xFF334155) else Color(0xFFCBD5E1),
+                                    thickness = 1.dp
+                                )
+                            }
+                        }
+
+                        items(
+                            count = tomorrowDepartures.size,
+                            key = { index ->
+                                val dep = tomorrowDepartures[index]
+                                "${dep.tripId}_${dep.departureTime}_${dep.routeId}_tomorrow_$index"
+                            }
+                        ) { index ->
+                            val departure = tomorrowDepartures[index]
+                            CercaniasDepartureCard(
+                                departure = departure,
+                                alerts = alerts,
+                                isDarkMode = isDarkMode,
+                                appLanguage = appLanguage,
+                                onClick = {}
+                            )
+                        }
                     }
                 }
             }

@@ -39,27 +39,57 @@ class LiveReconciliationEngine(
         private const val TAG = "LiveReconciliationEng"
     }
 
+    fun shouldAttemptLiveReconciliation(itinerary: PlannedItinerary): Boolean {
+        val nowMs = System.currentTimeMillis()
+        val departureEpochMs = RoutingDataMapper.getEffectiveDepartureEpochMs(itinerary)
+        if (departureEpochMs <= 0L) return false
+
+        val diffMs = departureEpochMs - nowMs
+        // If the departure is more than 30 minutes in the past, live feeds won't have active telemetry
+        if (diffMs < -30 * 60 * 1000L) return false
+
+        // Check if the itinerary includes Cercanías (Renfe)
+        val hasCercanias = itinerary.legs.any { leg ->
+            leg.mode == TransitMode.RAIL ||
+            leg.mode == TransitMode.CERCANIAS ||
+            leg.agencyName?.contains("Cercan", ignoreCase = true) == true ||
+            leg.agencyName?.contains("Renfe", ignoreCase = true) == true ||
+            leg.routeShortName?.uppercase(Locale.ROOT)?.startsWith("C") == true ||
+            leg.routeLongName?.contains("Cercan", ignoreCase = true) == true
+        }
+
+        // Live telemetry window: < 3 hours for Cercanías, < 2 hours for Metro & Buses (EMT / Metrobús)
+        val maxWindowMs = if (hasCercanias) {
+            3 * 3600 * 1000L // 3 hours = 180 min
+        } else {
+            2 * 3600 * 1000L // 2 hours = 120 min
+        }
+
+        return diffMs <= maxWindowMs
+    }
+
     suspend fun reconcileItineraries(
         baseItineraries: List<PlannedItinerary>,
         isDepartNow: Boolean = true
     ): List<PlannedItinerary> = coroutineScope {
-        if (!isDepartNow || baseItineraries.isEmpty()) {
+        if (baseItineraries.isEmpty()) {
             return@coroutineScope baseItineraries
         }
         val claimedVehicleKeys = ConcurrentHashMap.newKeySet<String>()
         baseItineraries.map { itinerary ->
             async {
-                try {
-                    reconcileItineraryWithLiveData(itinerary, isDepartNow, claimedVehicleKeys)
-                } catch (e: Exception) {
+                val isEligibleForLive = isDepartNow || shouldAttemptLiveReconciliation(itinerary)
+                if (isEligibleForLive) {
+                    try {
+                        reconcileItineraryWithLiveData(itinerary, isDepartNow = isDepartNow, claimedVehicleKeys)
+                    } catch (e: Exception) {
+                        itinerary
+                    }
+                } else {
                     itinerary
                 }
             }
-        }.awaitAll().sortedWith(
-            compareBy<PlannedItinerary> { RoutingDataMapper.getEffectiveArrivalEpochMs(it) }
-                .thenBy { it.totalDurationSeconds }
-                .thenBy { RoutingDataMapper.getEffectiveDepartureEpochMs(it) }
-        )
+        }.awaitAll()
     }
 
     suspend fun reconcileItinerary(
@@ -141,18 +171,23 @@ class LiveReconciliationEngine(
             }
         }
 
-        // Determine if query is happening in real-time window
-        val isCurrentRealTimeWindow = if (isDepartNow) {
-            true
-        } else {
-            val startEpochMs = RoutingDataMapper.parseIsoToEpochMs(theoreticalStartTimeIso)
-            if (startEpochMs > 0) {
-                val diffMs = Math.abs(startEpochMs - System.currentTimeMillis())
-                diffMs <= 60 * 60 * 1000L
-            } else {
-                false
-            }
+        // Determine if query is happening in real-time window (< 3h for Cercanías, < 2h for Metro/Buses)
+        val hasCercanias = legs.any { leg ->
+            leg.mode == TransitMode.RAIL ||
+            leg.mode == TransitMode.CERCANIAS ||
+            leg.agencyName?.contains("Cercan", ignoreCase = true) == true ||
+            leg.agencyName?.contains("Renfe", ignoreCase = true) == true ||
+            leg.routeShortName?.uppercase(Locale.ROOT)?.startsWith("C") == true ||
+            leg.routeLongName?.contains("Cercan", ignoreCase = true) == true
         }
+        val maxLiveWindowMs = if (hasCercanias) 3 * 3600 * 1000L else 2 * 3600 * 1000L
+
+        val startEpochMs = RoutingDataMapper.parseIsoToEpochMs(theoreticalStartTimeIso).takeIf { it > 0 }
+            ?: (legs.firstOrNull()?.startTime?.let { RoutingDataMapper.parseIsoToEpochMs(it) })
+            ?: System.currentTimeMillis()
+
+        val diffFromNowMs = startEpochMs - System.currentTimeMillis()
+        val isCurrentRealTimeWindow = isDepartNow || (diffFromNowMs in (-30 * 60 * 1000L)..maxLiveWindowMs)
 
         var reconciledNotice: String? = null
         var reconciledStartTime: String? = null

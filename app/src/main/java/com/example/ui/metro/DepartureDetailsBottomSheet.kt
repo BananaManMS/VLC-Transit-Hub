@@ -28,7 +28,10 @@ import androidx.compose.material.icons.filled.DirectionsSubway
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -90,10 +93,29 @@ private fun findMatchingTimelineStop(
     if (exact != null) return exact
 
     // 2. Contains match
-    return stops.find { stop ->
+    val containsMatch = stops.find { stop ->
         val stopNorm = normalizeForMatch(stop.stationName)
         stopNorm.contains(targetNorm) || targetNorm.contains(stopNorm)
     }
+    if (containsMatch != null) return containsMatch
+
+    // 3. Significant token match (e.g. "Plaça d'Espanya" vs "Plaza de España")
+    val targetTokens = targetNorm.split(" ").filter { it.length >= 3 }
+    if (targetTokens.isNotEmpty()) {
+        val best = stops.maxByOrNull { stop ->
+            val stopNorm = normalizeForMatch(stop.stationName)
+            val stopTokens = stopNorm.split(" ").filter { it.length >= 3 }
+            targetTokens.count { t -> stopTokens.contains(t) }
+        }
+        if (best != null) {
+            val stopNorm = normalizeForMatch(best.stationName)
+            val stopTokens = stopNorm.split(" ").filter { it.length >= 3 }
+            val matchCount = targetTokens.count { t -> stopTokens.contains(t) }
+            if (matchCount > 0) return best
+        }
+    }
+
+    return null
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -107,7 +129,8 @@ fun DepartureDetailsBottomSheet(
     isDarkMode: Boolean,
     sheetState: SheetState,
     onDismiss: () -> Unit,
-    metroScheduleViewModel: MetroScheduleViewModel? = null
+    metroScheduleViewModel: MetroScheduleViewModel? = null,
+    onStartQuickTrack: ((RealTimeDeparture) -> Unit)? = null
 ) {
     if (isBottomSheetVisible && selectedDepartureDetails != null) {
         val departure = selectedDepartureDetails
@@ -351,7 +374,7 @@ fun DepartureDetailsBottomSheet(
                             )
 
                             departure.carsCount?.let { count ->
-                                val carsLabel = if (appLanguage == AppLanguage.CA) "$count cotxes" else "$count coches"
+                                val carsLabel = androidx.compose.ui.res.stringResource(com.example.R.string.metro_cars_count_format, count)
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -383,6 +406,35 @@ fun DepartureDetailsBottomSheet(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
+                }
+
+                if (onStartQuickTrack != null) {
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            onStartQuickTrack(departure)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("departure_details_track_btn"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDarkMode) lineColor.copy(alpha = 0.22f).compositeOver(Color(0xFF262832)) else lineColor.copy(alpha = 0.12f),
+                            contentColor = if (isDarkMode) Color.White else lineColor
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (appLanguage == AppLanguage.CA) "Seguir este tren (Notificació en viu)" else "Seguir este tren (Notificación en vivo)",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelLarge
+                        )
                     }
                 }
 

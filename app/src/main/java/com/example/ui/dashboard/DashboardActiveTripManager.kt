@@ -135,9 +135,11 @@ class DashboardActiveTripManager(
                 val userArrivalAtTransferEpochMs = System.currentTimeMillis() + (remainingMinsOnCurrent * 60_000L)
                 val targetDepEpochMs = userArrivalAtTransferEpochMs + 2 * 60_000L // 2 min platform/transfer walk buffer
 
-                val targetTime = SimpleDateFormat("HH:mm", Locale.US).format(Date(targetDepEpochMs))
-                val targetDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(targetDepEpochMs))
+                val madridTz = java.util.TimeZone.getTimeZone("Europe/Madrid")
+                val targetTime = SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = madridTz }.format(Date(targetDepEpochMs))
+                val targetDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = madridTz }.format(Date(targetDepEpochMs))
 
+                val isDestStation = com.example.data.repository.routing.RoutingDataMapper.isStationOrStopDescriptor(destName)
                 val result = hybridRoutingRepository.planRoute(
                     fromLat = transferOriginLat,
                     fromLon = transferOriginLon,
@@ -149,7 +151,9 @@ class DashboardActiveTripManager(
                     maxTransfers = 2,
                     modes = "WALK,SUBWAY,TRAM,BUS,REGIONAL_RAIL",
                     originName = transferOriginName,
-                    destinationName = destName
+                    destinationName = destName,
+                    isOriginStationOrStop = true,
+                    isDestinationStationOrStop = isDestStation
                 )
 
                 result.fold(
@@ -231,16 +235,7 @@ class DashboardActiveTripManager(
         }
     }
 
-    fun advanceActiveTripLeg(newIndex: Int) {
-        scope.launch {
-            val currentTrip = activeTripState.value
-            ActiveTripProgressTracker.resetForNewLeg(newIndex)
-            if (currentTrip != null && newIndex != currentTrip.currentLegIndex) {
-                activeTripRepository.advanceLegIndex(newIndex)
-            }
-            refreshRealTimeTripStatus()
-        }
-    }
+
 
     fun confirmBoarding(targetLegIndex: Int) {
         scope.launch {

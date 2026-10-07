@@ -154,7 +154,7 @@ fun RouteStationRow(
                             modifier = Modifier.padding(vertical = 1.dp)
                         ) {
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Destí" else "Destino",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.destination_label),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
@@ -289,7 +289,7 @@ fun MetroLineIncidentsSection(
                         )
                         Column {
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Incidència en $lineId" else "Incidencia en $lineId",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_incident_on_line, lineId),
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFE53935),
                                 style = MaterialTheme.typography.bodyMedium
@@ -327,7 +327,7 @@ fun MetroLineIncidentsSection(
                         )
                         Column {
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Afectació per pas compartit ($sharedLineId)" else "Afectación por paso compartido ($sharedLineId)",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_incident_shared_track, sharedLineId),
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFFFB300),
                                 style = MaterialTheme.typography.bodyMedium
@@ -398,6 +398,21 @@ fun getColorsForZone(rawZone: String, isPassed: Boolean, isDarkMode: Boolean): Z
                     backgroundColor = Color(0xFFDBEAFE).copy(alpha = alpha),
                     borderColor = Color(0xFF3B82F6).copy(alpha = if (isPassed) 0.3f else 1f),
                     textColor = if (isPassed) Color(0xFF1D4ED8).copy(alpha = 0.5f) else Color(0xFF1E40AF)
+                )
+            }
+        }
+        clean.contains("+") -> {
+            if (isDarkMode) {
+                ZoneColors(
+                    backgroundColor = Color(0xFF4C1D95).copy(alpha = alpha),
+                    borderColor = Color(0xFF8B5CF6).copy(alpha = if (isPassed) 0.3f else 1f),
+                    textColor = if (isPassed) Color(0xFFDDD6FE).copy(alpha = 0.5f) else Color(0xFFDDD6FE)
+                )
+            } else {
+                ZoneColors(
+                    backgroundColor = Color(0xFFEDE9FE).copy(alpha = alpha),
+                    borderColor = Color(0xFF8B5CF6).copy(alpha = if (isPassed) 0.3f else 1f),
+                    textColor = if (isPassed) Color(0xFF6D28D9).copy(alpha = 0.5f) else Color(0xFF5B21B6)
                 )
             }
         }

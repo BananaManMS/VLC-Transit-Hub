@@ -111,14 +111,14 @@ fun UnifiedSearchSuggestionsPanel(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Cercant adreces i parades..." else "Buscando direcciones y paradas...",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.search_searching_addresses),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
                             )
                         }
                     } else {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "No s'han trobat resultats" else "No se encontraron resultados",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.search_no_results),
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
                             fontWeight = FontWeight.Medium
@@ -161,7 +161,7 @@ fun UnifiedSearchSuggestionsPanel(
                 item {
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "ACCESOS RÀPIDS" else "ACCESOS RÁPIDOS",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.search_quick_access),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
@@ -177,17 +177,15 @@ fun UnifiedSearchSuggestionsPanel(
                             item {
                                 ShortcutPill(
                                     icon = Icons.Default.Home,
-                                    label = if (homeLocation != null) "Casa" else (if (appLanguage == AppLanguage.CA) "Configurar Casa" else "Configurar Casa"),
+                                    label = if (homeLocation != null) {
+                                        androidx.compose.ui.res.stringResource(com.example.R.string.search_home)
+                                    } else {
+                                        androidx.compose.ui.res.stringResource(com.example.R.string.search_configure_home)
+                                    },
                                     onClick = {
                                         if (homeLocation != null) {
-                                            val nominatimResult = NominatimResult(
-                                                displayName = homeLocation.subtitle.ifEmpty { homeLocation.title },
-                                                latitude = homeLocation.latitude,
-                                                longitude = homeLocation.longitude,
-                                                type = "address",
-                                                category = "place"
-                                            )
-                                            onSearchResultClick(MapSearchResult.Address(nominatimResult, 1.0))
+                                            val searchResult = recentSearchToSearchResult(homeLocation)
+                                            onSearchResultClick(searchResult)
                                         } else {
                                             onSaveLocationShortcutClick?.invoke(true)
                                         }
@@ -198,17 +196,15 @@ fun UnifiedSearchSuggestionsPanel(
                             item {
                                 ShortcutPill(
                                     icon = Icons.Default.Work,
-                                    label = if (workLocation != null) (if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo") else (if (appLanguage == AppLanguage.CA) "Configurar Feina" else "Configurar Trabajo"),
+                                    label = if (workLocation != null) {
+                                        androidx.compose.ui.res.stringResource(com.example.R.string.search_work)
+                                    } else {
+                                        androidx.compose.ui.res.stringResource(com.example.R.string.search_configure_work)
+                                    },
                                     onClick = {
                                         if (workLocation != null) {
-                                            val nominatimResult = NominatimResult(
-                                                displayName = workLocation.subtitle.ifEmpty { workLocation.title },
-                                                latitude = workLocation.latitude,
-                                                longitude = workLocation.longitude,
-                                                type = "address",
-                                                category = "place"
-                                            )
-                                            onSearchResultClick(MapSearchResult.Address(nominatimResult, 1.0))
+                                            val searchResult = recentSearchToSearchResult(workLocation)
+                                            onSearchResultClick(searchResult)
                                         } else {
                                             onSaveLocationShortcutClick?.invoke(false)
                                         }
@@ -220,7 +216,7 @@ fun UnifiedSearchSuggestionsPanel(
                                 item {
                                     ShortcutPill(
                                         icon = Icons.Default.Map,
-                                        label = if (appLanguage == AppLanguage.CA) "Triar al mapa" else "Elegir en el mapa",
+                                        label = androidx.compose.ui.res.stringResource(com.example.R.string.search_choose_on_map),
                                         onClick = onElegirEnMapaClick,
                                         isDarkMode = isDarkMode
                                     )
@@ -240,14 +236,8 @@ fun UnifiedSearchSuggestionsPanel(
                                     iconTint = favColor,
                                     label = fav.title,
                                     onClick = {
-                                        val nominatimResult = NominatimResult(
-                                            displayName = if (fav.subtitle.isNotEmpty()) "${fav.title}, ${fav.subtitle}" else fav.title,
-                                            latitude = fav.latitude,
-                                            longitude = fav.longitude,
-                                            type = "favorite",
-                                            category = "favorite"
-                                        )
-                                        onSearchResultClick(MapSearchResult.Address(nominatimResult, 1.0))
+                                        val searchResult = recentSearchToSearchResult(fav)
+                                        onSearchResultClick(searchResult)
                                     },
                                     isDarkMode = isDarkMode
                                 )
@@ -256,38 +246,13 @@ fun UnifiedSearchSuggestionsPanel(
                     }
                 }
 
-                // 1.5 Saved Favorite Places Block
-                if (customFavorites.isNotEmpty()) {
-                    item {
-                        SectionHeader(
-                            title = if (appLanguage == AppLanguage.CA) "Llocs preferits guardats" else "Sitios favoritos guardados",
-                            isDarkMode = isDarkMode
-                        )
-                    }
-                    items(
-                        items = customFavorites,
-                        key = { "fav_saved_${it.id}_${it.latitude}_${it.longitude}" }
-                    ) { fav ->
-                        RecentSearchRow(
-                            item = fav,
-                            isDarkMode = isDarkMode,
-                            appLanguage = appLanguage,
-                            onItemClick = {
-                                val searchResult = recentSearchToSearchResult(fav)
-                                onSearchResultClick(searchResult)
-                            },
-                            onDeleteClick = null
-                        )
-                    }
-                }
-
-                // 2. Recent Searches Block
+                // 1.5 Recent Searches Block (Search History - Priority #1)
                 if (recentSearches.isNotEmpty()) {
                     item {
                         SectionHeader(
-                            title = if (appLanguage == AppLanguage.CA) "Cerques recents" else "Búsquedas recientes",
+                            title = androidx.compose.ui.res.stringResource(com.example.R.string.search_recent_title),
                             isDarkMode = isDarkMode,
-                            actionLabel = if (appLanguage == AppLanguage.CA) "Esborrar" else "Borrar todo",
+                            actionLabel = androidx.compose.ui.res.stringResource(com.example.R.string.search_clear_all),
                             onActionClick = onClearRecentSearches
                         )
                     }
@@ -308,11 +273,36 @@ fun UnifiedSearchSuggestionsPanel(
                     }
                 }
 
-                // 3. Favorite Transit Stops Block
+                // 2. Saved Favorite Places Block (Below History)
+                if (customFavorites.isNotEmpty()) {
+                    item {
+                        SectionHeader(
+                            title = androidx.compose.ui.res.stringResource(com.example.R.string.search_saved_favorites_title),
+                            isDarkMode = isDarkMode
+                        )
+                    }
+                    items(
+                        items = customFavorites,
+                        key = { "fav_saved_${it.id}_${it.latitude}_${it.longitude}" }
+                    ) { fav ->
+                        RecentSearchRow(
+                            item = fav,
+                            isDarkMode = isDarkMode,
+                            appLanguage = appLanguage,
+                            onItemClick = {
+                                val searchResult = recentSearchToSearchResult(fav)
+                                onSearchResultClick(searchResult)
+                            },
+                            onDeleteClick = null
+                        )
+                    }
+                }
+
+                // 3. Favorite Transit Stops Block (Below History)
                 if (unifiedTransitFavorites.isNotEmpty()) {
                     item {
                         SectionHeader(
-                            title = if (appLanguage == AppLanguage.CA) "Estacions i parades preferides" else "Estaciones y paradas favoritas",
+                            title = androidx.compose.ui.res.stringResource(com.example.R.string.search_favorite_stops_title),
                             isDarkMode = isDarkMode
                         )
                     }
@@ -356,12 +346,14 @@ fun SearchResultRow(
         is MapSearchResult.Metro -> result.station.name
         is MapSearchResult.Cercanias -> result.station.displayName
         is MapSearchResult.Address -> {
-            val isHome = result.result.type == "home" || result.result.placeName?.equals("Casa", ignoreCase = true) == true
-            val isWork = result.result.type == "work" || result.result.placeName?.equals("Trabajo", ignoreCase = true) == true || result.result.placeName?.equals("Feina", ignoreCase = true) == true
+            val isHome = result.result.type == "home" || result.result.placeName?.equals("Casa", ignoreCase = true) == true || result.customTitle?.equals("Casa", ignoreCase = true) == true
+            val isWork = result.result.type == "work" || result.result.placeName?.equals("Trabajo", ignoreCase = true) == true || result.result.placeName?.equals("Feina", ignoreCase = true) == true || result.customTitle?.equals("Trabajo", ignoreCase = true) == true || result.customTitle?.equals("Feina", ignoreCase = true) == true
+            val homeText = androidx.compose.ui.res.stringResource(com.example.R.string.search_home)
+            val workText = androidx.compose.ui.res.stringResource(com.example.R.string.search_work)
             when {
                 !result.customTitle.isNullOrBlank() -> result.customTitle
-                isHome -> if (appLanguage == AppLanguage.CA) "Casa" else "Casa"
-                isWork -> if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo"
+                isHome -> homeText
+                isWork -> workText
                 !result.result.placeName.isNullOrBlank() -> result.result.placeName
                 else -> result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName
             }
@@ -371,48 +363,31 @@ fun SearchResultRow(
     val subtitle = when (result) {
         is MapSearchResult.BusStop -> {
             val alias = result.alias
-            val base = if (!alias.isNullOrBlank()) {
+            if (!alias.isNullOrBlank()) {
                 "${result.stop.denominacion} • Parada ${result.stop.id_parada}"
             } else {
-                "Parada ${result.stop.id_parada}"
+                "EMT • Parada ${result.stop.id_parada}"
             }
-            if (result.isFavorite) {
-                val favPrefix = if (appLanguage == AppLanguage.CA) "★ Preferida" else "★ Favorita"
-                "$favPrefix • $base"
-            } else base
         }
         is MapSearchResult.MetrobusStop -> {
             val alias = result.alias
-            val base = if (!alias.isNullOrBlank()) {
+            if (!alias.isNullOrBlank()) {
                 "${result.stop.denominacion} • Metrobús • Parada ${result.stop.id_parada}"
             } else {
                 "Metrobús • Parada ${result.stop.id_parada}"
             }
-            if (result.isFavorite) {
-                val favPrefix = if (appLanguage == AppLanguage.CA) "★ Preferida" else "★ Favorita"
-                "$favPrefix • $base"
-            } else base
         }
         is MapSearchResult.Metro -> {
             val z = com.example.data.model.cleanZoneCode(result.station.zone)
-            val base = if (z.isNotEmpty()) "Zona $z" else "Estación Metro"
-            if (result.isFavorite) {
-                val favPrefix = if (appLanguage == AppLanguage.CA) "★ Preferida" else "★ Favorita"
-                "$favPrefix • $base"
-            } else base
+            if (z.isNotEmpty()) "Zona $z • Metrovalencia" else "Metrovalencia"
         }
         is MapSearchResult.Cercanias -> {
-            val base = "Estación Renfe"
-            if (result.isFavorite) {
-                val favPrefix = if (appLanguage == AppLanguage.CA) "★ Preferida" else "★ Favorita"
-                "$favPrefix • $base"
-            } else base
+            androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_renfe_title)
         }
         is MapSearchResult.Address -> {
             val addr = result.result
-            val isHome = addr.type == "home" || addr.placeName?.equals("Casa", ignoreCase = true) == true
-            val isWork = addr.type == "work" || addr.placeName?.equals("Trabajo", ignoreCase = true) == true || addr.placeName?.equals("Feina", ignoreCase = true) == true
-            val isFav = result.isFavorite || isHome || isWork || addr.placeCategory == PlaceCategory.FAVORITE || addr.category == "favorite" || addr.type == "favorite"
+            val isHome = addr.type == "home" || addr.placeName?.equals("Casa", ignoreCase = true) == true || result.customTitle?.equals("Casa", ignoreCase = true) == true
+            val isWork = addr.type == "work" || addr.placeName?.equals("Trabajo", ignoreCase = true) == true || addr.placeName?.equals("Feina", ignoreCase = true) == true || result.customTitle?.equals("Trabajo", ignoreCase = true) == true || result.customTitle?.equals("Feina", ignoreCase = true) == true
 
             val road = addr.road
             val hn = if (!addr.houseNumber.isNullOrBlank()) " ${addr.houseNumber}" else ""
@@ -433,20 +408,13 @@ fun SearchResultRow(
                 }
             }
 
+            val homeText = androidx.compose.ui.res.stringResource(com.example.R.string.search_home)
+            val workText = androidx.compose.ui.res.stringResource(com.example.R.string.search_work)
+
             when {
-                isHome -> {
-                    val label = if (appLanguage == AppLanguage.CA) "Llar guardada" else "Casa guardada"
-                    if (locationText.isNotBlank()) "$label • $locationText" else label
-                }
-                isWork -> {
-                    val label = if (appLanguage == AppLanguage.CA) "Feina guardada" else "Trabajo guardado"
-                    if (locationText.isNotBlank()) "$label • $locationText" else label
-                }
-                isFav -> {
-                    val label = if (appLanguage == AppLanguage.CA) "Lloc preferit guardat" else "Sitio favorito guardado"
-                    if (locationText.isNotBlank()) "$label • $locationText" else label
-                }
                 locationText.isNotBlank() -> locationText
+                isHome -> homeText
+                isWork -> workText
                 else -> addr.placeCategory.getLabel(appLanguage)
             }
         }
@@ -506,9 +474,9 @@ fun SearchResultRow(
                 }
             }
             is MapSearchResult.Address -> {
-                val isHome = result.result.type == "home" || result.result.placeName?.equals("Casa", ignoreCase = true) == true
-                val isWork = result.result.type == "work" || result.result.placeName?.equals("Trabajo", ignoreCase = true) == true || result.result.placeName?.equals("Feina", ignoreCase = true) == true
-                val isFavAddr = isHome || isWork || result.result.placeCategory == PlaceCategory.FAVORITE ||
+                val isHome = result.result.type == "home" || result.result.placeName?.equals("Casa", ignoreCase = true) == true || result.customTitle?.equals("Casa", ignoreCase = true) == true
+                val isWork = result.result.type == "work" || result.result.placeName?.equals("Trabajo", ignoreCase = true) == true || result.result.placeName?.equals("Feina", ignoreCase = true) == true || result.customTitle?.equals("Trabajo", ignoreCase = true) == true || result.customTitle?.equals("Feina", ignoreCase = true) == true
+                val isFavAddr = isHome || isWork || result.isFavorite || result.result.placeCategory == PlaceCategory.FAVORITE ||
                         result.result.category == "favorite" || result.result.type == "favorite"
 
                 if (isHome) {
@@ -603,24 +571,18 @@ fun SearchResultRow(
                     if (result.isFavorite) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFF59E0B).copy(alpha = 0.15f)
+                            color = Color(0xFFF59E0B).copy(alpha = 0.15f),
+                            modifier = Modifier.padding(horizontal = 1.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Star,
-                                    contentDescription = null,
-                                    tint = Color(0xFFF59E0B),
-                                    modifier = Modifier.size(10.dp)
-                                )
-                                Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Preferida" else "Favorita",
-                                    color = Color(0xFFD97706),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.sp
+                                    contentDescription = "Favorita",
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(12.dp)
                                 )
                             }
                         }
@@ -639,24 +601,18 @@ fun SearchResultRow(
                     if (result.isFavorite) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFF59E0B).copy(alpha = 0.15f)
+                            color = Color(0xFFF59E0B).copy(alpha = 0.15f),
+                            modifier = Modifier.padding(horizontal = 1.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Star,
-                                    contentDescription = null,
-                                    tint = Color(0xFFF59E0B),
-                                    modifier = Modifier.size(10.dp)
-                                )
-                                Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Preferida" else "Favorita",
-                                    color = Color(0xFFD97706),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.sp
+                                    contentDescription = "Favorita",
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(12.dp)
                                 )
                             }
                         }
@@ -675,24 +631,18 @@ fun SearchResultRow(
                     if (result.isFavorite) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFF59E0B).copy(alpha = 0.15f)
+                            color = Color(0xFFF59E0B).copy(alpha = 0.15f),
+                            modifier = Modifier.padding(horizontal = 1.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Star,
-                                    contentDescription = null,
-                                    tint = Color(0xFFF59E0B),
-                                    modifier = Modifier.size(10.dp)
-                                )
-                                Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Preferida" else "Favorita",
-                                    color = Color(0xFFD97706),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.sp
+                                    contentDescription = "Favorita",
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(12.dp)
                                 )
                             }
                         }
@@ -708,24 +658,18 @@ fun SearchResultRow(
                     if (result.isFavorite) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFF59E0B).copy(alpha = 0.15f)
+                            color = Color(0xFFF59E0B).copy(alpha = 0.15f),
+                            modifier = Modifier.padding(horizontal = 1.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Star,
-                                    contentDescription = null,
-                                    tint = Color(0xFFF59E0B),
-                                    modifier = Modifier.size(10.dp)
-                                )
-                                Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Preferida" else "Favorita",
-                                    color = Color(0xFFD97706),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.sp
+                                    contentDescription = "Favorita",
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(12.dp)
                                 )
                             }
                         }
@@ -743,16 +687,13 @@ fun SearchResultRow(
                 is MapSearchResult.Address -> {
                     val isHome = result.result.type == "home" || result.result.placeName?.equals("Casa", ignoreCase = true) == true
                     val isWork = result.result.type == "work" || result.result.placeName?.equals("Trabajo", ignoreCase = true) == true || result.result.placeName?.equals("Feina", ignoreCase = true) == true
-                    val isFavAddr = result.isFavorite || isHome || isWork || result.result.placeCategory == PlaceCategory.FAVORITE ||
-                            result.result.category == "favorite" || result.result.type == "favorite"
-
                     if (isHome) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                         ) {
                             Text(
-                                text = "Casa",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.search_home),
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
@@ -765,39 +706,12 @@ fun SearchResultRow(
                             color = Color(0xFFF59E0B).copy(alpha = 0.2f)
                         ) {
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.search_work),
                                 color = Color(0xFFD97706),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
-                        }
-                    } else if (isFavAddr) {
-                        val favColor = result.result.colorHex?.let {
-                            try { Color(android.graphics.Color.parseColor(it)) } catch (_: Exception) { null }
-                        } ?: Color(0xFFEF4444)
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = favColor.copy(alpha = 0.15f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Favorite,
-                                    contentDescription = null,
-                                    tint = favColor,
-                                    modifier = Modifier.size(10.dp)
-                                )
-                                Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Preferit" else "Favorito",
-                                    color = favColor,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.sp
-                                )
-                            }
                         }
                     }
                 }
@@ -1088,13 +1002,20 @@ fun recentSearchToSearchResult(item: RecentSearch, score: Double = 1.0): MapSear
             MapSearchResult.MetrobusStop(metrobusStop, null, score)
         }
         "metro" -> {
-            val z = com.example.data.model.cleanZoneCode(item.subtitle)
+            val resolvedStation = com.example.data.model.ValenciaMetroData.findStation(item.id)
+                ?: com.example.data.model.ValenciaMetroData.findStation(item.title)
+            val z = resolvedStation?.zone ?: com.example.data.model.cleanZoneCode(item.subtitle)
+            val linesList = if (resolvedStation != null && resolvedStation.lines.isNotEmpty()) {
+                resolvedStation.lines
+            } else {
+                item.extraData?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+            }
             val metroStation = com.example.data.model.MetroStation(
                 id = item.id,
                 name = item.title,
-                lines = item.extraData?.split(",") ?: emptyList(),
-                latitude = item.latitude,
-                longitude = item.longitude,
+                lines = linesList,
+                latitude = if (resolvedStation != null && resolvedStation.latitude != 0.0) resolvedStation.latitude else item.latitude,
+                longitude = if (resolvedStation != null && resolvedStation.longitude != 0.0) resolvedStation.longitude else item.longitude,
                 zone = z
             )
             MapSearchResult.Metro(metroStation, score, isFavorite = true)
@@ -1211,9 +1132,10 @@ fun mapSearchResultToPlannerLocation(result: MapSearchResult, appLanguage: AppLa
             )
         }
         is MapSearchResult.Metro -> {
+            val z = com.example.data.model.cleanZoneCode(result.station.zone)
             PlannerLocation(
                 title = result.station.name,
-                subtitle = "Metrovalencia",
+                subtitle = "Zona $z • Metrovalencia",
                 latitude = result.station.latitude,
                 longitude = result.station.longitude,
                 stopId = result.station.id,
@@ -1235,10 +1157,13 @@ fun mapSearchResultToPlannerLocation(result: MapSearchResult, appLanguage: AppLa
             val isWork = result.result.type == "work" || result.result.placeName?.equals("Trabajo", ignoreCase = true) == true || result.result.placeName?.equals("Feina", ignoreCase = true) == true
             val isFav = result.isFavorite || isHome || isWork || result.result.placeCategory == PlaceCategory.FAVORITE || result.result.category == "favorite" || result.result.type == "favorite"
 
+            val homeTitle = if (appLanguage == AppLanguage.CA) "Casa" else "Casa"
+            val workTitle = if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo"
+
             val mainTitle = when {
                 !result.customTitle.isNullOrBlank() -> result.customTitle
-                isHome -> if (appLanguage == AppLanguage.CA) "Casa" else "Casa"
-                isWork -> if (appLanguage == AppLanguage.CA) "Feina" else "Trabajo"
+                isHome -> homeTitle
+                isWork -> workTitle
                 !result.result.placeName.isNullOrBlank() -> result.result.placeName
                 else -> result.result.displayName.split(",").firstOrNull()?.trim() ?: result.result.displayName
             }
@@ -1253,15 +1178,14 @@ fun mapSearchResultToPlannerLocation(result: MapSearchResult, appLanguage: AppLa
             } else {
                 result.result.displayName.split(",").drop(1).take(2).joinToString(", ").trim()
             }
-            val displaySubtitle = if (isFav) {
-                val favLabel = when {
-                    isHome -> if (appLanguage == AppLanguage.CA) "Llar guardada" else "Casa guardada"
-                    isWork -> if (appLanguage == AppLanguage.CA) "Feina guardada" else "Trabajo guardado"
-                    else -> if (appLanguage == AppLanguage.CA) "Lloc preferit" else "Sitio favorito"
-                }
-                if (secondary.isNotEmpty()) "$favLabel • $secondary" else favLabel
+            val displaySubtitle = if (secondary.isNotEmpty()) {
+                secondary
             } else {
-                secondary.ifEmpty { "València" }
+                when {
+                    isHome -> homeTitle
+                    isWork -> workTitle
+                    else -> "València"
+                }
             }
             PlannerLocation(
                 title = mainTitle,

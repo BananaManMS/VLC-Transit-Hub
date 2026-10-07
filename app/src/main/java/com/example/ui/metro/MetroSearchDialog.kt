@@ -119,19 +119,19 @@ fun MetroSearchDialog(
                 ) {
                     Column {
                         Text(
-                            text = "Buscar Estación Metro",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_search_dialog_title),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
                         Text(
-                            text = "Busca y gestiona tus estaciones favoritas",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_search_dialog_subtitle),
                             fontSize = 12.sp,
                             color = subtextColor
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = subtextColor)
+                        Icon(Icons.Default.Close, contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close), tint = subtextColor)
                     }
                 }
 
@@ -139,7 +139,7 @@ fun MetroSearchDialog(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onQueryChange,
-                    placeholder = { Text("Buscar estación...", color = subtextColor) },
+                    placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.search_station_label), color = subtextColor) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = subtextColor) },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -302,13 +302,13 @@ fun MetroStationSelectionDialog(
                 ) {
                     Column {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Favorites de Metro" else "Favoritas Metro",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_favs_dialog_title),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Selecciona fins a 10 estacions favorites de Metrovalencia" else "Selecciona hasta 10 estaciones favoritas de Metrovalencia",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_favs_dialog_subtitle),
                             fontSize = 12.sp,
                             color = subtextColor
                         )
@@ -316,7 +316,7 @@ fun MetroStationSelectionDialog(
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Cerrar",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
                             tint = subtextColor
                         )
                     }
@@ -329,7 +329,7 @@ fun MetroStationSelectionDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp),
-                    placeholder = { Text(if (appLanguage == AppLanguage.CA) "Cercar estació..." else "Buscar estación...", color = subtextColor) },
+                    placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.search_station_label), color = subtextColor) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = subtextColor) },
                     singleLine = true,
                     shape = RoundedCornerShape(18.dp),
@@ -369,6 +369,7 @@ fun MetroStationSelectionDialog(
                             }
                         }
 
+                        val maxLimitToast = androidx.compose.ui.res.stringResource(com.example.R.string.metro_favs_max_limit_toast)
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -376,8 +377,7 @@ fun MetroStationSelectionDialog(
                                 .clickable {
                                     if (!isChecked) {
                                         if (selectedStations.size >= 10) {
-                                            val toastMsg = if (appLanguage == AppLanguage.CA) "Només pots seleccionar un màxim de 10 estacions." else "Sólo puedes seleccionar un máximo de 10 estaciones."
-                                            Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, maxLimitToast, Toast.LENGTH_SHORT).show()
                                         } else {
                                             selectedStations = selectedStations + station.id
                                         }
@@ -463,7 +463,7 @@ fun MetroStationSelectionDialog(
                         if (closestStations.isNotEmpty()) {
                             item(key = "header_closest_metro") {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "ESTACIONS MÉS PRÒXIMES" else "ESTACIONES MÁS CERCANAS",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_search_nearest_stations),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor,
@@ -479,7 +479,7 @@ fun MetroStationSelectionDialog(
                         if (alphabeticalStations.isNotEmpty()) {
                             item(key = "header_alphabetical_metro") {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "TOTES LES ESTACIONS (A-Z)" else "TODAS LAS ESTACIONES (A-Z)",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_search_all_stations),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor,
@@ -498,6 +498,8 @@ fun MetroStationSelectionDialog(
                     }
                 }
 
+                val minSelectionToast = androidx.compose.ui.res.stringResource(com.example.R.string.metro_favs_min_selection_toast)
+                val favsUpdatedToast = androidx.compose.ui.res.stringResource(com.example.R.string.metro_favs_updated_toast)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -506,7 +508,7 @@ fun MetroStationSelectionDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Seleccionades: ${selectedStations.size} de 10" else "Seleccionadas: ${selectedStations.size} de 10",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_favs_selected_count, selectedStations.size),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (selectedStations.isNotEmpty() && selectedStations.size <= 10) accentColor else MaterialTheme.colorScheme.error
@@ -514,12 +516,10 @@ fun MetroStationSelectionDialog(
                     Button(
                         onClick = {
                             if (selectedStations.isEmpty() || selectedStations.size > 10) {
-                                val toastMsg = if (appLanguage == AppLanguage.CA) "Per favor, selecciona entre 1 i 10 estacions." else "Por favor, selecciona entre 1 y 10 estaciones."
-                                Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, minSelectionToast, Toast.LENGTH_SHORT).show()
                             } else {
                                 metroViewModel.updateFavoriteStations(selectedStations)
-                                val toastMsg = if (appLanguage == AppLanguage.CA) "Estacions favorites actualitzades." else "Estaciones favoritas actualizadas."
-                                Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, favsUpdatedToast, Toast.LENGTH_SHORT).show()
                                 onDismiss()
                             }
                         },
@@ -532,7 +532,7 @@ fun MetroStationSelectionDialog(
                     ) {
                         Icon(imageVector = Icons.Default.Check, contentDescription = null)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (appLanguage == AppLanguage.CA) "Guardar Canvis" else "Guardar Cambios", fontWeight = FontWeight.Bold)
+                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_save_changes), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -612,13 +612,13 @@ fun MetroQuickStationPickerDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Consultar Estació Metro" else "Consultar Estación Metro",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_quick_picker_title),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Veure eixides en temps real sense modificar favorites" else "Ver salidas en tiempo real sin modificar tus favoritas",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_quick_picker_subtitle),
                             fontSize = 12.sp,
                             color = subtextColor
                         )
@@ -629,7 +629,7 @@ fun MetroQuickStationPickerDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Tancar" else "Cerrar",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
                             tint = subtextColor
                         )
                     }
@@ -639,11 +639,11 @@ fun MetroQuickStationPickerDialog(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text(if (appLanguage == AppLanguage.CA) "Cercar estació..." else "Buscar estación...", fontSize = 14.sp, color = subtextColor) },
+                    placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.search_station_label), fontSize = 14.sp, color = subtextColor) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Cercar" else "Buscar",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.search_label),
                             tint = subtextColor
                         )
                     },
@@ -756,7 +756,7 @@ fun MetroQuickStationPickerDialog(
                         if (closestStations.isNotEmpty()) {
                             item(key = "header_closest_metro_quick") {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "ESTACIONS MÉS PRÒXIMES" else "ESTACIONES MÁS CERCANAS",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_search_nearest_stations),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor,
@@ -772,7 +772,7 @@ fun MetroQuickStationPickerDialog(
                         if (alphabeticalStations.isNotEmpty()) {
                             item(key = "header_alphabetical_metro_quick") {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "TOTES LES ESTACIONS (A-Z)" else "TODAS LAS ESTACIONES (A-Z)",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_search_all_stations),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor,

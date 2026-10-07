@@ -99,7 +99,7 @@ fun NewsDetailContent(
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
         ) {
             Text(
-                text = if (appLanguage == AppLanguage.CA) "NOTÍCIA" else "NOTICIA",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.news_badge_label),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
@@ -177,7 +177,7 @@ fun NewsDetailContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Obrir a la web oficial" else "Abrir en la web oficial",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_open_official_web),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer

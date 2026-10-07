@@ -354,7 +354,7 @@ fun NearbyStopsBottomSheet(
                     modifier = Modifier.size(18.dp)
                 )
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "Transport proper" else "Transporte cercano",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_transit_header),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = textColor
@@ -511,7 +511,7 @@ fun NearbyStopsBottomSheet(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (appLanguage == AppLanguage.CA) "No hi ha parades properes" else "No hay paradas cercanas",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_no_stops_found),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = subtextColor
                                     )
@@ -571,7 +571,7 @@ fun NearbyStopsBottomSheet(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (appLanguage == AppLanguage.CA) "No hi ha estacions de Valenbisi properes" else "No hay estaciones de Valenbisi cercanas",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_no_valenbisi_found),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = subtextColor
                                     )
@@ -655,7 +655,7 @@ private fun TabRow(
                     modifier = Modifier.size(18.dp)
                 )
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "Transport" else "Transporte",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.header_transport_tab),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (selectedPageIndex == 0) textColor else unselectedColor

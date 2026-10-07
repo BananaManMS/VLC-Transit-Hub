@@ -81,20 +81,8 @@ class DashboardRepository(
     }
 
     suspend fun ensureDefaultCalendarItems() = withContext(Dispatchers.IO) {
-        val current = calendarDao.getAllItemsList()
-        if (current.isEmpty()) {
-            val now = System.currentTimeMillis()
-            calendarDao.insertItem(
-                CalendarItemEntity(
-                    title = "Bienvenido a VLC Transit",
-                    description = "Tu panel centralizado de transporte en Valencia",
-                    itemType = "EVENT",
-                    startMillis = now,
-                    endMillis = now + 3600000L,
-                    colorHex = "#2196F3"
-                )
-            )
-        }
+        val now = System.currentTimeMillis()
+        calendarDao.deletePastEvents(now)
     }
 
     suspend fun loadDashboardData(): String = "Dashboard Loaded"

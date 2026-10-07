@@ -36,16 +36,21 @@ fun PlaceCategoryIconBox(
     isDarkMode: Boolean,
     modifier: Modifier = Modifier,
     boxSize: Dp = 44.dp,
-    iconSize: Dp = 22.dp
+    iconSize: Dp = 22.dp,
+    customIcon: ImageVector? = null,
+    customColor: Color? = null
 ) {
+    val effectiveColor = customColor ?: category.brandColor
+    val effectiveIcon = customIcon ?: category.icon
+
     val bgColor = if (isDarkMode) {
-        category.brandColor.copy(alpha = 0.25f)
+        effectiveColor.copy(alpha = 0.25f)
     } else {
-        category.brandColor
+        effectiveColor
     }
 
     val iconTint = if (isDarkMode) {
-        category.brandColor
+        effectiveColor
     } else {
         Color.White
     }
@@ -57,7 +62,7 @@ fun PlaceCategoryIconBox(
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
-                imageVector = category.icon,
+                imageVector = effectiveIcon,
                 contentDescription = null,
                 tint = iconTint,
                 modifier = Modifier.size(iconSize)
@@ -71,11 +76,17 @@ fun PlaceCategoryBadge(
     category: PlaceCategory,
     appLanguage: AppLanguage,
     isDarkMode: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    customIcon: ImageVector? = null,
+    customColor: Color? = null,
+    customLabel: String? = null
 ) {
-    val label = category.getLabel(appLanguage)
-    val bgColor = if (isDarkMode) category.brandColor.copy(alpha = 0.20f) else category.brandColor.copy(alpha = 0.12f)
-    val textColor = category.brandColor
+    val label = customLabel ?: category.getLabel(appLanguage)
+    val effectiveColor = customColor ?: category.brandColor
+    val effectiveIcon = customIcon ?: category.icon
+
+    val bgColor = if (isDarkMode) effectiveColor.copy(alpha = 0.20f) else effectiveColor.copy(alpha = 0.12f)
+    val textColor = effectiveColor
 
     Surface(
         shape = RoundedCornerShape(6.dp),
@@ -87,7 +98,7 @@ fun PlaceCategoryBadge(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = category.icon,
+                imageVector = effectiveIcon,
                 contentDescription = null,
                 tint = textColor,
                 modifier = Modifier.size(12.dp)

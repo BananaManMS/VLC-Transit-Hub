@@ -63,7 +63,7 @@ fun UnifiedLineFilterRow(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "Totes" else "Todas",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.bus_line_filter_all),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
                     color = if (isAllSelected) Color.White else subtextColor

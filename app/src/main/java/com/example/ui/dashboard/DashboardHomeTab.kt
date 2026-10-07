@@ -21,6 +21,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -78,10 +79,14 @@ fun DashboardHomeTab(
     calendarItems: List<CalendarItemEntity>,
     isOnline: Boolean = true,
     dashboardViewModel: DashboardViewModel,
-    metroViewModel: MetroViewModel,
-    cercaniasViewModel: CercaniasViewModel,
+    metroViewModel: MetroViewModel? = null,
+    cercaniasViewModel: CercaniasViewModel? = null,
     busViewModel: BusViewModel? = null,
     onNavigateToTab: (DashboardTab, Int) -> Unit,
+    onSelectMetroStation: ((String) -> Unit)? = null,
+    onSelectCercaniasStation: ((String) -> Unit)? = null,
+    onSelectBusStop: ((com.example.data.database.GeoportalStopEntity) -> Unit)? = null,
+    onSelectMetrobusStop: ((com.example.data.database.MetrobusStopEntity) -> Unit)? = null,
     onOpenRoutePlanner: (PlannerLocation?) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenMetroAvisos: () -> Unit,
@@ -90,7 +95,7 @@ fun DashboardHomeTab(
     onAddCalendarClick: () -> Unit,
     onDeleteCalendarItem: (CalendarItemEntity) -> Unit,
     onRequestLocationPermission: () -> Unit,
-    onConfigureLocationOnMap: ((Boolean) -> Unit)? = null,
+    onConfigureLocationOnMap: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -98,6 +103,7 @@ fun DashboardHomeTab(
     // Commute locations synchronized with Map & RoutePlanner
     val homeLocationState by dashboardViewModel.homeLocation.collectAsState()
     val workLocationState by dashboardViewModel.workLocation.collectAsState()
+    val pinnedLocationState by dashboardViewModel.pinnedLocation.collectAsState()
 
     val homeName = homeLocationState?.subtitle?.ifBlank { homeLocationState?.title } ?: ""
     val homeLat = homeLocationState?.latitude ?: 0.0
@@ -107,14 +113,18 @@ fun DashboardHomeTab(
     val workLat = workLocationState?.latitude ?: 0.0
     val workLon = workLocationState?.longitude ?: 0.0
 
-    var showCommuteDialogFor by remember { mutableStateOf<String?>(null) } // "HOME" or "WORK"
+    val pinnedName = pinnedLocationState?.title?.ifBlank { pinnedLocationState?.subtitle } ?: ""
+    val pinnedLat = pinnedLocationState?.latitude ?: 0.0
+    val pinnedLon = pinnedLocationState?.longitude ?: 0.0
+
+    var showCommuteDialogFor by remember { mutableStateOf<String?>(null) } // "HOME", "WORK", or "PINNED"
 
     // Card details & add card dialog
     var selectedTransitCard by remember { mutableStateOf<TransitCardUiModel?>(null) }
     var showAddCardDialog by remember { mutableStateOf(false) }
 
-    // Transit Cards from metro repository
-    val transitCards by metroViewModel.transitCardsFlow.collectAsState()
+    // Transit Cards from DashboardViewModel
+    val transitCards by (metroViewModel?.transitCardsFlow ?: dashboardViewModel.transitCardsFlow).collectAsState()
     val homeVisibleCards = remember(transitCards) {
         transitCards.filter { it.showOnHome }.sortedWith(
             compareBy<TransitCardUiModel> { it.customOrder }
@@ -123,21 +133,23 @@ fun DashboardHomeTab(
         )
     }
 
-    // Stations & Real-Time
+    // Stations & Real-Time Location
     val dashLocation by dashboardViewModel.lastLocation.collectAsState()
-    val metroLocation by metroViewModel.lastLocation.collectAsState()
-    val allMetroStations by metroViewModel.allNetworkStations.collectAsState()
-    val allCercaniasStations by cercaniasViewModel.allCercaniasStations.collectAsState()
-    val hasMetroAlertsError by metroViewModel.hasMetroAlertsError.collectAsState()
-    val hasCercaniasAlertsError by cercaniasViewModel.hasCercaniasAlertsError.collectAsState()
+    val metroLocation by (metroViewModel?.lastLocation ?: remember { kotlinx.coroutines.flow.MutableStateFlow<android.location.Location?>(null) }).collectAsState()
+    val allMetroStations by (metroViewModel?.allNetworkStations ?: dashboardViewModel.allMetroStations).collectAsState()
+    val allCercaniasStations by (cercaniasViewModel?.allCercaniasStations ?: dashboardViewModel.allCercaniasStations).collectAsState()
+    val hasMetroAlertsError by (metroViewModel?.hasMetroAlertsError ?: dashboardViewModel.hasMetroAlertsError).collectAsState()
+    val hasCercaniasAlertsError by (cercaniasViewModel?.hasCercaniasAlertsError ?: dashboardViewModel.hasCercaniasAlertsError).collectAsState()
+    val hasFetchedMetroAlertsOnce by dashboardViewModel.hasFetchedMetroAlertsOnce.collectAsState()
+    val hasFetchedCercaniasAlertsOnce by dashboardViewModel.hasFetchedCercaniasAlertsOnce.collectAsState()
 
     // Favorites & Custom Aliases
-    val favoriteMetroStations by metroViewModel.favoriteStations.collectAsState()
-    val favoriteCercaniasStations by cercaniasViewModel.cercaniasFavoriteStations.collectAsState()
-    val favoriteBusStops by (busViewModel?.favoriteBusStops ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList()) }).collectAsState()
-    val busStopAliases by (busViewModel?.busStopAliases ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyMap()) }).collectAsState()
-    val favoriteMetrobusStops by (busViewModel?.favoriteMetrobusStops ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList()) }).collectAsState()
-    val metrobusStopAliases by (busViewModel?.metrobusStopAliases ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyMap()) }).collectAsState()
+    val favoriteMetroStations by (metroViewModel?.favoriteStations ?: dashboardViewModel.favoriteMetroStations).collectAsState()
+    val favoriteCercaniasStations by dashboardViewModel.favoriteCercaniasStations.collectAsState()
+    val favoriteBusStops by (busViewModel?.favoriteBusStops ?: dashboardViewModel.favoriteBusStops).collectAsState()
+    val busStopAliases by (busViewModel?.busStopAliases ?: dashboardViewModel.busStopAliases).collectAsState()
+    val favoriteMetrobusStops by (busViewModel?.favoriteMetrobusStops ?: dashboardViewModel.favoriteMetrobusStops).collectAsState()
+    val metrobusStopAliases by (busViewModel?.metrobusStopAliases ?: dashboardViewModel.metrobusStopAliases).collectAsState()
     val favoriteTransitModes by dashboardViewModel.favoriteTransitModes.collectAsState()
 
     val showMetroNearby = favoriteTransitModes.isEmpty() || favoriteTransitModes.contains("METRO")
@@ -163,25 +175,33 @@ fun DashboardHomeTab(
 
     val maxNearbyDistanceMeters = 1000.0 // Delimitar a lo realmente cercano (< 1 km)
 
-    // Metro Station (Max 1) - Nearest station within 1km, favorite only if closest or <= 500m
+    // Metro Station (Max 1) - Nearest station within 1km, prioritizing favorite unless another is significantly closer
     val (nearestMetroStation, isMetroFav) = remember(userCoords, allMetroStations, favoriteMetroStations) {
-        if (userCoords == null || allMetroStations.isEmpty()) Pair<MetroStation?, Boolean>(null, false)
-        else {
-            val (refLat, refLon) = userCoords
+        if (allMetroStations.isEmpty()) {
+            Pair<MetroStation?, Boolean>(null, false)
+        } else if (userCoords == null) {
+            val fav = allMetroStations.firstOrNull { favoriteMetroStations.contains(it.id) }
+            if (fav != null) Pair(fav, true) else Pair(null, false)
+        } else {
+            val (cRefLat, cRefLon) = userCoords
             val closest = allMetroStations.minByOrNull {
-                LocationUtils.calculateDistanceMeters(refLat, refLon, it.latitude, it.longitude)
+                LocationUtils.calculateDistanceMeters(cRefLat, cRefLon, it.latitude, it.longitude)
             }
-            val closestDist = closest?.let { LocationUtils.calculateDistanceMeters(refLat, refLon, it.latitude, it.longitude) } ?: Double.MAX_VALUE
+            val closestDist = closest?.let { LocationUtils.calculateDistanceMeters(cRefLat, cRefLon, it.latitude, it.longitude) } ?: Double.MAX_VALUE
 
             val favList = allMetroStations.filter { favoriteMetroStations.contains(it.id) }
             val closestFav = if (favList.isNotEmpty()) {
                 favList.minByOrNull {
-                    LocationUtils.calculateDistanceMeters(refLat, refLon, it.latitude, it.longitude)
+                    LocationUtils.calculateDistanceMeters(cRefLat, cRefLon, it.latitude, it.longitude)
                 }
             } else null
-            val favDist = closestFav?.let { LocationUtils.calculateDistanceMeters(refLat, refLon, it.latitude, it.longitude) } ?: Double.MAX_VALUE
+            val favDist = closestFav?.let { LocationUtils.calculateDistanceMeters(cRefLat, cRefLon, it.latitude, it.longitude) } ?: Double.MAX_VALUE
 
-            if (closestFav != null && favDist <= maxNearbyDistanceMeters && (closestFav.id == closest?.id || favDist <= 500.0)) {
+            // Prioritize favorite station if it is the closest one OR if the closest non-favorite is NOT significantly closer (margin <= 120m and <= 30% closer)
+            val isFavNearbyAndCompetitive = closestFav != null && favDist <= maxNearbyDistanceMeters &&
+                    (closestFav.id == closest?.id || (favDist - closestDist <= 120.0 && favDist <= closestDist * 1.35))
+
+            if (isFavNearbyAndCompetitive) {
                 Pair<MetroStation?, Boolean>(closestFav, true)
             } else if (closest != null && closestDist <= maxNearbyDistanceMeters) {
                 Pair<MetroStation?, Boolean>(closest, false)
@@ -197,24 +217,32 @@ fun DashboardHomeTab(
         } else null
     }
 
-    // Cercanías Station (Max 1) - Nearest station within 1km, favorite only if closest or <= 500m
+    // Cercanías Station (Max 1) - Nearest station within 1km, prioritizing favorite unless another is significantly closer
     val (nearestCercaniasStation, isCercaniasFav) = remember(userCoords, allCercaniasStations, favoriteCercaniasStations) {
-        if (userCoords == null || allCercaniasStations.isEmpty()) Pair<CercaniasStationEntity?, Boolean>(null, false)
-        else {
-            val (refLat, refLon) = userCoords
+        if (allCercaniasStations.isEmpty()) {
+            Pair<CercaniasStationEntity?, Boolean>(null, false)
+        } else if (userCoords == null) {
+            val fav = allCercaniasStations.firstOrNull { favoriteCercaniasStations.contains(it.stop_id) || favoriteCercaniasStations.contains(it.id) }
+            if (fav != null) Pair(fav, true) else Pair(null, false)
+        } else {
+            val (cRefLat, cRefLon) = userCoords
             val closest = allCercaniasStations.minByOrNull {
-                LocationUtils.calculateDistanceMeters(refLat, refLon, it.lat, it.lon)
+                LocationUtils.calculateDistanceMeters(cRefLat, cRefLon, it.lat, it.lon)
             }
-            val closestDist = closest?.let { LocationUtils.calculateDistanceMeters(refLat, refLon, it.lat, it.lon) } ?: Double.MAX_VALUE
+            val closestDist = closest?.let { LocationUtils.calculateDistanceMeters(cRefLat, cRefLon, it.lat, it.lon) } ?: Double.MAX_VALUE
 
-            val closestFav = if (favoriteCercaniasStations.isNotEmpty()) {
-                favoriteCercaniasStations.minByOrNull {
-                    LocationUtils.calculateDistanceMeters(refLat, refLon, it.lat, it.lon)
+            val favList = allCercaniasStations.filter { favoriteCercaniasStations.contains(it.stop_id) || favoriteCercaniasStations.contains(it.id) }
+            val closestFav = if (favList.isNotEmpty()) {
+                favList.minByOrNull {
+                    LocationUtils.calculateDistanceMeters(cRefLat, cRefLon, it.lat, it.lon)
                 }
             } else null
-            val favDist = closestFav?.let { LocationUtils.calculateDistanceMeters(refLat, refLon, it.lat, it.lon) } ?: Double.MAX_VALUE
+            val favDist = closestFav?.let { LocationUtils.calculateDistanceMeters(cRefLat, cRefLon, it.lat, it.lon) } ?: Double.MAX_VALUE
 
-            if (closestFav != null && favDist <= maxNearbyDistanceMeters && (closestFav.stop_id == closest?.stop_id || favDist <= 500.0)) {
+            val isFavNearbyAndCompetitive = closestFav != null && favDist <= maxNearbyDistanceMeters &&
+                    (closestFav.stop_id == closest?.stop_id || (favDist - closestDist <= 120.0 && favDist <= closestDist * 1.35))
+
+            if (isFavNearbyAndCompetitive) {
                 Pair<CercaniasStationEntity?, Boolean>(closestFav, true)
             } else if (closest != null && closestDist <= maxNearbyDistanceMeters) {
                 Pair<CercaniasStationEntity?, Boolean>(closest, false)
@@ -245,7 +273,13 @@ fun DashboardHomeTab(
     }
 
     val calendarEvents = remember(calendarItems) {
-        calendarItems.filter { it.itemType == "EVENT" }
+        val now = System.currentTimeMillis()
+        calendarItems.filter { item ->
+            item.itemType == "EVENT" && (
+                (item.endMillis != null && item.endMillis > now) ||
+                (item.endMillis == null && item.startMillis != null && item.startMillis > now - 1800000L)
+            )
+        }
     }
 
     PullToRefreshBox(
@@ -256,23 +290,21 @@ fun DashboardHomeTab(
             .testTag("inicio_pull_to_refresh")
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 16.dp + dynamicBottomTripPadding),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.fillMaxSize()
         ) {
             // 1. Unified Top Header Box (Clock, Date, Settings + Route Search & Commute Destinations)
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .zIndex(1f),
                 shape = RoundedCornerShape(
                     topStart = 0.dp,
                     topEnd = 0.dp,
                     bottomStart = 24.dp,
                     bottomEnd = 24.dp
                 ),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 0.dp
+                color = if (isDarkMode) Color(0xFF131313) else MaterialTheme.colorScheme.surface,
+                shadowElevation = if (isDarkMode) 0.dp else 8.dp
             ) {
                 Column(
                     modifier = Modifier
@@ -311,11 +343,12 @@ fun DashboardHomeTab(
                         }
                     }
 
-                    // Quick Commute Navigation Bar
+                    // Quick Commute Navigation Bar (3 buttons: Casa, Trabajo, Sitio Fijado)
                     QuickCommuteBar(
                         appLanguage = appLanguage,
                         homeName = homeName,
                         workName = workName,
+                        pinnedName = pinnedName,
                         isDarkMode = isDarkMode,
                         onHomeClick = {
                             if (homeLat != 0.0 && homeLon != 0.0) {
@@ -331,6 +364,13 @@ fun DashboardHomeTab(
                                 showCommuteDialogFor = "WORK"
                             }
                         },
+                        onPinnedClick = {
+                            if (pinnedLat != 0.0 && pinnedLon != 0.0) {
+                                onOpenRoutePlanner(PlannerLocation(title = pinnedName.ifBlank { "Destacado" }, latitude = pinnedLat, longitude = pinnedLon))
+                            } else {
+                                showCommuteDialogFor = "PINNED"
+                            }
+                        },
                         onPlanRouteClick = { onOpenRoutePlanner(null) },
                         onExploreMapClick = { onNavigateToTab(DashboardTab.Mapa, 0) },
                         onEditCommute = { showCommuteDialogFor = it }
@@ -338,11 +378,13 @@ fun DashboardHomeTab(
                 }
             }
 
-            // Lower content section with standard horizontal padding
+            // Scrollable lower content section with standard horizontal padding and bottom spacing
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + dynamicBottomTripPadding),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // 2. Modos de Transporte (Quick Access Chips)
@@ -379,18 +421,22 @@ fun DashboardHomeTab(
                                 refLat = refLat,
                                 refLon = refLon,
                                 onMetroStationClick = { stationId ->
-                                    metroViewModel.selectRealTimeStation(stationId, isUserAction = true)
+                                    onSelectMetroStation?.invoke(stationId)
+                                    metroViewModel?.selectRealTimeStation(stationId, isUserAction = true)
                                     onNavigateToTab(DashboardTab.Metro, 0)
                                 },
                                 onCercaniasStationClick = { stationId ->
-                                    cercaniasViewModel.selectCercaniasStation(stationId)
+                                    onSelectCercaniasStation?.invoke(stationId)
+                                    cercaniasViewModel?.selectCercaniasStation(stationId)
                                     onNavigateToTab(DashboardTab.Cercanias, 0)
                                 },
                                 onBusStopClick = { busStop ->
+                                    onSelectBusStop?.invoke(busStop)
                                     busViewModel?.selectBusStopFromEntity(busStop)
                                     onNavigateToTab(DashboardTab.Bus, 0)
                                 },
                                 onMetrobusStopClick = { metrobusStop ->
+                                    onSelectMetrobusStop?.invoke(metrobusStop)
                                     busViewModel?.selectMetrobusStopFromEntity(metrobusStop)
                                     onNavigateToTab(DashboardTab.Bus, 1)
                                 },
@@ -419,6 +465,8 @@ fun DashboardHomeTab(
                                 cercaniasAlerts = cercaniasAlerts,
                                 isMetroLoading = isMetroAlertsLoading,
                                 isCercaniasLoading = isCercaniasAlertsLoading,
+                                hasMetroLoaded = hasFetchedMetroAlertsOnce,
+                                hasCercaniasLoaded = hasFetchedCercaniasAlertsOnce,
                                 hasMetroError = hasMetroAlertsError,
                                 hasCercaniasError = hasCercaniasAlertsError,
                                 onOpenMetroAvisos = onOpenMetroAvisos,
@@ -467,18 +515,22 @@ fun DashboardHomeTab(
                         refLat = refLat,
                         refLon = refLon,
                         onMetroStationClick = { stationId ->
-                            metroViewModel.selectRealTimeStation(stationId, isUserAction = true)
+                            onSelectMetroStation?.invoke(stationId)
+                            metroViewModel?.selectRealTimeStation(stationId, isUserAction = true)
                             onNavigateToTab(DashboardTab.Metro, 0)
                         },
                         onCercaniasStationClick = { stationId ->
-                            cercaniasViewModel.selectCercaniasStation(stationId)
+                            onSelectCercaniasStation?.invoke(stationId)
+                            cercaniasViewModel?.selectCercaniasStation(stationId)
                             onNavigateToTab(DashboardTab.Cercanias, 0)
                         },
                         onBusStopClick = { busStop ->
+                            onSelectBusStop?.invoke(busStop)
                             busViewModel?.selectBusStopFromEntity(busStop)
                             onNavigateToTab(DashboardTab.Bus, 0)
                         },
                         onMetrobusStopClick = { metrobusStop ->
+                            onSelectMetrobusStop?.invoke(metrobusStop)
                             busViewModel?.selectMetrobusStopFromEntity(metrobusStop)
                             onNavigateToTab(DashboardTab.Bus, 1)
                         },
@@ -492,6 +544,8 @@ fun DashboardHomeTab(
                         cercaniasAlerts = cercaniasAlerts,
                         isMetroLoading = isMetroAlertsLoading,
                         isCercaniasLoading = isCercaniasAlertsLoading,
+                        hasMetroLoaded = hasFetchedMetroAlertsOnce,
+                        hasCercaniasLoaded = hasFetchedCercaniasAlertsOnce,
                         hasMetroError = hasMetroAlertsError,
                         hasCercaniasError = hasCercaniasAlertsError,
                         onOpenMetroAvisos = onOpenMetroAvisos,
@@ -533,34 +587,62 @@ fun DashboardHomeTab(
         }
     }
 
-    // Modal para configurar Casa o Trabajo
+    // Modal para configurar Casa, Trabajo o Sitio Fijado
     if (showCommuteDialogFor != null) {
-        val isHome = showCommuteDialogFor == "HOME"
+        val commuteType = showCommuteDialogFor!!
+        val currentTargetName = when (commuteType) {
+            "HOME" -> homeName
+            "WORK" -> workName
+            else -> pinnedName
+        }
+        val currentTargetLat = when (commuteType) {
+            "HOME" -> homeLat
+            "WORK" -> workLat
+            else -> pinnedLat
+        }
+        val currentTargetLon = when (commuteType) {
+            "HOME" -> homeLon
+            "WORK" -> workLon
+            else -> pinnedLon
+        }
         CommuteSetupDialog(
-            isHome = isHome,
+            commuteType = commuteType,
             appLanguage = appLanguage,
-            currentName = if (isHome) homeName else workName,
-            currentLat = if (isHome) homeLat else workLat,
-            currentLon = if (isHome) homeLon else workLon,
+            currentName = currentTargetName,
+            currentLat = currentTargetLat,
+            currentLon = currentTargetLon,
             dashboardViewModel = dashboardViewModel,
             onDismiss = { showCommuteDialogFor = null },
             onSelectOnMap = {
+                val targetType = showCommuteDialogFor ?: "HOME"
                 showCommuteDialogFor = null
-                onConfigureLocationOnMap?.invoke(isHome)
+                onConfigureLocationOnMap?.invoke(targetType)
             },
             onSave = { name, lat, lon ->
                 val recent = RecentSearch(
-                    type = if (isHome) "home" else "work",
-                    id = if (isHome) "home_location" else "work_location",
-                    title = if (isHome) "Casa" else "Trabajo",
+                    type = when (commuteType) {
+                        "HOME" -> "home"
+                        "WORK" -> "work"
+                        else -> "favorite"
+                    },
+                    id = when (commuteType) {
+                        "HOME" -> "home_location"
+                        "WORK" -> "work_location"
+                        else -> "pinned_location"
+                    },
+                    title = when (commuteType) {
+                        "HOME" -> "Casa"
+                        "WORK" -> "Trabajo"
+                        else -> name.ifBlank { "Destacado" }
+                    },
                     subtitle = name,
                     latitude = lat,
                     longitude = lon
                 )
-                if (isHome) {
-                    dashboardViewModel.saveHomeLocation(recent)
-                } else {
-                    dashboardViewModel.saveWorkLocation(recent)
+                when (commuteType) {
+                    "HOME" -> dashboardViewModel.saveHomeLocation(recent)
+                    "WORK" -> dashboardViewModel.saveWorkLocation(recent)
+                    else -> dashboardViewModel.savePinnedLocation(recent)
                 }
                 showCommuteDialogFor = null
             }
@@ -569,10 +651,11 @@ fun DashboardHomeTab(
 
     // Modal para detalle de tarjeta
     if (selectedTransitCard != null) {
+        val targetMetroVm = metroViewModel ?: androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
         CardDetailDialog(
             card = selectedTransitCard!!,
             appLanguage = appLanguage,
-            metroViewModel = metroViewModel,
+            metroViewModel = targetMetroVm,
             isDarkMode = isDarkMode,
             onDismiss = { selectedTransitCard = null }
         )
@@ -580,11 +663,13 @@ fun DashboardHomeTab(
 
     // Modal para añadir tarjeta
     if (showAddCardDialog) {
+        val targetMetroVm = metroViewModel ?: androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
         AddTransitCardWizardDialog(
             appLanguage = appLanguage,
-            metroViewModel = metroViewModel,
+            metroViewModel = targetMetroVm,
             onDismiss = { showAddCardDialog = false },
             onCardAdded = { showAddCardDialog = false }
         )
     }
+
 }

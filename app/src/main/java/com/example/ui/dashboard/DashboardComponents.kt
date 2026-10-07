@@ -37,22 +37,11 @@ import com.example.ui.theme.appCardBorder
 import com.example.data.model.WeatherCondition
 import com.example.data.model.WeatherData
 import com.example.data.model.ForecastHour
+import androidx.core.graphics.toColorInt
 import coil.compose.AsyncImage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-// HELPER EXTENSION TO PARSE HEX COLOR STRING INTO COMPOSE COLOR DIRECTLY
-fun String.toColorInt(): Int {
-    if (startsWith("#")) {
-        var color = substring(1)
-        if (color.length == 6) {
-            color = "FF$color"
-        }
-        return color.toLong(16).toInt()
-    }
-    return 0xFF3DDC84.toInt() // fallback Android Green
-}
 
 // WEATHER CARD PANEL WITH LIVE SEARCH
 @Composable
@@ -152,7 +141,7 @@ fun WeatherCard(
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Oratge no disponible sense connexió" else "Tiempo no disponible sin conexión",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.weather_offline),
                             fontSize = 14.sp,
                             color = cardTextSecondaryColor,
                             fontWeight = FontWeight.Medium
@@ -164,7 +153,7 @@ fun WeatherCard(
                             strokeWidth = 2.5.dp
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Carregant dades de l'oratge..." else "Cargando datos meteorológicos...",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.weather_loading),
                             fontSize = 14.sp,
                             color = cardTextSecondaryColor,
                             fontWeight = FontWeight.Medium
@@ -227,7 +216,7 @@ fun WeatherCard(
                         val minText = if (isFahrenheit) "${data.minTempFahrenheit.toInt()}°F" else "${data.minTempCelsius.toInt()}°"
                         val maxText = if (isFahrenheit) "${data.maxTempFahrenheit.toInt()}°F" else "${data.maxTempCelsius.toInt()}°"
                         
-                        val maxMinPrefix = if (appLanguage == AppLanguage.CA) "Màx" else "Máx"
+                        val maxMinPrefix = androidx.compose.ui.res.stringResource(com.example.R.string.weather_max_prefix)
                         Text(
                             text = "$maxMinPrefix $maxText · Mín $minText",
                             fontSize = 12.sp,
@@ -377,16 +366,17 @@ fun getRelativeDateLabel(startMillis: Long?): String {
     
     val diffDays = ((targetStart - todayStart) / oneDayMs).toInt()
     
-    return when (diffDays) {
-        0 -> "(Hoy)"
-        1 -> "(Mañana)"
-        2 -> "(En 2 días)"
-        3 -> "(En 3 días)"
-        4 -> "(En 4 días)"
-        5 -> "(En 5 días)"
-        6 -> "(En 6 días)"
-        7 -> "(En una semana)"
-        in 8..30 -> "(En $diffDays días)"
+    return when {
+        diffDays < 0 -> "(Pasado)"
+        diffDays == 0 -> "(Hoy)"
+        diffDays == 1 -> "(Mañana)"
+        diffDays == 2 -> "(En 2 días)"
+        diffDays == 3 -> "(En 3 días)"
+        diffDays == 4 -> "(En 4 días)"
+        diffDays == 5 -> "(En 5 días)"
+        diffDays == 6 -> "(En 6 días)"
+        diffDays == 7 -> "(En una semana)"
+        diffDays in 8..30 -> "(En $diffDays días)"
         else -> {
             val sdf = java.text.SimpleDateFormat("dd/MM", java.util.Locale.getDefault())
             "(${sdf.format(java.util.Date(startMillis))})"
@@ -412,7 +402,9 @@ fun EventCard(
         }
     }
     val (startTime, endTime) = remember(event.startMillis, event.endMillis) {
-        val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val formatter = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
+            timeZone = java.util.TimeZone.getTimeZone("Europe/Madrid")
+        }
         val start = event.startMillis?.let { formatter.format(Date(it)) } ?: "--:--"
         val end = event.endMillis?.let { formatter.format(Date(it)) } ?: "--:--"
         start to end
@@ -468,7 +460,7 @@ fun EventCard(
                     val intent = Intent(Intent.ACTION_VIEW).setData(builder.build())
                     context.startActivity(intent)
                 } catch (e2: Exception) {
-                    Toast.makeText(context, if (appLanguage == AppLanguage.CA) "No s'ha pogut obrir el calendari" else "No se pudo abrir el calendario", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(com.example.R.string.toast_cannot_open_calendar), Toast.LENGTH_SHORT).show()
                 }
             }
         },
@@ -645,7 +637,9 @@ fun DashboardClockWidget(
         val formattedDate = remember(appLanguage, isMidnightCross) {
             try {
                 val locale = if (appLanguage == AppLanguage.CA) java.util.Locale.forLanguageTag("ca-ES") else java.util.Locale.forLanguageTag("es-ES")
-                java.text.SimpleDateFormat("EEEE, d 'de' MMMM 'de' yyyy", locale).format(java.util.Date())
+                java.text.SimpleDateFormat("EEEE, d 'de' MMMM 'de' yyyy", locale).apply {
+                    timeZone = java.util.TimeZone.getTimeZone("Europe/Madrid")
+                }.format(java.util.Date())
             } catch (e: Exception) {
                 if (appLanguage == AppLanguage.CA) "diumenge, 19 de juliol de 2026" else "domingo, 19 de julio de 2026"
             }

@@ -98,11 +98,14 @@ fun StationConfigDialog(
         }
     }
 
+    val maxLimitToast = androidx.compose.ui.res.stringResource(com.example.R.string.metro_favs_max_limit_toast)
+    val minSelectionToast = androidx.compose.ui.res.stringResource(com.example.R.string.metro_favs_min_selection_toast)
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Configurar Estaciones Favoritas",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_config_favs_title),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
@@ -113,7 +116,7 @@ fun StationConfigDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Selecciona hasta 10 estaciones para tu panel rápido:",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_config_favs_subtitle),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -122,11 +125,11 @@ fun StationConfigDialog(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Buscar estación...", fontSize = 14.sp) },
+                    placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.search_station_label), fontSize = 14.sp) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
-                            contentDescription = "Search"
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.search_label)
                         )
                     },
                     trailingIcon = {
@@ -134,7 +137,7 @@ fun StationConfigDialog(
                             IconButton(onClick = { searchQuery = "" }) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Clear"
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.clear_search_desc)
                                 )
                             }
                         }
@@ -171,7 +174,7 @@ fun StationConfigDialog(
                                         selectedStations = selectedStations - station.id
                                     } else {
                                         if (selectedStations.size >= 10) {
-                                            android.widget.Toast.makeText(context, "Sólo puedes seleccionar un máximo de 10 estaciones.", android.widget.Toast.LENGTH_SHORT).show()
+                                            android.widget.Toast.makeText(context, maxLimitToast, android.widget.Toast.LENGTH_SHORT).show()
                                         } else {
                                             selectedStations = selectedStations + station.id
                                         }
@@ -200,7 +203,7 @@ fun StationConfigDialog(
                                         fontSize = 14.sp
                                     )
                                     Text(
-                                        text = "Líneas: ${station.lines.joinToString(", ")}",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_lines_list_format, station.lines.joinToString(", ")),
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                                     )
@@ -210,7 +213,7 @@ fun StationConfigDialog(
                                     onCheckedChange = { checked ->
                                         if (checked) {
                                             if (selectedStations.size >= 10) {
-                                                android.widget.Toast.makeText(context, "Sólo puedes seleccionar un máximo de 10 estaciones.", android.widget.Toast.LENGTH_SHORT).show()
+                                                android.widget.Toast.makeText(context, maxLimitToast, android.widget.Toast.LENGTH_SHORT).show()
                                             } else {
                                                 selectedStations = selectedStations + station.id
                                             }
@@ -228,7 +231,7 @@ fun StationConfigDialog(
                 }
                 
                 Text(
-                    text = "Seleccionadas: ${selectedStations.size} de 10",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_favs_selected_count, selectedStations.size),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (selectedStations.isNotEmpty() && selectedStations.size <= 10) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
@@ -240,7 +243,7 @@ fun StationConfigDialog(
             Button(
                 onClick = {
                     if (selectedStations.isEmpty() || selectedStations.size > 10) {
-                        android.widget.Toast.makeText(context, "Por favor, selecciona entre 1 y 10 estaciones.", android.widget.Toast.LENGTH_SHORT).show()
+                        android.widget.Toast.makeText(context, minSelectionToast, android.widget.Toast.LENGTH_SHORT).show()
                     } else {
                         onSave(selectedStations)
                     }
@@ -250,12 +253,12 @@ fun StationConfigDialog(
                     containerColor = MaterialTheme.colorScheme.primary
                 )
             ) {
-                Text("Guardar")
+                Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_save))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar")
+                Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_cancel))
             }
         }
     )

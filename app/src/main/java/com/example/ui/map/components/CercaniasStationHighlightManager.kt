@@ -167,7 +167,7 @@ object CercaniasStationHighlightManager {
                 val g = Color.green(baseColor)
                 val b = Color.blue(baseColor)
                 polyline.outlinePaint.color = Color.argb(DIMMED_ALPHA_COLOR_INT, r, g, b)
-                polyline.outlinePaint.strokeWidth = (raw?.strokeWidth ?: 9f) * 0.85f
+                polyline.outlinePaint.strokeWidth = (raw?.strokeWidth ?: 12f) * 0.85f
                 mapView.overlays.add(polyline)
             }
             return
@@ -190,7 +190,7 @@ object CercaniasStationHighlightManager {
                 val g = Color.green(baseColor)
                 val b = Color.blue(baseColor)
                 polyline.outlinePaint.color = Color.argb(DIMMED_ALPHA_COLOR_INT, r, g, b)
-                polyline.outlinePaint.strokeWidth = (raw?.strokeWidth ?: 9f) * 0.85f
+                polyline.outlinePaint.strokeWidth = (raw?.strokeWidth ?: 12f) * 0.85f
                 mapView.overlays.add(polyline)
             }
         }

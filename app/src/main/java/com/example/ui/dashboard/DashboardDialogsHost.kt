@@ -50,9 +50,9 @@ fun DashboardDialogsHost(
     favoriteStations: List<String>,
     onMetroQueryChange: (String) -> Unit,
     onSelectMetroSearchStation: (String) -> Unit,
-    onToggleFavoriteMetroStation: (String) -> Unit,
-    metroViewModel: MetroViewModel,
-    cercaniasViewModel: CercaniasViewModel,
+    onToggleFavoriteMetroStation: (String) -> Unit = {},
+    metroViewModel: MetroViewModel? = null,
+    cercaniasViewModel: CercaniasViewModel? = null,
     appLanguage: AppLanguage,
     isDarkMode: Boolean,
     showActiveTripDetails: Boolean,
@@ -83,7 +83,7 @@ fun DashboardDialogsHost(
     }
 
     // 2. DIALOG FOR CONFIGURING FAVOURITE METRO STATIONS
-    if (showStationConfigDialog) {
+    if (showStationConfigDialog && metroViewModel != null) {
         MetroStationSelectionDialog(
             appLanguage = appLanguage,
             isDarkMode = isDarkMode,
@@ -93,7 +93,7 @@ fun DashboardDialogsHost(
     }
 
     // 3. DIALOG FOR CONFIGURING FAVOURITE CERCANIAS STATIONS
-    if (showCercaniasStationConfigDialog) {
+    if (showCercaniasStationConfigDialog && cercaniasViewModel != null) {
         CercaniasStationSelectionDialog(
             viewModel = cercaniasViewModel,
             onDismiss = onDismissCercaniasStationConfigDialog
@@ -101,7 +101,7 @@ fun DashboardDialogsHost(
     }
 
     // 4. DIALOG FOR SEARCHING METRO STATIONS
-    if (showMetroSearchDialog) {
+    if (showMetroSearchDialog && metroViewModel != null) {
         MetroSearchDialog(
             searchQuery = metroSearchQuery,
             filteredStations = filteredStations,
@@ -134,20 +134,22 @@ fun DashboardDialogsHost(
 
     // 6. CONFIRMATION DIALOG WHEN REPLACING AN EXISTING ACTIVE TRIP
     pendingTripToStart?.let { pending ->
+        val currentDest = activeTrip?.destinationName ?: ""
         AlertDialog(
             onDismissRequest = onDismissReplaceActiveTrip,
             title = {
                 Text(
-                    text = if (appLanguage == AppLanguage.ES) "¿Iniciar nuevo viaje?" else "Iniciar nou viatge?",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_replace_confirm_title),
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = if (appLanguage == AppLanguage.ES)
-                        "Ya tienes un viaje activo hacia ${activeTrip?.destinationName ?: "tu destino"}. ¿Deseas sustituirlo por el nuevo trayecto hacia ${pending.third}?"
-                    else
-                        "Ja tens un viatge actiu cap a ${activeTrip?.destinationName ?: "la teua destinació"}. Vols substituir-lo per este nou trajecte cap a ${pending.third}?"
+                    text = androidx.compose.ui.res.stringResource(
+                        com.example.R.string.trip_replace_confirm_body,
+                        currentDest,
+                        pending.third
+                    )
                 )
             },
             confirmButton = {
@@ -159,12 +161,12 @@ fun DashboardDialogsHost(
                         containerColor = Color(0xFF00A86B)
                     )
                 ) {
-                    Text(if (appLanguage == AppLanguage.ES) "Sustituir e Iniciar" else "Substituir i Iniciar")
+                    Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_replace_and_start))
                 }
             },
             dismissButton = {
                 OutlinedButton(onClick = onDismissReplaceActiveTrip) {
-                    Text(if (appLanguage == AppLanguage.ES) "Cancelar" else "Cancel·lar")
+                    Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_cancel))
                 }
             }
         )
@@ -189,7 +191,7 @@ fun DashboardDialogsHost(
             },
             title = {
                 Text(
-                    text = if (appLanguage == AppLanguage.ES) "Posible transbordo perdido" else "Possible transbordament perdut",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.transfer_risk_title),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = if (isDark) Color(0xFFFFD180) else Color(0xFFE65100)
@@ -199,10 +201,11 @@ fun DashboardDialogsHost(
             text = {
                 Column {
                     Text(
-                        text = if (appLanguage == AppLanguage.ES)
-                            "Debido a un retraso acumulado en tu vehículo, es probable que no llegues a tiempo a tu conexión en $transferStopName.\n\n¿Quieres buscar rutas alternativas desde $transferStopName hasta $destName sin caminar más?"
-                        else
-                            "A causa d'un retràs acumulat en el teu transport, és probable que no arribes a temps a la connexió en $transferStopName.\n\nVols buscar rutes alternatives des de $transferStopName fins a $destName sense caminar més?",
+                        text = androidx.compose.ui.res.stringResource(
+                            com.example.R.string.transfer_risk_body,
+                            transferStopName,
+                            destName
+                        ),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     if (recalculateError != null) {
@@ -230,10 +233,10 @@ fun DashboardDialogsHost(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (appLanguage == AppLanguage.ES) "Buscando..." else "Buscant...")
+                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.commute_searching))
                     } else {
                         Text(
-                            text = if (appLanguage == AppLanguage.ES) "Buscar alternativas (sin caminar más)" else "Buscar alternatives (sense caminar més)",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_search_alternatives),
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -244,7 +247,7 @@ fun DashboardDialogsHost(
                     onClick = onDismissTransferRiskDialog
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.ES) "Mantener ruta actual" else "Mantindre ruta actual"
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_keep_current_route)
                     )
                 }
             }

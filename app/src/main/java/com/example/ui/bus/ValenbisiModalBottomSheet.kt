@@ -161,7 +161,7 @@ fun ValenbisiModalBottomSheet(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Editar àlies" else "Editar alias",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.edit_alias_label),
                             tint = subtextColor,
                             modifier = Modifier.size(20.dp)
                         )
@@ -219,15 +219,11 @@ fun ValenbisiModalBottomSheet(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Bicicletes" else "Bicicletas",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_bikes_available),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = textColor
-                        )
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Disponibles" else "Disponibles",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = subtextColor
+                            color = textColor,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }
@@ -250,15 +246,11 @@ fun ValenbisiModalBottomSheet(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Buits" else "Huecos",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_docks_available),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = textColor
-                        )
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Lliures" else "Libres",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = subtextColor
+                            color = textColor,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }
@@ -284,7 +276,7 @@ fun ValenbisiModalBottomSheet(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Distància: ${station.distanceText}" else "Distancia: ${station.distanceText}",
+                            text = station.distanceText,
                             style = MaterialTheme.typography.bodyMedium,
                             color = subtextColor,
                             fontWeight = FontWeight.Medium
@@ -300,7 +292,7 @@ fun ValenbisiModalBottomSheet(
                     modifier = Modifier.padding(horizontal = 4.dp)
                 ) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Capacitat: ${station.total}" else "Capacidad: ${station.total}",
+                        text = "Cap: ${station.total}",
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = textColor

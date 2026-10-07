@@ -78,11 +78,49 @@ object TripStartEligibility {
      * Positive = future departure, Negative = past departure.
      */
     fun getMinutesUntilDeparture(itinerary: PlannedItinerary): Int? {
-        val departureMillis = TripTimeParser.parseTimeToMillis(itinerary.startTime)
-            ?: TripTimeParser.parseTimeToMillis(itinerary.formattedDepartureTime)
-            ?: return null
+        val effectiveDepartureMs = com.example.data.repository.routing.RoutingDataMapper.getEffectiveDepartureEpochMs(itinerary)
+        val departureMillis = if (effectiveDepartureMs > 0L) {
+            effectiveDepartureMs
+        } else {
+            TripTimeParser.parseTimeToMillis(itinerary.startTime)
+                ?: TripTimeParser.parseTimeToMillis(itinerary.formattedDepartureTime)
+                ?: return null
+        }
 
         val nowMs = System.currentTimeMillis()
         return ((departureMillis - nowMs) / 60000L).toInt()
+    }
+
+    /**
+     * Checks if two PlannedItinerary instances describe the exact same journey.
+     */
+    fun isSameItinerary(a: PlannedItinerary?, b: PlannedItinerary?): Boolean {
+        if (a == null || b == null) return false
+        if (a.id.isNotBlank() && b.id.isNotBlank() && a.id == b.id) return true
+        if (a.formattedDepartureTime == b.formattedDepartureTime &&
+            a.formattedArrivalTime == b.formattedArrivalTime &&
+            a.legs.size == b.legs.size) {
+            val legsMatch = a.legs.indices.all { i ->
+                val legA = a.legs[i]
+                val legB = b.legs[i]
+                legA.mode == legB.mode &&
+                legA.routeShortName == legB.routeShortName &&
+                legA.fromName == legB.fromName &&
+                legA.toName == legB.toName
+            }
+            if (legsMatch) return true
+        }
+        return false
+    }
+
+    /**
+     * Checks if the given itinerary corresponds to the active trip currently in progress.
+     */
+    fun isItineraryCurrentlyActive(
+        itinerary: PlannedItinerary?,
+        activeTrip: com.example.data.repository.ActiveTripState?
+    ): Boolean {
+        if (itinerary == null || activeTrip == null) return false
+        return isSameItinerary(itinerary, activeTrip.itinerary)
     }
 }

@@ -67,7 +67,7 @@ class MetroRepository(private val context: Context) {
                             id = id,
                             name = name,
                             lines = linesList,
-                            zone = zone,
+                            zone = com.example.data.model.cleanZoneCode(zone),
                             latitude = lat,
                             longitude = lon
                         )
@@ -83,6 +83,7 @@ class MetroRepository(private val context: Context) {
         }
 
         cachedStations = list
+        ValenciaMetroData.allNetworkStationsCache = list
         return list
     }
 

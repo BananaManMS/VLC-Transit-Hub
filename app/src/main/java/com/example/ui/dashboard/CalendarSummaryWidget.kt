@@ -44,20 +44,25 @@ fun CalendarSummaryWidget(
     
     var selectedFilter by remember { mutableStateOf(0) } // 0: Todos, 1: Hoy, 2: Mañana, 3: Próximos
     val filteredEvents = remember(events, selectedFilter) {
+        val now = System.currentTimeMillis()
+        val upcomingEvents = events.filter { event ->
+            (event.endMillis != null && event.endMillis > now) ||
+            (event.endMillis == null && event.startMillis != null && event.startMillis > now - 1800000L)
+        }
         when (selectedFilter) {
-            1 -> events.filter { event ->
+            1 -> upcomingEvents.filter { event ->
                 val label = getRelativeDateLabel(event.startMillis).replace("(", "").replace(")", "").trim()
                 label.equals("Hoy", ignoreCase = true) || label.isEmpty()
             }
-            2 -> events.filter { event ->
+            2 -> upcomingEvents.filter { event ->
                 val label = getRelativeDateLabel(event.startMillis).replace("(", "").replace(")", "").trim()
                 label.equals("Mañana", ignoreCase = true)
             }
-            3 -> events.filter { event ->
+            3 -> upcomingEvents.filter { event ->
                 val label = getRelativeDateLabel(event.startMillis).replace("(", "").replace(")", "").trim()
-                !label.equals("Hoy", ignoreCase = true) && !label.equals("Mañana", ignoreCase = true) && label.isNotEmpty()
+                !label.equals("Hoy", ignoreCase = true) && !label.equals("Mañana", ignoreCase = true) && !label.equals("Pasado", ignoreCase = true) && label.isNotEmpty()
             }
-            else -> events
+            else -> upcomingEvents
         }
     }
     
@@ -97,7 +102,7 @@ fun CalendarSummaryWidget(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "EVENTOS",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.events_label_caps),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -135,7 +140,12 @@ fun CalendarSummaryWidget(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    val filterOptions = listOf("Todos", "Hoy", "Mañana", "Próximos")
+                    val filterOptions = listOf(
+                        androidx.compose.ui.res.stringResource(com.example.R.string.calendar_filter_all),
+                        androidx.compose.ui.res.stringResource(com.example.R.string.calendar_filter_today),
+                        androidx.compose.ui.res.stringResource(com.example.R.string.calendar_filter_tomorrow),
+                        androidx.compose.ui.res.stringResource(com.example.R.string.calendar_filter_upcoming)
+                    )
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier
@@ -168,20 +178,18 @@ fun CalendarSummaryWidget(
                         }
                     }
 
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(itemSpacing)
                     ) {
                         if (filteredEvents.isEmpty()) {
-                            item {
-                                Text(
-                                    text = noEventsTodayText,
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
-                                )
-                            }
+                            Text(
+                                text = noEventsTodayText,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                            )
                         } else {
-                            items(filteredEvents, key = { it.id }) { event ->
+                            filteredEvents.forEach { event ->
                                 EventCard(
                                     event = event,
                                     onDelete = { onEventDelete(event) },
@@ -220,7 +228,7 @@ fun CalendarSummaryWidget(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "EVENTOS",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.events_label_caps),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -258,7 +266,12 @@ fun CalendarSummaryWidget(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    val filterOptionsPhone = listOf("Todos", "Hoy", "Mañana", "Próximos")
+                    val filterOptionsPhone = listOf(
+                        androidx.compose.ui.res.stringResource(com.example.R.string.calendar_filter_all),
+                        androidx.compose.ui.res.stringResource(com.example.R.string.calendar_filter_today),
+                        androidx.compose.ui.res.stringResource(com.example.R.string.calendar_filter_tomorrow),
+                        androidx.compose.ui.res.stringResource(com.example.R.string.calendar_filter_upcoming)
+                    )
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier

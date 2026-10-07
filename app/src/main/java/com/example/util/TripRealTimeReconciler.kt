@@ -213,8 +213,18 @@ class TripRealTimeReconciler(
 
         val nowMs = System.currentTimeMillis()
         val progressState = ActiveTripProgressTracker.progressState.value
-        val isAlreadyBoarded = !isCurrentWalk && progressState.isBoarded &&
+        val isConfirmedBoarded = progressState.isBoarded &&
                 (progressState.trackedLegIndex == currentIdx || progressState.trackedLegIndex == -1)
+        val isLegBoardedByEngine = TripStepProgressionEngine.isLegBoarded(currentIdx)
+        val isFarFromOrigin = if (userLat != null && userLon != null && nextTransitLeg.fromLat != 0.0) {
+            TripStepProgressionEngine.calculateDistanceMeters(
+                userLat, userLon,
+                nextTransitLeg.fromLat, nextTransitLeg.fromLon
+            ) > 300.0
+        } else false
+        val isAdvancedAlongLeg = progressState.progressWithinLeg >= 0.15f
+
+        val isAlreadyBoarded = !isCurrentWalk && (isConfirmedBoarded || isLegBoardedByEngine || isFarFromOrigin || isAdvancedAlongLeg)
 
         // Grace Period is applicable if scheduled departure OR last matched live arrival has passed within last 5 minutes
         val scheduledStartMs = TripTimeParser.parseTimeToMillis(
@@ -300,7 +310,7 @@ class TripRealTimeReconciler(
             // Departure time is strictly frozen when boarded!
             adjustedDepTime = nextTransitLeg.scheduledStartTime ?: nextTransitLeg.formattedStartTime.ifBlank { null }
         } else {
-            val distToOriginStation = if (userLat != null && userLon != null) {
+            val distToOriginStation = if (userLat != null && userLon != null && nextTransitLeg.fromLat != 0.0) {
                 TripStepProgressionEngine.calculateDistanceMeters(
                     userLat, userLon,
                     nextTransitLeg.fromLat, nextTransitLeg.fromLon
@@ -308,7 +318,6 @@ class TripRealTimeReconciler(
             } else null
 
             val isUserPhysicallyAtStation = (distToOriginStation != null && distToOriginStation <= 250.0) ||
-                    (!isCurrentWalk) ||
                     (dynamicWalkMinutesRemaining != null && dynamicWalkMinutesRemaining <= 2) ||
                     (userLat == null || userLat == 0.0) // In tunnels or stations with weak/no GPS, preserve station presence
 

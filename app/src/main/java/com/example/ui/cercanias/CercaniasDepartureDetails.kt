@@ -49,12 +49,17 @@ fun CercaniasDepartureDetails(
     val cardBg = if (isDarkMode) Color(0xFF222222) else Color(0xFFFFFFFF)
 
     val affectedAlerts = remember(alerts, departure) {
+        val depRouteNorm = departure.routeId.uppercase().replace("-", "").replace(" ", "").trim()
         alerts.filter { alert ->
             if (alert.isAccessibility) return@filter false
+
             val matchesRoute = alert.routeIds.isEmpty() || alert.routeIds.any { rId ->
-                rId.equals(departure.routeId, ignoreCase = true) || 
-                rId.replace("-", "").equals(departure.routeId.replace("-", ""), ignoreCase = true)
+                val alertRouteNorm = rId.uppercase().replace("-", "").replace(" ", "").trim()
+                alertRouteNorm == depRouteNorm || alertRouteNorm.contains(depRouteNorm) || depRouteNorm.contains(alertRouteNorm)
             }
+
+            if (!matchesRoute) return@filter false
+
             if (alert.tripIds.isNotEmpty()) {
                 CercaniasRouteUtils.isTripMatchedByAlert(departure.tripId, departure.allTripIds, alert.tripIds)
             } else {
@@ -63,9 +68,9 @@ fun CercaniasDepartureDetails(
                 val timesInText = timeRegex.findAll(text).map { it.groupValues[1].padStart(2, '0') + ":" + it.groupValues[2] }.toList()
                 if (timesInText.isNotEmpty()) {
                     val depTime = departure.departureTime.take(5)
-                    matchesRoute && timesInText.contains(depTime)
+                    timesInText.contains(depTime)
                 } else {
-                    matchesRoute && alert.isCirculationIncident
+                    true
                 }
             }
         }
@@ -123,7 +128,7 @@ fun CercaniasDepartureDetails(
             )
 
             Text(
-                text = if (appLanguage == AppLanguage.CA) "Destí: $destinationText" else "Destino: $destinationText",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.dir_prefix, destinationText),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = textColor,
@@ -170,7 +175,7 @@ fun CercaniasDepartureDetails(
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Servei cancel·lat - Aquest tren ha sigut suprimit." else "Servicio cancelado - Este tren ha sido suprimido.",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_canceled_service),
                                 color = Color(0xFFE53935),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
@@ -199,13 +204,11 @@ fun CercaniasDepartureDetails(
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
-                                val prefix = if (appLanguage == AppLanguage.CA) {
-                                    if (alert.tripIds.isNotEmpty()) "Avís Tren ${departure.tripId}: " else "Avís Línia ${departure.routeId}: "
-                                } else {
-                                    if (alert.tripIds.isNotEmpty()) "Aviso Tren ${departure.tripId}: " else "Aviso Línea ${departure.routeId}: "
-                                }
+                                val noticeLabel = androidx.compose.ui.res.stringResource(com.example.R.string.alert_title)
+                                val activeNoticeLabel = androidx.compose.ui.res.stringResource(com.example.R.string.metro_active_incident_label)
+                                val prefix = if (alert.tripIds.isNotEmpty()) "$noticeLabel Tren ${departure.tripId}: " else "$noticeLabel L$routeText: "
                                 Text(
-                                    text = prefix + alert.headerEs.ifBlank { if (appLanguage == AppLanguage.CA) "Incidència activa" else "Incidencia activa" },
+                                    text = prefix + alert.headerEs.ifBlank { activeNoticeLabel },
                                     color = Color(0xFFE53935),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
@@ -235,7 +238,7 @@ fun CercaniasDepartureDetails(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "RECORREGUT I PRÒXIMES ESTACIONS" else "RECORRIDO Y PRÓXIMAS ESTACIONES",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_route_timeline_header),
                     style = MaterialTheme.typography.labelMedium,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -243,8 +246,9 @@ fun CercaniasDepartureDetails(
                 )
 
                 // Current station highlight card (Metro style)
+                val currentStationLabel = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_current_station)
                 val currentStationName = originInfo?.name ?: originStationName.ifBlank {
-                    if (appLanguage == AppLanguage.CA) "Estació actual" else "Estación actual"
+                    currentStationLabel
                 }
 
                 val originSchedTime = remember(departure.tripId, originInfo?.id, currentStationName) {
@@ -297,7 +301,7 @@ fun CercaniasDepartureDetails(
                                 color = textColor
                             )
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Estació actual" else "Estación actual",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_current_station_label),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = routeColor
@@ -318,7 +322,7 @@ fun CercaniasDepartureDetails(
                                     style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough)
                                 )
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Cancel·lat" else "Cancelado",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_cancelled_status),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFFE53935)
@@ -487,7 +491,7 @@ private fun CercaniasTimelineRow(
                             color = lineColor
                         ) {
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Destí" else "Destino",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_destination_label),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
@@ -539,7 +543,7 @@ private fun CercaniasTimelineRow(
                         style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough)
                     )
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Cancel·lat" else "Cancelado",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_cancelled_status),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFE53935)

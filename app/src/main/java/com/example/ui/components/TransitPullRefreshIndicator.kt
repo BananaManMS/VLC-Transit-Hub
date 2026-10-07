@@ -52,7 +52,7 @@ fun BoxScope.TransitPullRefreshIndicator(
     modifier: Modifier = Modifier
 ) {
     val distance = state.distanceFraction
-    val isVisible = isRefreshing || distance > 0.05f
+    val isVisible = !isInitialLoad && (isRefreshing || distance > 0.05f)
 
     AnimatedVisibility(
         visible = isVisible,

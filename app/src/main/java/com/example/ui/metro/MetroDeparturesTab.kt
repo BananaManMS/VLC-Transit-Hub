@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material.icons.filled.Tram
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
@@ -55,10 +57,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -78,7 +83,14 @@ import com.example.data.model.ValenciaMetroData
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 
+import com.example.service.QuickVehicleTrackerManager
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -144,6 +156,7 @@ fun ProximosTrenesScreen(
     LaunchedEffect(selectedStationId) {
         scrollState.scrollTo(0)
         metroScheduleViewModel.resetInlineTheoreticalDepartures()
+        metroScheduleViewModel.dismissScheduledDepartures()
     }
 
     val scope = rememberCoroutineScope()
@@ -153,6 +166,8 @@ fun ProximosTrenesScreen(
 
     var showSearchDialog by remember { mutableStateOf(false) }
     var showQuickPicker by remember { mutableStateOf(false) }
+    var quickTrackDeparture by remember { mutableStateOf<RealTimeDeparture?>(null) }
+    var showQuickTrackSheet by remember { mutableStateOf(false) }
     var expiredDepartureIds by remember(departures) { mutableStateOf(setOf<String>()) }
     val visibleDepartures = remember(departures, expiredDepartureIds) {
         departures.filter { it.id !in expiredDepartureIds }
@@ -165,11 +180,39 @@ fun ProximosTrenesScreen(
         }
     }
 
-    // Deduplicate scheduled departures against active live departures dynamically
-    val deduplicatedScheduledDepartures = remember(inlineTheoreticalDepartures, visibleDepartures, selectedLineFilter) {
+    // Auto-load scheduled departures immediately if live departures API returns empty or fails
+    LaunchedEffect(selectedStationId, isLoading, visibleDepartures.isEmpty(), error, isInlineTheoreticalLoaded, isLoadingInlineTheoretical) {
+        if (!isLoading && (visibleDepartures.isEmpty() || error != null) && !isInlineTheoreticalLoaded && !isLoadingInlineTheoretical) {
+            val stId = selectedStation?.id ?: selectedStationId
+            val stName = selectedStation?.name ?: "Estación"
+            metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
+        }
+    }
+
+    // Dynamic minute ticker to prune scheduled departures continuously as time passes (active only if scheduled trains are displayed)
+    var currentTimeMinutes by remember {
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
+        mutableIntStateOf(cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE))
+    }
+    LaunchedEffect(isInlineTheoreticalLoaded, isScheduledSheetVisible) {
+        if (isInlineTheoreticalLoaded || isScheduledSheetVisible) {
+            while (isActive) {
+                delay(30_000L)
+                val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
+                val newMin = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+                if (newMin != currentTimeMinutes) {
+                    currentTimeMinutes = newMin
+                }
+            }
+        }
+    }
+
+    // Deduplicate scheduled departures against active live departures dynamically and prune past departures
+    val deduplicatedScheduledDepartures = remember(inlineTheoreticalDepartures, visibleDepartures, selectedLineFilter, currentTimeMinutes) {
         MetroScheduleDeduplicator.deduplicate(
             scheduledDepartures = inlineTheoreticalDepartures,
             liveDepartures = visibleDepartures,
+            referenceMinutesOfDay = currentTimeMinutes,
             lineFilter = selectedLineFilter
         )
     }
@@ -215,6 +258,22 @@ fun ProximosTrenesScreen(
         selectedStation != null && selectedStation.lines.size == 1
     }
 
+    val isMixedMetroTramStation = remember(selectedStation) {
+        if (selectedStation == null) false
+        else {
+            val lines = selectedStation.lines
+            val hasMetro = lines.any { l ->
+                val digit = l.filter { it.isDigit() }
+                digit in setOf("1", "2", "3", "5", "7", "9")
+            }
+            val hasTram = lines.any { l ->
+                val digit = l.filter { it.isDigit() }
+                digit in setOf("4", "6", "8", "10", "11", "12")
+            }
+            hasMetro && hasTram
+        }
+    }
+
     val onScheduledDepartureClick: (MetroScheduledDeparture) -> Unit = remember(appLanguage) {
         { scheduledItem ->
             val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
@@ -244,6 +303,43 @@ fun ProximosTrenesScreen(
         }
     }
 
+    val onScheduledDepartureLongClick: (MetroScheduledDeparture) -> Unit = remember(appLanguage, context) {
+        { scheduledItem ->
+            val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
+            val currentMinOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+            val diffMin = (scheduledItem.timeMinutes - currentMinOfDay).coerceAtLeast(0)
+            if (diffMin > 60) {
+                val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
+                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                val cleanLine = scheduledItem.line.replace("L", "", ignoreCase = true).trim()
+                val lineHex = com.example.util.LineColorResolver.getMetroLineColorHex("L$cleanLine")
+                val realTimeDep = RealTimeDeparture(
+                    lineId = "L$cleanLine",
+                    destination = scheduledItem.destinationName,
+                    minutesRemaining = diffMin,
+                    secondsRemaining = diffMin * 60,
+                    colorHex = lineHex,
+                    estimatedTime = scheduledItem.timeFormatted,
+                    status = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
+                    track = null,
+                    capacidad = null,
+                    aforoBloqueado = null,
+                    vehicleId = null,
+                    trainServiceId = scheduledItem.trainServiceId,
+                    originStationName = scheduledItem.originName,
+                    originWebId = scheduledItem.originWebId,
+                    destinationWebId = scheduledItem.destinationWebId,
+                    targetArrivalEpochMs = System.currentTimeMillis() + (diffMin * 60_000L),
+                    id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}",
+                    isRealTime = false
+                )
+                quickTrackDeparture = realTimeDep
+                showQuickTrackSheet = true
+            }
+        }
+    }
+
     // Agrupamos las salidas en tiempo real por línea y dirección (cada línea+dirección en un mismo cuadro)
     val lineDepartureGroups = remember(
         visibleDepartures,
@@ -264,6 +360,27 @@ fun ProximosTrenesScreen(
             isDarkMode = isDarkMode,
             sharedLineDigitsGetter = { digit -> metroViewModel.getSharedLineDigits(digit) }
         )
+    }
+
+    val (metroLineGroups, tramLineGroups) = remember<Pair<List<LineDeparturesGroupUiModel>, List<LineDeparturesGroupUiModel>>>(
+        lineDepartureGroups,
+        isMixedMetroTramStation
+    ) {
+        if (!isMixedMetroTramStation) {
+            Pair(lineDepartureGroups, emptyList())
+        } else {
+            val metro = mutableListOf<LineDeparturesGroupUiModel>()
+            val tram = mutableListOf<LineDeparturesGroupUiModel>()
+            lineDepartureGroups.forEach { group ->
+                val digit = group.lineId.filter { it.isDigit() }
+                if (digit in setOf("4", "6", "8", "10", "11", "12")) {
+                    tram.add(group)
+                } else {
+                    metro.add(group)
+                }
+            }
+            Pair(metro.toList(), tram.toList())
+        }
     }
 
     if (showSearchDialog) {
@@ -313,7 +430,7 @@ fun ProximosTrenesScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = "Editar favoritas",
+                        contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.edit_favorites_desc),
                         tint = accentColor,
                         modifier = Modifier.size(20.dp)
                     )
@@ -384,45 +501,14 @@ fun ProximosTrenesScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Info,
-                        contentDescription = "Información de la estación",
+                        contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.station_info_desc),
                         tint = if (isStationInfoExpanded) MaterialTheme.colorScheme.primary else (if (isDarkMode) Color.White.copy(alpha = 0.7f) else Color(0xFF64748B)),
                         modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
-            if (!isOnline) {
-                Surface(
-                    color = if (isDarkMode) Color(0xFF2A1C1C) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp)
-                        .testTag("metro_offline_banner")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.WifiOff,
-                            contentDescription = null,
-                            tint = if (isDarkMode) Color(0xFFEF5350) else MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA)
-                                "Sense connexió a internet. No es poden consultar eixides en temps real."
-                            else
-                                "Sin conexión a internet. No se pueden consultar salidas en tiempo real.",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isDarkMode) Color(0xFFEF5350) else MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                }
-            }
+
 
             val pullToRefreshState = rememberPullToRefreshState()
             val isInitialDeparturesLoad = visibleDepartures.isEmpty() || lineDepartureGroups.isEmpty()
@@ -444,7 +530,8 @@ fun ProximosTrenesScreen(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                if (isLoading && isInitialDeparturesLoad && error == null) {
+                val isShowingLoadingSkeletons = (isLoading && isInitialDeparturesLoad && error == null) || (isLoadingInlineTheoretical && !isInlineTheoreticalLoaded && isInitialDeparturesLoad && error == null)
+                if (isShowingLoadingSkeletons) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -483,7 +570,7 @@ fun ProximosTrenesScreen(
                             )
                         }
 
-                        if (error != null) {
+                        if (error != null && !isInlineTheoreticalLoaded) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -491,144 +578,273 @@ fun ProximosTrenesScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                    val isOfflineError = !isOnline || error.contains("conexión", ignoreCase = true) || error.contains("connexió", ignoreCase = true) || error.contains("network", ignoreCase = true)
-                                    Icon(
-                                        imageVector = if (isOfflineError) Icons.Default.WifiOff else Icons.Default.Cloud,
-                                        contentDescription = "Error",
-                                        modifier = Modifier.size(48.dp),
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                val isOfflineError = !isOnline || error.contains("conexión", ignoreCase = true) || error.contains("connexió", ignoreCase = true) || error.contains("network", ignoreCase = true)
+                                Icon(
+                                    imageVector = if (isOfflineError) Icons.Default.WifiOff else Icons.Default.Cloud,
+                                    contentDescription = "Error",
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = if (isOfflineError) {
+                                        if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet"
+                                    } else error,
+                                    fontSize = 16.sp,
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                                if (isOfflineError) {
+                                    Spacer(modifier = Modifier.height(6.dp))
                                     Text(
-                                        text = if (isOfflineError) {
-                                            if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet"
-                                        } else error,
-                                        fontSize = 16.sp,
+                                        text = if (appLanguage == AppLanguage.CA)
+                                            "Comprova la teua connexió per a consultar les eixides en temps real."
+                                        else
+                                            "Comprueba tu conexión para consultar las salidas en tiempo real.",
+                                        fontSize = 13.sp,
                                         textAlign = TextAlign.Center,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.error,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(horizontal = 16.dp)
                                     )
-                                    if (isOfflineError) {
-                                        Spacer(modifier = Modifier.height(6.dp))
+                                }
+                                Spacer(modifier = Modifier.height(20.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = { metroViewModel.fetchRealTimeDepartures(selectedStationId) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("retry_realtime_button")
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "Retry", modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = if (appLanguage == AppLanguage.CA)
-                                                "Comprova la teua connexió per a consultar les eixides en temps real."
-                                            else
-                                                "Comprueba tu conexión para consultar las salidas en tiempo real.",
-                                            fontSize = 13.sp,
-                                            textAlign = TextAlign.Center,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 16.dp)
+                                            text = if (appLanguage == AppLanguage.CA) "Reintentar" else "Reintentar",
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(20.dp))
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 24.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Button(
-                                            onClick = { metroViewModel.fetchRealTimeDepartures(selectedStationId) },
-                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .testTag("retry_realtime_button")
-                                        ) {
-                                            Icon(Icons.Default.Refresh, contentDescription = "Retry", modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = if (appLanguage == AppLanguage.CA) "Reintentar" else "Reintentar",
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
 
-                                         Button(
-                                            onClick = {
-                                                val stId = selectedStation?.id ?: selectedStationId
-                                                val stName = selectedStation?.name ?: "Estación"
-                                                metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
-                                            },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                            ),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .weight(1.2f)
-                                                .testTag("open_scheduled_departures_btn")
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Schedule,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(if (appLanguage == AppLanguage.CA) "Veure programats" else "Ver programados", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        }
+                                    Button(
+                                        onClick = {
+                                            val stId = selectedStation?.id ?: selectedStationId
+                                            val stName = selectedStation?.name ?: "Estación"
+                                            metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1.2f)
+                                            .testTag("open_scheduled_departures_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Schedule,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_view_scheduled), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
                             }
-                        else if (!isLoading && (visibleDepartures.isEmpty() || lineDepartureGroups.isEmpty())) {
-                            MetroDeparturesEmptyState(
-                                isOnline = isOnline,
-                                isDarkMode = isDarkMode,
-                                appLanguage = appLanguage,
-                                texts = texts,
-                                stationIncidents = stationIncidents,
-                                selectedStationId = selectedStationId,
-                                selectedStation = selectedStation,
-                                onRetry = { metroViewModel.fetchRealTimeDepartures(selectedStationId) },
-                                onShowScheduled = { stId, stName ->
-                                    metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
-                                }
-                            )
+                        } else if (!isLoading && (visibleDepartures.isEmpty() || lineDepartureGroups.isEmpty())) {
+                            if (isInlineTheoreticalLoaded) {
+                                Text(
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_no_live_showing_scheduled_notice),
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontWeight = FontWeight.Normal,
+                                        fontSize = 13.sp
+                                    ),
+                                    color = if (isDarkMode) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp, horizontal = 8.dp)
+                                )
+                            } else {
+                                MetroDeparturesEmptyState(
+                                    isOnline = isOnline,
+                                    isDarkMode = isDarkMode,
+                                    appLanguage = appLanguage,
+                                    texts = texts,
+                                    stationIncidents = stationIncidents,
+                                    selectedStationId = selectedStationId,
+                                    selectedStation = selectedStation,
+                                    onRetry = { metroViewModel.fetchRealTimeDepartures(selectedStationId) },
+                                    onShowScheduled = { stId, stName ->
+                                        metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
+                                    }
+                                )
+                            }
                         } else {
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                lineDepartureGroups.forEach { lineGroup ->
-                                    if (isSingleLineStation) {
-                                        val dirIcon = if (lineGroup.direction == 0) Icons.AutoMirrored.Filled.ArrowBack else Icons.AutoMirrored.Filled.ArrowForward
-                                        val dirTerminus = lineGroup.directionTerminusName ?: lineGroup.primaryDestination
+                                if (isMixedMetroTramStation) {
+                                    // Bloque 1: Metro (Arriba)
+                                    if (metroLineGroups.isNotEmpty()) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(start = 4.dp, top = 6.dp, bottom = 6.dp)
+                                                .padding(start = 4.dp, top = 4.dp, bottom = 6.dp)
                                         ) {
                                             Icon(
-                                                imageVector = dirIcon,
+                                                imageVector = Icons.Default.Subway,
                                                 contentDescription = null,
                                                 tint = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Text(
-                                                text = "Dir. $dirTerminus",
+                                                text = "Metro",
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
                                             )
                                         }
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(bottom = 10.dp)
-                                    ) {
-                                        MetroLineDepartureCard(
-                                            group = lineGroup,
-                                            metroViewModel = metroViewModel,
-                                            appLanguage = appLanguage,
-                                            texts = texts,
-                                            isDarkMode = isDarkMode,
-                                            onExpired = { expiredId ->
-                                                expiredDepartureIds = expiredDepartureIds + expiredId
+
+                                        metroLineGroups.forEach { lineGroup ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(bottom = 10.dp)
+                                            ) {
+                                                MetroLineDepartureCard(
+                                                    group = lineGroup,
+                                                    metroViewModel = metroViewModel,
+                                                    appLanguage = appLanguage,
+                                                    texts = texts,
+                                                    isDarkMode = isDarkMode,
+                                                    onExpired = { expiredId ->
+                                                        expiredDepartureIds = expiredDepartureIds + expiredId
+                                                    },
+                                                    onLongClickDeparture = { dep ->
+                                                        if (dep.minutesRemaining > 60) {
+                                                            val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
+                                                            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                                        } else {
+                                                            quickTrackDeparture = dep
+                                                            showQuickTrackSheet = true
+                                                        }
+                                                    }
+                                                )
                                             }
-                                        )
+                                        }
+                                    }
+
+                                    // Bloque 2: Tranvía (Abajo)
+                                    if (tramLineGroups.isNotEmpty()) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 4.dp, top = 10.dp, bottom = 6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Tram,
+                                                contentDescription = null,
+                                                tint = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = if (appLanguage == AppLanguage.CA) "Tramvia" else "Tranvía",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+                                            )
+                                        }
+
+                                        tramLineGroups.forEach { lineGroup ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(bottom = 10.dp)
+                                             ) {
+                                                MetroLineDepartureCard(
+                                                    group = lineGroup,
+                                                    metroViewModel = metroViewModel,
+                                                    appLanguage = appLanguage,
+                                                    texts = texts,
+                                                    isDarkMode = isDarkMode,
+                                                    onExpired = { expiredId ->
+                                                        expiredDepartureIds = expiredDepartureIds + expiredId
+                                                    },
+                                                    onLongClickDeparture = { dep ->
+                                                        if (dep.minutesRemaining > 60) {
+                                                            val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
+                                                            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                                        } else {
+                                                            quickTrackDeparture = dep
+                                                            showQuickTrackSheet = true
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    lineDepartureGroups.forEach { lineGroup ->
+                                        if (isSingleLineStation) {
+                                            val dirIcon = if (lineGroup.direction == 0) Icons.AutoMirrored.Filled.ArrowBack else Icons.AutoMirrored.Filled.ArrowForward
+                                            val dirTerminus = lineGroup.directionTerminusName ?: lineGroup.primaryDestination
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(start = 4.dp, top = 6.dp, bottom = 6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = dirIcon,
+                                                    contentDescription = null,
+                                                    tint = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "Dir. $dirTerminus",
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+                                                )
+                                            }
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(bottom = 10.dp)
+                                        ) {
+                                            MetroLineDepartureCard(
+                                                group = lineGroup,
+                                                metroViewModel = metroViewModel,
+                                                appLanguage = appLanguage,
+                                                texts = texts,
+                                                isDarkMode = isDarkMode,
+                                                onExpired = { expiredId ->
+                                                    expiredDepartureIds = expiredDepartureIds + expiredId
+                                                },
+                                                onLongClickDeparture = { dep ->
+                                                    if (dep.minutesRemaining > 60) {
+                                                        val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
+                                                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        quickTrackDeparture = dep
+                                                        showQuickTrackSheet = true
+                                                    }
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -655,7 +871,8 @@ fun ProximosTrenesScreen(
                             onReset = {
                                 metroScheduleViewModel.resetInlineTheoreticalDepartures()
                             },
-                            onDepartureClick = onScheduledDepartureClick
+                            onDepartureClick = onScheduledDepartureClick,
+                            onDepartureLongClick = onScheduledDepartureLongClick
                         )
                     }
                 }
@@ -693,12 +910,110 @@ fun ProximosTrenesScreen(
                     originStationName = scheduledItem.originName,
                     originWebId = scheduledItem.originWebId,
                     destinationWebId = scheduledItem.destinationWebId,
-                    id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}"
+                    targetArrivalEpochMs = System.currentTimeMillis() + (diffMin * 60_000L),
+                    id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}",
+                    isRealTime = false
                 )
                 metroViewModel.selectDepartureDetails(realTimeDep)
+            },
+            onDepartureLongClick = { scheduledItem ->
+                metroScheduleViewModel.dismissScheduledDepartures()
+                val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
+                val currentMinOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+                val diffMin = (scheduledItem.timeMinutes - currentMinOfDay).coerceAtLeast(0)
+                if (diffMin > 60) {
+                    val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    val cleanLine = scheduledItem.line.replace("L", "", ignoreCase = true).trim()
+                    val lineHex = com.example.util.LineColorResolver.getMetroLineColorHex("L$cleanLine")
+                    val realTimeDep = RealTimeDeparture(
+                        lineId = "L$cleanLine",
+                        destination = scheduledItem.destinationName,
+                        minutesRemaining = diffMin,
+                        secondsRemaining = diffMin * 60,
+                        colorHex = lineHex,
+                        estimatedTime = scheduledItem.timeFormatted,
+                        status = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
+                        track = null,
+                        capacidad = null,
+                        aforoBloqueado = null,
+                        vehicleId = null,
+                        trainServiceId = scheduledItem.trainServiceId,
+                        originStationName = scheduledItem.originName,
+                        originWebId = scheduledItem.originWebId,
+                        destinationWebId = scheduledItem.destinationWebId,
+                        targetArrivalEpochMs = System.currentTimeMillis() + (diffMin * 60_000L),
+                        id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}",
+                        isRealTime = false
+                    )
+                    quickTrackDeparture = realTimeDep
+                    showQuickTrackSheet = true
+                }
             }
         )
     }
+
+    var pendingTrackVehicle by remember { mutableStateOf<com.example.data.model.quicktrack.QuickTrackedVehicle?>(null) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            pendingTrackVehicle?.let { vehicle ->
+                QuickVehicleTrackerManager.startTracking(context, vehicle)
+                val msg = if (vehicle.isDestinationAlert) {
+                    context.getString(com.example.R.string.quick_track_toast_dest_pinned, vehicle.targetStationName ?: "")
+                } else {
+                    context.getString(com.example.R.string.quick_track_toast_pinned, vehicle.cleanLineNumber)
+                }
+                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            val warn = if (appLanguage == AppLanguage.CA) {
+                "Activa les notificacions per a veure el seguiment en la barra d'estat"
+            } else {
+                "Activa las notificaciones para ver el seguimiento en la barra de estado"
+            }
+            android.widget.Toast.makeText(context, warn, android.widget.Toast.LENGTH_LONG).show()
+        }
+        pendingTrackVehicle = null
+    }
+
+    QuickTrainTrackerBottomSheet(
+        isVisible = showQuickTrackSheet,
+        departure = quickTrackDeparture,
+        originStationName = stationDisplayName,
+        originStationId = selectedStationId,
+        lineStations = lineStationsMap[quickTrackDeparture?.lineId] ?: emptyList(),
+        appLanguage = appLanguage,
+        isDarkMode = isDarkMode,
+        onDismiss = {
+            showQuickTrackSheet = false
+            quickTrackDeparture = null
+        },
+        onTrackSelected = { vehicle ->
+            showQuickTrackSheet = false
+            quickTrackDeparture = null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val hasPerm = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+                if (!hasPerm) {
+                    pendingTrackVehicle = vehicle
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    return@QuickTrainTrackerBottomSheet
+                }
+            }
+            QuickVehicleTrackerManager.startTracking(context, vehicle)
+            val msg = if (vehicle.isDestinationAlert) {
+                context.getString(com.example.R.string.quick_track_toast_dest_pinned, vehicle.targetStationName ?: "")
+            } else {
+                context.getString(com.example.R.string.quick_track_toast_pinned, vehicle.cleanLineNumber)
+            }
+            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    )
 
     DepartureDetailsBottomSheet(
         isBottomSheetVisible = isBottomSheetVisible,
@@ -709,7 +1024,12 @@ fun ProximosTrenesScreen(
         isDarkMode = isDarkMode,
         sheetState = sheetState,
         onDismiss = { metroViewModel.dismissDepartureDetails() },
-        metroScheduleViewModel = metroScheduleViewModel
+        metroScheduleViewModel = metroScheduleViewModel,
+        onStartQuickTrack = { dep ->
+            metroViewModel.dismissDepartureDetails()
+            quickTrackDeparture = dep
+            showQuickTrackSheet = true
+        }
     )
 }
 }

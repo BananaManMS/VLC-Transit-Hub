@@ -118,8 +118,8 @@ class CercaniasTrainOverlayManager(
                         val hasMoved = distSq > 0.0000001 // ~30 meters epsilon
                         if (hasMoved) {
                             // Compute where the train is visually rendering right now to start next segment from here
-                            val elapsed = timeGapMs.coerceIn(0L, 20_000L)
-                            val fraction = elapsed.toFloat() / 20_000f
+                            val elapsed = timeGapMs.coerceIn(0L, 26_000L)
+                            val fraction = elapsed.toFloat() / 26_000f
                             val currentVisualLat = animState.startLat + (animState.targetLat - animState.startLat) * fraction
                             val currentVisualLon = animState.startLon + (animState.targetLon - animState.startLon) * fraction
 
@@ -136,9 +136,9 @@ class CercaniasTrainOverlayManager(
                             }
                         }
 
-                        // Interpolate position across 20,000 ms along the snapped track line
-                        val elapsed = (nowMs - animState.lastUpdateMs).coerceIn(0L, 20_000L)
-                        val fraction = elapsed.toFloat() / 20_000f
+                        // Interpolate position across 26,000 ms along the snapped track line
+                        val elapsed = (nowMs - animState.lastUpdateMs).coerceIn(0L, 26_000L)
+                        val fraction = elapsed.toFloat() / 26_000f
                         
                         val interpLat = animState.startLat + (animState.targetLat - animState.startLat) * fraction
                         val interpLon = animState.startLon + (animState.targetLon - animState.startLon) * fraction

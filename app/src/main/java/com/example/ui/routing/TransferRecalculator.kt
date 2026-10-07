@@ -42,6 +42,8 @@ object TransferRecalculator {
                 ("WALK," + selectedModes.flatMap { it.modes }.distinct().joinToString(","))
             }
 
+            val isDestStation = destination.stopType != null || destination.stopId != null || com.example.data.repository.routing.RoutingDataMapper.isStationOrStopDescriptor(destination.title, destination.stopType, destination.stopId)
+
             val routeResult = hybridRoutingRepository.planRoute(
                 fromLat = transferLat,
                 fromLon = transferLon,
@@ -53,7 +55,9 @@ object TransferRecalculator {
                 maxTransfers = 2,
                 modes = modes,
                 originName = stationName,
-                destinationName = destination.title
+                destinationName = destination.title,
+                isOriginStationOrStop = true,
+                isDestinationStationOrStop = isDestStation
             )
 
             routeResult.fold(

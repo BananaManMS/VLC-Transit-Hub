@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.*
@@ -30,7 +31,8 @@ import com.example.ui.dashboard.DashboardViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CommuteSetupDialog(
-    isHome: Boolean,
+    commuteType: String = "HOME", // "HOME", "WORK", "PINNED"
+    isHome: Boolean = (commuteType == "HOME"),
     appLanguage: AppLanguage,
     currentName: String,
     currentLat: Double = 0.0,
@@ -42,7 +44,18 @@ fun CommuteSetupDialog(
 ) {
     val isDarkMode by dashboardViewModel.isDarkMode.collectAsState()
     val isConfigured = currentName.isNotBlank() && currentLat != 0.0 && currentLon != 0.0
-    var name by remember { mutableStateOf(currentName.ifBlank { if (isHome) "Casa" else "Trabajo" }) }
+
+    val isWork = commuteType == "WORK"
+    val isPinned = commuteType == "PINNED"
+    val isHomeType = commuteType == "HOME"
+
+    val defaultTitle = when {
+        isHomeType -> "Casa"
+        isWork -> "Trabajo"
+        else -> ""
+    }
+
+    var name by remember { mutableStateOf(currentName.ifBlank { defaultTitle }) }
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<com.example.ui.map.MapSearchResult>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
@@ -52,6 +65,7 @@ fun CommuteSetupDialog(
     var hasChosenLocation by remember { mutableStateOf(isConfigured) }
 
     val recentSearches by dashboardViewModel.recentSearches.collectAsState()
+    val customFavorites by dashboardViewModel.customFavorites.collectAsState()
     val unifiedTransitFavorites by dashboardViewModel.unifiedTransitFavorites.collectAsState()
 
     LaunchedEffect(searchQuery) {
@@ -66,6 +80,22 @@ fun CommuteSetupDialog(
             searchResults = emptyList()
             isSearching = false
         }
+    }
+
+    val headerIcon = when {
+        isHomeType -> Icons.Default.Home
+        isWork -> Icons.Default.Work
+        else -> Icons.Default.PushPin
+    }
+    val headerColor = when {
+        isHomeType -> Color(0xFFF59E0B)
+        isWork -> Color(0xFF3B82F6)
+        else -> Color(0xFF8B5CF6)
+    }
+    val headerTitle = when {
+        isHomeType -> androidx.compose.ui.res.stringResource(com.example.R.string.commute_setup_home)
+        isWork -> androidx.compose.ui.res.stringResource(com.example.R.string.commute_setup_work)
+        else -> androidx.compose.ui.res.stringResource(com.example.R.string.commute_setup_pinned)
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -86,29 +116,25 @@ fun CommuteSetupDialog(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(if (isHome) Color(0xFFF59E0B).copy(alpha = 0.15f) else Color(0xFF3B82F6).copy(alpha = 0.15f)),
+                            .background(headerColor.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = if (isHome) Icons.Default.Home else Icons.Default.Work,
+                            imageVector = headerIcon,
                             contentDescription = null,
-                            tint = if (isHome) Color(0xFFF59E0B) else Color(0xFF3B82F6),
+                            tint = headerColor,
                             modifier = Modifier.size(22.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = if (isHome) {
-                                if (appLanguage == AppLanguage.CA) "Configurar Casa" else "Configurar Casa"
-                            } else {
-                                if (appLanguage == AppLanguage.CA) "Configurar Treball" else "Configurar Trabajo"
-                            },
+                            text = headerTitle,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Cerca qualsevol adreça o parada" else "Busca cualquier dirección o parada",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_search_subtitle),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -123,7 +149,7 @@ fun CommuteSetupDialog(
                     onValueChange = { searchQuery = it },
                     placeholder = {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Busca adreça, carrer, metro o parada..." else "Busca dirección, calle, metro o parada...",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_search_field_placeholder),
                             fontSize = 13.sp
                         )
                     },
@@ -172,14 +198,14 @@ fun CommuteSetupDialog(
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Cercant..." else "Buscando...",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_searching),
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     } else if (searchResults.isEmpty()) {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Sense resultats per a «$searchQuery»" else "Sin resultados para «$searchQuery»",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_no_results_format, searchQuery),
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp)
@@ -237,17 +263,18 @@ fun CommuteSetupDialog(
                         }
                     }
                 } else {
-                    if (recentSearches.isNotEmpty()) {
+                    // Saved Favorites / Custom Places (Prominent for Pinned site!)
+                    if (customFavorites.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Cerques recents" else "Búsquedas recientes",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_custom_favorites),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(bottom = 6.dp)
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            recentSearches.take(4).forEach { item ->
+                            customFavorites.take(6).forEach { item ->
                                 com.example.ui.common.search.RecentSearchRow(
                                     item = item,
                                     isDarkMode = isDarkMode,
@@ -266,7 +293,7 @@ fun CommuteSetupDialog(
                     if (unifiedTransitFavorites.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Estacions i parades preferides" else "Estaciones y paradas favoritas",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_favorite_stops),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -274,6 +301,32 @@ fun CommuteSetupDialog(
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             unifiedTransitFavorites.take(4).forEach { item ->
+                                com.example.ui.common.search.RecentSearchRow(
+                                    item = item,
+                                    isDarkMode = isDarkMode,
+                                    appLanguage = appLanguage,
+                                    onItemClick = {
+                                        name = item.title
+                                        lat = item.latitude
+                                        lon = item.longitude
+                                        hasChosenLocation = true
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (recentSearches.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_recent_searches),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            recentSearches.take(4).forEach { item ->
                                 com.example.ui.common.search.RecentSearchRow(
                                     item = item,
                                     isDarkMode = isDarkMode,
@@ -308,7 +361,7 @@ fun CommuteSetupDialog(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Seleccionar punt al mapa" else "Seleccionar punto en el mapa",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_select_on_map),
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -334,7 +387,7 @@ fun CommuteSetupDialog(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Ubicació seleccionada" else "Ubicación seleccionada",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_selected_location),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
@@ -357,7 +410,7 @@ fun CommuteSetupDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text(if (appLanguage == AppLanguage.CA) "Nom personalitzat" else "Nombre personalizado") },
+                    label = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.commute_custom_name_label)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true
@@ -373,22 +426,28 @@ fun CommuteSetupDialog(
                     if (isConfigured) {
                         TextButton(
                             onClick = {
-                                if (isHome) {
-                                    dashboardViewModel.saveHomeLocation(null)
-                                } else {
-                                    dashboardViewModel.saveWorkLocation(null)
+                                when {
+                                    isHomeType -> dashboardViewModel.saveHomeLocation(null)
+                                    isWork -> dashboardViewModel.saveWorkLocation(null)
+                                    else -> dashboardViewModel.savePinnedLocation(null)
                                 }
                                 onDismiss()
                             },
                             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                         ) {
-                            Text(if (appLanguage == AppLanguage.CA) "Eliminar" else "Eliminar")
+                            Text(
+                                if (isPinned) {
+                                    androidx.compose.ui.res.stringResource(com.example.R.string.commute_unpin)
+                                } else {
+                                    androidx.compose.ui.res.stringResource(com.example.R.string.btn_delete)
+                                }
+                            )
                         }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = onDismiss) {
-                            Text(if (appLanguage == AppLanguage.CA) "Cancel·lar" else "Cancelar")
+                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_cancel))
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
@@ -396,7 +455,7 @@ fun CommuteSetupDialog(
                             enabled = hasChosenLocation || name.isNotBlank(),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text(if (appLanguage == AppLanguage.CA) "Guardar" else "Guardar", fontWeight = FontWeight.Bold)
+                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_save), fontWeight = FontWeight.Bold)
                         }
                     }
                 }

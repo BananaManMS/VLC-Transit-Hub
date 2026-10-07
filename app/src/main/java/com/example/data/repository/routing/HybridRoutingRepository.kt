@@ -104,7 +104,9 @@ class HybridRoutingRepository(
         maxTransfers: Int? = 3,
         modes: String = "WALK,SUBWAY,TRAM,BUS,COACH,REGIONAL_RAIL",
         originName: String? = null,
-        destinationName: String? = null
+        destinationName: String? = null,
+        isOriginStationOrStop: Boolean = false,
+        isDestinationStationOrStop: Boolean = false
     ): Result<List<PlannedItinerary>> = withContext(Dispatchers.IO) {
         try {
             val fromPlace = String.format(Locale.US, "%.5f,%.5f", fromLat, fromLon)
@@ -112,17 +114,22 @@ class HybridRoutingRepository(
 
             // Format time as ISO-8601 with local timezone offset (e.g. Europe/Madrid +02:00) required by Transitous / MOTIS 2 API
             val isoFormattedTime = if (!time.isNullOrBlank() || arriveBy) {
+                val madridTz = java.util.TimeZone.getTimeZone("Europe/Madrid")
                 val datePart = if (!date.isNullOrBlank()) {
                     date.trim()
                 } else {
-                    java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
+                    java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                        timeZone = madridTz
+                    }.format(java.util.Date())
                 }
 
                 val timePart = if (!time.isNullOrBlank()) {
                     val t = time.trim()
                     if (t.contains(":") && t.length == 5) "$t:00" else if (t.length == 8) t else "$t:00"
                 } else {
-                    java.text.SimpleDateFormat("HH:mm:ss", Locale.US).format(java.util.Date())
+                    java.text.SimpleDateFormat("HH:mm:ss", Locale.US).apply {
+                        timeZone = madridTz
+                    }.format(java.util.Date())
                 }
 
                 try {
@@ -198,7 +205,14 @@ class HybridRoutingRepository(
             }
 
             val basePlannedItineraries = filteredRawItineraries.mapIndexed { index, itinDto ->
-                RoutingDataMapper.mapDtoToItinerary(itinDto, index, originName, destinationName)
+                RoutingDataMapper.mapDtoToItinerary(
+                    dto = itinDto,
+                    index = index,
+                    originName = originName,
+                    destinationName = destinationName,
+                    isOriginStationOrStop = isOriginStationOrStop,
+                    isDestinationStationOrStop = isDestinationStationOrStop
+                )
             }.filter { itin ->
                 val firstTransitIndex = itin.legs.indexOfFirst { it.mode != TransitMode.WALK }
                 if (firstTransitIndex != -1) {
@@ -217,10 +231,14 @@ class HybridRoutingRepository(
             }
 
             val isDepartNowQuery = time.isNullOrBlank() && date.isNullOrBlank() && !arriveBy
-            val enrichedItineraries = if (isDepartNowQuery) {
+            val hasLiveEligible = isDepartNowQuery || basePlannedItineraries.any {
+                liveReconciliationEngine.shouldAttemptLiveReconciliation(it)
+            }
+
+            val enrichedItineraries = if (hasLiveEligible) {
                 try {
                     withTimeoutOrNull(REAL_TIME_ITINERARY_TIMEOUT_MS) {
-                        reconcileItineraries(basePlannedItineraries, isDepartNow = true)
+                        reconcileItineraries(basePlannedItineraries, isDepartNow = isDepartNowQuery)
                     } ?: basePlannedItineraries
                 } catch (e: Exception) {
                     basePlannedItineraries
@@ -229,18 +247,32 @@ class HybridRoutingRepository(
                 basePlannedItineraries
             }
 
-            // Sort primarily by arrival time (earliest arrival first), then duration as tiebreaker
-            val sortedItineraries = enrichedItineraries.sortedWith(
-                compareBy<PlannedItinerary> { RoutingDataMapper.getEffectiveArrivalEpochMs(it) }
-                    .thenBy { it.totalDurationSeconds }
-                    .thenBy { RoutingDataMapper.getEffectiveDepartureEpochMs(it) }
-            ).take(6)
+            // Sort itineraries based on search mode:
+            // - Arrive by (Llegar a / antes de): latest arrival first (closest to target time)
+            // - Depart at / now (Salir a / ahora): earliest arrival first
+            val sortedItineraries = if (arriveBy) {
+                enrichedItineraries.sortedWith(
+                    compareByDescending<PlannedItinerary> { RoutingDataMapper.getEffectiveArrivalEpochMs(it) }
+                        .thenBy { it.totalDurationSeconds }
+                        .thenByDescending { RoutingDataMapper.getEffectiveDepartureEpochMs(it) }
+                )
+            } else {
+                enrichedItineraries.sortedWith(
+                    compareBy<PlannedItinerary> { RoutingDataMapper.getEffectiveArrivalEpochMs(it) }
+                        .thenBy { it.totalDurationSeconds }
+                        .thenBy { RoutingDataMapper.getEffectiveDepartureEpochMs(it) }
+                )
+            }.take(6)
 
             Result.success(sortedItineraries)
         } catch (e: Exception) {
             Log.e(TAG, "Error planning route with Transitous", e)
             Result.failure(e)
         }
+    }
+
+    fun shouldAttemptLiveReconciliation(itinerary: PlannedItinerary): Boolean {
+        return liveReconciliationEngine.shouldAttemptLiveReconciliation(itinerary)
     }
 
     /**

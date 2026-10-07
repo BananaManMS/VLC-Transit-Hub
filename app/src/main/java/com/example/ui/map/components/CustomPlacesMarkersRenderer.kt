@@ -75,18 +75,29 @@ object CustomPlacesMarkersRenderer {
                 if (onTapHandler != null) {
                     onTapHandler(context, mapView, m.position)
                 } else {
+                    val resolvedType = when (placeType) {
+                        CustomPlaceType.HOME -> "home"
+                        CustomPlaceType.WORK -> "work"
+                        CustomPlaceType.FAVORITE -> "favorite"
+                    }
                     val addrItem = SelectedMapItem.Address(
                         NominatimResult(
-                            display_name = if (place.subtitle.isNotEmpty()) place.title + ", " + place.subtitle else place.title,
+                            display_name = if (place.subtitle.isNotEmpty() && !place.subtitle.equals(place.title, ignoreCase = true)) place.title + ", " + place.subtitle else place.title,
                             lat = m.position.latitude.toString(),
                             lon = m.position.longitude.toString(),
-                            type = "favorite",
+                            type = resolvedType,
                             category = "favorite",
                             isLocalStop = false,
                             stopId = null,
                             stopType = null,
                             placeCategory = PlaceCategory.FAVORITE,
-                            placeName = place.title
+                            placeName = place.title,
+                            colorHex = place.colorHex,
+                            road = place.road,
+                            houseNumber = place.houseNumber,
+                            suburb = place.suburb,
+                            city = place.city,
+                            postcode = place.postcode
                         )
                     )
                     onSelectItem?.invoke(addrItem)

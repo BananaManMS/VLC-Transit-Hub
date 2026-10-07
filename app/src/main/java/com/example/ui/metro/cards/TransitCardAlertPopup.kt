@@ -59,9 +59,9 @@ fun TransitCardAlertPopup(
 
     val isSingleAlert = alerts.size == 1
     val headerTitle = if (isSingleAlert) {
-        if (isCa) "Avís de targeta" else "Aviso de tarjeta"
+        androidx.compose.ui.res.stringResource(com.example.R.string.card_alert_single_header)
     } else {
-        if (isCa) "Avisos de targetes (${alerts.size})" else "Avisos de tarjetas (${alerts.size})"
+        androidx.compose.ui.res.stringResource(com.example.R.string.card_alert_multi_header, alerts.size)
     }
 
     AlertDialog(
@@ -136,7 +136,7 @@ fun TransitCardAlertPopup(
                 modifier = Modifier.testTag("card_alert_confirm_btn")
             ) {
                 Text(
-                    text = if (isCa) "Entés" else "Entendido",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.card_alert_understood),
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -219,7 +219,7 @@ private fun CardAlertItem(
 
             Text(
                 text = if (isMuted) {
-                    if (isCa) "Avisos silenciats per a esta targeta" else "Avisos silenciados para esta tarjeta"
+                    androidx.compose.ui.res.stringResource(com.example.R.string.cards_alert_muted_subtitle)
                 } else {
                     alert.subtitleText
                 },
@@ -250,9 +250,9 @@ private fun CardAlertItem(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = if (isMuted) {
-                            if (isCa) "Restablir avisos" else "Reactivar avisos"
+                            androidx.compose.ui.res.stringResource(com.example.R.string.cards_alert_unmute_btn)
                         } else {
-                            if (isCa) "No avisar d'esta targeta" else "No avisar de esta tarjeta"
+                            androidx.compose.ui.res.stringResource(com.example.R.string.cards_alert_mute_btn)
                         },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,

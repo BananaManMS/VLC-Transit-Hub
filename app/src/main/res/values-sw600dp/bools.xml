@@ -2,4 +2,5 @@
 <resources>
     <!-- For tablets (sw600dp and above): allow landscape rotation -->
     <bool name="allow_land_rotation">true</bool>
+    <bool name="is_tablet">true</bool>
 </resources>

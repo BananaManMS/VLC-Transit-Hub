@@ -15,6 +15,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.data.repository.MetrobusRepository
 import com.example.data.repository.renfe.RenfeRepository
 import com.example.ui.dashboard.AppLanguage
@@ -331,11 +334,13 @@ fun LiveDeparturesRow(
     var loading by remember(item.key) { mutableStateOf(false) }
     var arrivalsInfo by remember(item.key) { mutableStateOf(initialList) }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(item.key, isVisible) {
         if (!isVisible) return@LaunchedEffect
 
-        var isFirstRun = true
-        while (isActive) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            var isFirstRun = true
+            while (isActive) {
             val currentCached = departuresCache[item.key]
             val currentTime = System.currentTimeMillis()
             val isCacheValid = currentCached != null && (currentTime - currentCached.timestamp) < 30_000L
@@ -393,13 +398,13 @@ fun LiveDeparturesRow(
 
                                 if (isDiverted) {
                                     mins = 999
-                                    displayStr = if (appLanguage == AppLanguage.CA) "Desviat" else "Desviado"
+                                    displayStr = context.getString(com.example.R.string.status_diverted)
                                 } else if (isAbsoluteTime) {
                                     mins = 998
                                     displayStr = bus.minutos.trim()
                                 } else if (mLower == "0" || mLower == "imminent" || mLower == "inminente" || mLower == "ara" || mLower == "ahora" || mLower.startsWith("pr")) {
                                     mins = 0
-                                    displayStr = if (appLanguage == AppLanguage.CA) "Ara" else "Ahora"
+                                    displayStr = context.getString(com.example.R.string.status_now)
                                 } else {
                                     val extracted = mLower.filter { c -> c.isDigit() }.toIntOrNull()
                                     if (extracted != null) {
@@ -407,7 +412,7 @@ fun LiveDeparturesRow(
                                         displayStr = null
                                     } else {
                                         mins = 997
-                                        displayStr = bus.minutos.trim().ifEmpty { if (appLanguage == AppLanguage.CA) "Sense servei" else "Sin servicio" }
+                                        displayStr = bus.minutos.trim().ifEmpty { context.getString(com.example.R.string.status_no_service) }
                                     }
                                 }
 
@@ -489,7 +494,8 @@ fun LiveDeparturesRow(
                 }
             }
 
-        delay(30_000L)
+            delay(30_000L)
+        }
     }
 }
 
@@ -506,7 +512,7 @@ fun LiveDeparturesRow(
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = if (appLanguage == AppLanguage.CA) "Consultant sortides..." else "Consultando salidas...",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_querying_departures),
                 fontSize = 13.sp,
                 color = subtextColor
             )
@@ -514,7 +520,7 @@ fun LiveDeparturesRow(
     } else {
         if (arrivalsInfo.isEmpty()) {
             Text(
-                text = if (appLanguage == AppLanguage.CA) "No hi ha sortides properes" else "No hay salidas programadas",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_no_departures_scheduled),
                 fontSize = 13.sp,
                 color = subtextColor,
                 modifier = Modifier.padding(vertical = 2.dp)

@@ -69,6 +69,64 @@ data class MetroTrainTimeline(
     val stops: List<MetroScheduledStopPass> = emptyList()
 )
 
+data class MetroRouteBlueprintLeg(
+    val legIndex: Int = 0,
+    val line: String = "",
+    val fromStationId: String = "",
+    val fromStationName: String = "",
+    val toStationId: String = "",
+    val toStationName: String = "",
+    val isTransferStation: Boolean = false,
+    val transferStationName: String? = null,
+    val transferBufferMinutes: Int = 1
+)
+
+data class MetroRouteBlueprint(
+    val originStationId: String = "",
+    val originStationName: String = "",
+    val destinationStationId: String = "",
+    val destinationStationName: String = "",
+    val totalTransfers: Int = 0,
+    val estimatedDurationMinutes: Int = 0,
+    val legs: List<MetroRouteBlueprintLeg> = emptyList(),
+    val isOppositeDirection: Boolean = false,
+    val oppositeDirectionTerminalName: String? = null,
+    val scheduledDepartureTime: String? = null,
+    val scheduledArrivalTime: String? = null,
+    val isDirect: Boolean = true,
+    val intermediateStopsCount: Int = 0,
+    val stopsList: List<String> = emptyList()
+)
+
+data class MetroJourneyLeg(
+    val legIndex: Int = 0,
+    val line: String = "",
+    val trainServiceId: Int = 0,
+    val departureTimeFormatted: String = "",
+    val departureMinutesOfDay: Int = 0,
+    val arrivalTimeFormatted: String = "",
+    val arrivalMinutesOfDay: Int = 0,
+    val originStationName: String = "",
+    val destinationStationName: String = "",
+    val stops: List<MetroScheduledStopPass> = emptyList(),
+    val isRealTime: Boolean = false,
+    val liveRemainingMinutes: Int? = null,
+    val isTransferNext: Boolean = false,
+    val transferStationName: String? = null,
+    val transferWaitMinutes: Int = 0
+)
+
+data class MetroJourneySimulation(
+    val originStationName: String = "",
+    val destinationStationName: String = "",
+    val totalDurationMinutes: Int = 0,
+    val departureTimeFormatted: String = "",
+    val arrivalTimeFormatted: String = "",
+    val totalTransfers: Int = 0,
+    val legs: List<MetroJourneyLeg> = emptyList(),
+    val isRealTimeAnchored: Boolean = true
+)
+
 data class MetroLineInfo(
     val id: String,
     val colorHex: String,
@@ -108,9 +166,46 @@ object ValenciaMetroData {
         MetroStation("6", "Roses", listOf("3", "5", "9"), "B", 39.4811, -0.4491),
         MetroStation("7", "La Carrasca", listOf("4", "6"), "A", 39.4795, -0.3421)
     )
+
+    @Volatile
+    var allNetworkStationsCache: List<MetroStation> = emptyList()
+
+    fun findStation(idOrName: String): MetroStation? {
+        val trimmed = idOrName.trim()
+        return allNetworkStationsCache.find { it.id.equals(trimmed, ignoreCase = true) || it.name.equals(trimmed, ignoreCase = true) }
+            ?: mainMetroStations.find { it.id.equals(trimmed, ignoreCase = true) || it.name.equals(trimmed, ignoreCase = true) }
+    }
 }
 
 fun cleanZoneCode(zone: String?): String {
     if (zone.isNullOrBlank()) return "A"
-    return zone.trim().uppercase()
+    val trimmed = zone.trim()
+
+    // Match "Zona A", "Zona B", "Zona AB", "Zona A B", "Zona +", etc.
+    val zoneRegexMatch = Regex("""(?i)\b(?:zona|zone)\s*([AB\+]|A\s*B|\+)""").find(trimmed)
+    if (zoneRegexMatch != null) {
+        val extracted = zoneRegexMatch.groupValues[1].replace(" ", "").uppercase()
+        if (extracted in listOf("A", "B", "AB", "+")) return extracted
+    }
+
+    // Strip words like "Metrovalencia", "Zona", "Zone", "Metro", "FGV", punctuation, etc.
+    val stripped = trimmed
+        .replace(Regex("""(?i)\b(zona|zone|metrovalencia|metro|fgv)\b"""), "")
+        .replace("•", "")
+        .replace("-", "")
+        .replace("/", "")
+        .replace(" ", "")
+        .trim()
+        .uppercase()
+
+    if (stripped in listOf("A", "B", "AB", "+")) {
+        return stripped
+    }
+
+    val directUpper = trimmed.replace(" ", "").uppercase()
+    if (directUpper in listOf("A", "B", "AB", "+")) {
+        return directUpper
+    }
+
+    return "A"
 }

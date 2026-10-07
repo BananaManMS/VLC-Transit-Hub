@@ -158,7 +158,8 @@ fun AvisosTab(
 
     data class GroupedStation(val name: String, val id: String?)
 
-    val groupedIncidents = remember(accessibilityIncidents, allNetworkStations) {
+    val fallbackStationName = androidx.compose.ui.res.stringResource(com.example.R.string.metro_station_fallback_name)
+    val groupedIncidents = remember(accessibilityIncidents, allNetworkStations, fallbackStationName) {
         val map = mutableMapOf<GroupedStation, MutableList<AccessibilityIncident>>()
         for (incident in accessibilityIncidents) {
             val rawName = incident.estacionNombre?.trim()
@@ -169,8 +170,7 @@ fun AvisosTab(
                 }
                 GroupedStation(rawName, matchedStation?.id)
             } else {
-                val fallbackName = if (appLanguage == AppLanguage.CA) "Estació de Metro" else "Estación de Metro"
-                GroupedStation(fallbackName, null)
+                GroupedStation(fallbackStationName, null)
             }
             map.getOrPut(key) { mutableListOf() }.add(incident)
         }
@@ -187,7 +187,7 @@ fun AvisosTab(
         // --- SECCIÓN 1: INCIDENCIAS DE LA RED ---
         item {
             Text(
-                text = if (appLanguage == AppLanguage.CA) "INCIDÈNCIES DE LA XARXA" else "INCIDENCIAS DE LA RED",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_alerts_network_incidents_header),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
@@ -224,15 +224,13 @@ fun AvisosTab(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.offline_banner_title),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.error
                                 )
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) 
-                                        "Comprova la teua connexió per a actualitzar els avisos en directe."
-                                        else "Comprueba tu conexión para actualizar los avisos en directo.",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_check_connection_alerts),
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -266,15 +264,13 @@ fun AvisosTab(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(
-                                        text = if (appLanguage == AppLanguage.CA) "Informació no disponible" else "Información no disponible",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_info_unavailable),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
                                         color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFB45309)
                                     )
                                     Text(
-                                        text = if (appLanguage == AppLanguage.CA) 
-                                            "No s'ha pogut connectar amb el servidor oficial."
-                                            else "No se ha podido conectar con el servidor oficial.",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_error_server_connection),
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -292,7 +288,7 @@ fun AvisosTab(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Reintentar" else "Reintentar",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_retry),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -313,20 +309,20 @@ fun AvisosTab(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "Normal",
+                                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.status_normal),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(24.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Xarxa sense incidències" else "Red sin incidencias",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.no_avisos_red),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Totes les línies de Metrovalencia estan operant amb normalitat." else "Todas las líneas de Metrovalencia están operando con normalidad.",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.no_avisos_red_desc),
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -354,14 +350,14 @@ fun AvisosTab(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
-                                contentDescription = if (appLanguage == AppLanguage.CA) "Avís" else "Aviso",
+                                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.aviso_singular),
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(18.dp)
                             )
                             if (incident.lineasFgv.isNotEmpty()) {
                                 MetroLineBadgesRow(lineasStr = incident.lineasFgv.joinToString(", "))
                             } else {
-                                val lineLabel = if (appLanguage == AppLanguage.CA) "Incidència activa" else "Incidencia activa"
+                                val lineLabel = androidx.compose.ui.res.stringResource(com.example.R.string.metro_active_incident_label)
                                 Text(
                                     text = lineLabel,
                                     fontWeight = FontWeight.Bold,
@@ -391,7 +387,7 @@ fun AvisosTab(
         // --- SECCIÓN 2: AVISOS ESPECIALES Y OBRAS ---
         item {
             Text(
-                text = if (appLanguage == AppLanguage.CA) "AVISOS ESPECIALS I OBRES" else "AVISOS ESPECIALES Y OBRAS",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_alerts_special_works_header),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
@@ -420,13 +416,13 @@ fun AvisosTab(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Info,
-                            contentDescription = "Sin avisos",
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.no_avisos),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "No hi ha avisos especials ni obres actives." else "No hay avisos especiales ni obras activas.",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_no_special_notices),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -532,7 +528,7 @@ fun AvisosTab(
                             modifier = Modifier.padding(end = 8.dp)
                         )
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "ACCESSIBILITAT I ASCENSORS" else "ACCESIBILIDAD Y ASCENSORES",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.accessibility_and_lifts),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.primary,
@@ -570,20 +566,20 @@ fun AvisosTab(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.CheckCircle,
-                                contentDescription = if (appLanguage == AppLanguage.CA) "Accessible" else "Accesible",
+                                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.accessible_label),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(24.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Accessibilitat sense incidències" else "Accesibilidad sin incidencias",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.no_accessibility_avisos),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "No s'han detectat problemes en escales mecàniques o ascensors." else "No se han detectado problemas en escaleras mecánicas o ascensores.",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.no_accessibility_avisos_desc),
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -631,14 +627,14 @@ fun AvisosTab(
                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Text(
-                                                text = if (appLanguage == AppLanguage.CA) "Veure temps real" else "Ver tiempo real",
+                                                text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_alerts_view_real_time),
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = MaterialTheme.colorScheme.primary
                                             )
                                             Icon(
                                                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                                contentDescription = "Ir a estación",
+                                                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.go_to_station_desc),
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(14.dp)
                                             )
@@ -683,7 +679,7 @@ fun AvisosTab(
         // --- SECCIÓN 4: NOTICIAS DE METROVALENCIA ---
         item {
             Text(
-                text = if (appLanguage == AppLanguage.CA) "NOTÍCIES DE METROVALENCIA" else "NOTICIAS DE METROVALENCIA",
+                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_alerts_news_header),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
@@ -702,7 +698,7 @@ fun AvisosTab(
         } else if (metroNews.isEmpty()) {
             item {
                 Text(
-                    text = if (appLanguage == AppLanguage.CA) "No hi ha notícies disponibles en aquest moment." else "No hay noticias disponibles en este momento.",
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_no_news_available),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 8.dp)
@@ -737,7 +733,7 @@ fun AvisosTab(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Newspaper,
-                                contentDescription = "Noticias",
+                                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.metro_news_desc),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(22.dp)
                             )
@@ -756,7 +752,7 @@ fun AvisosTab(
                                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                                 ) {
                                     Text(
-                                        text = if (appLanguage == AppLanguage.CA) "NOTÍCIA" else "NOTICIA",
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_news_badge),
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,
@@ -804,7 +800,7 @@ fun AvisosTab(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Llegir la notícia completa" else "Leer noticia completa",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_read_full_news),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.primary

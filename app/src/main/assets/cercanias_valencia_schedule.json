@@ -6,6 +6,7 @@
     "lon": -0.3205526,
     "wheelchair_accessible": false,
     "lineas": [
+      "C5",
       "C6"
     ],
     "horarios": [
@@ -10670,6 +10671,7 @@
     "lon": -0.3116645,
     "wheelchair_accessible": false,
     "lineas": [
+      "C5",
       "C6"
     ],
     "horarios": [
@@ -15694,6 +15696,7 @@
     "lon": -0.3183058,
     "wheelchair_accessible": false,
     "lineas": [
+      "C5",
       "C6"
     ],
     "horarios": [
@@ -19879,6 +19882,7 @@
     "lon": -0.3238405,
     "wheelchair_accessible": false,
     "lineas": [
+      "C5",
       "C6"
     ],
     "horarios": [
@@ -25144,6 +25148,7 @@
     "lon": -0.3346772,
     "wheelchair_accessible": false,
     "lineas": [
+      "C5",
       "C6"
     ],
     "horarios": [
@@ -25735,6 +25740,7 @@
       "C1",
       "C2",
       "C3",
+      "C5",
       "C6"
     ],
     "horarios": [
@@ -27577,6 +27583,7 @@
     "wheelchair_accessible": false,
     "lineas": [
       "C3",
+      "C5",
       "C6"
     ],
     "horarios": [

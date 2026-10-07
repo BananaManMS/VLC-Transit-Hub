@@ -207,8 +207,14 @@ class BoardedDriftReconciler(
                 val calculatedDrift = liveMinutes - theoreticalRemaining
 
                 // Anti-Jump Guard: If drift suddenly spikes by > 3 minutes compared to last known drift,
-                // the monitored vehicle has likely passed the stop and the API returned the subsequent vehicle.
-                if (lastKnownDrift != 0 && (calculatedDrift - lastKnownDrift) > 3) {
+                // or if from 0 it jumps by > 6 minutes, the monitored vehicle has likely passed the stop.
+                val isAnomalousJump = if (lastKnownDrift != 0) {
+                    (calculatedDrift - lastKnownDrift) > 3 || (lastKnownDrift - calculatedDrift) > 4
+                } else {
+                    kotlin.math.abs(calculatedDrift) > 6
+                }
+
+                if (isAnomalousJump) {
                     Log.w(TAG, "Anomalous drift jump detected (from ${lastKnownDrift}m to ${calculatedDrift}m). Vehicle likely passed stop; applying inertial fallback.")
                     return applySilentFallback(legIndex, penultimateStop, nowMs)
                 }

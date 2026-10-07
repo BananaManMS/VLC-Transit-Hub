@@ -149,32 +149,31 @@ fun AddressDestinationBottomSheet(
 
     var measuredContentHeightPx by remember { mutableFloatStateOf(0f) }
 
-    val minCollapsedDp = 145.dp + activeTripBottomPadding
-    val defaultHalfExpandedDp = 340.dp + activeTripBottomPadding
+    val minCollapsedDp = 110.dp + activeTripBottomPadding
+    val defaultHalfExpandedDp = 300.dp + activeTripBottomPadding
     val maxExpandedDp = (maxExpandedHeight + activeTripBottomPadding).coerceAtLeast(defaultHalfExpandedDp)
 
     val collapsedPx = with(density) { minCollapsedDp.toPx() }
     val maxExpandedPx = with(density) { maxExpandedDp.toPx() }
 
-    // If measured content fits in less than 340dp (or has no extra rich details), fit snugly to content!
+    // Fit snugly to measured content height (which already includes activeTripBottomPadding)
     val effectiveTargetHeightPx = remember(measuredContentHeightPx, hasRichDetails, maxExpandedPx, collapsedPx, activeTripBottomPadding) {
         if (measuredContentHeightPx > 0f) {
-            // Add a small safety padding (4dp) plus activeTripBottomPadding
-            val paddedContent = measuredContentHeightPx + with(density) { (4.dp + activeTripBottomPadding).toPx() }
+            // Content height already contains the 14.dp + activeTripBottomPadding spacer; add 6.dp safety padding
+            val paddedContent = measuredContentHeightPx + with(density) { 6.dp.toPx() }
             if (hasRichDetails) {
-                // If there are rich details (Wikipedia, opening hours, contacts), allow expanding up to maxExpandedPx
                 paddedContent.coerceIn(collapsedPx, maxExpandedPx)
             } else {
                 // For a simple map point, snug fit directly to the measured content (no empty void!)
                 paddedContent.coerceIn(collapsedPx, maxExpandedPx)
             }
         } else {
-            // Initial fallback while measure hasn't completed yet: use a compact 210dp instead of huge 340dp
-            with(density) { (210.dp + activeTripBottomPadding).toPx() }
+            // Initial fallback while measure hasn't completed yet: snug compact initial height
+            with(density) { (170.dp + activeTripBottomPadding).toPx() }
         }
     }
 
-    val halfExpandedPx = remember(effectiveTargetHeightPx, hasRichDetails, density) {
+    val halfExpandedPx = remember(effectiveTargetHeightPx, hasRichDetails, defaultHalfExpandedDp, density) {
         if (!hasRichDetails) {
             effectiveTargetHeightPx
         } else {
@@ -183,7 +182,7 @@ fun AddressDestinationBottomSheet(
         }
     }
 
-    val fullyExpandedPx = remember(effectiveTargetHeightPx, maxExpandedPx, hasRichDetails) {
+    val fullyExpandedPx = remember(effectiveTargetHeightPx, maxExpandedPx, halfExpandedPx, hasRichDetails) {
         if (!hasRichDetails) {
             effectiveTargetHeightPx
         } else {
@@ -484,7 +483,7 @@ fun AddressDestinationBottomSheet(
                     onNavigate = onNavigate
                 )
 
-                Spacer(modifier = Modifier.height(16.dp + activeTripBottomPadding))
+                Spacer(modifier = Modifier.height(14.dp + activeTripBottomPadding))
             }
         }
     }

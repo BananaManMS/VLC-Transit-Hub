@@ -172,7 +172,7 @@ fun ValenbisiStationCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "${station.available} ${if (appLanguage == AppLanguage.CA) "bicis" else "bicis"}",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_bikes_count_format, station.available),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (hasBikes) {
@@ -201,7 +201,7 @@ fun ValenbisiStationCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "${station.free} ${if (appLanguage == AppLanguage.CA) "lliures" else "libres"}",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_docks_free_suffix_format, station.free),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF334155)
@@ -216,7 +216,7 @@ fun ValenbisiStationCard(
                         color = if (isDarkMode) Color(0xFF2E1515) else Color(0xFFFFEBEE)
                     ) {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Fora de servei" else "Fuera de servicio",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.status_out_of_service),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = if (isDarkMode) Color(0xFFE57373) else Color(0xFFC62828),

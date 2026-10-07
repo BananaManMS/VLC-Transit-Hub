@@ -24,6 +24,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     private val database = AppDatabase.getDatabase(application)
     private val repository = DashboardRepository(application, database)
     private val renfeRepository = RenfeRepository(application, database)
+    private val renfeAlertsRepository = com.example.data.repository.renfe.RenfeAlertsRepository(application, database)
 
     // UI state flows
     val isDarkMode: StateFlow<Boolean> = repository.getPreferenceFlow(
@@ -75,6 +76,30 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isCercaniasBottomSheetVisible = MutableStateFlow(false)
     val isCercaniasBottomSheetVisible = _isCercaniasBottomSheetVisible.asStateFlow()
 
+    private val _showLiveMap = MutableStateFlow(false)
+    val showLiveMap = _showLiveMap.asStateFlow()
+
+    fun setShowLiveMap(visible: Boolean) {
+        _showLiveMap.value = visible
+    }
+
+    private val _selectedCercaniasLineFilters = MutableStateFlow<Set<String>>(emptySet())
+    val selectedCercaniasLineFilters = _selectedCercaniasLineFilters.asStateFlow()
+
+    fun toggleCercaniasLineFilter(line: String) {
+        val current = _selectedCercaniasLineFilters.value.toMutableSet()
+        if (current.contains(line)) {
+            current.remove(line)
+        } else {
+            current.add(line)
+        }
+        _selectedCercaniasLineFilters.value = current
+    }
+
+    fun clearCercaniasLineFilters() {
+        _selectedCercaniasLineFilters.value = emptySet()
+    }
+    
     private val _cercaniasAlerts = MutableStateFlow<List<CercaniasAlert>>(emptyList())
     val cercaniasAlerts = _cercaniasAlerts.asStateFlow()
 
@@ -186,52 +211,73 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         initialValue = emptyList()
     )
 
-    init {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            CercaniasRouteUtils.init(getApplication())
+    @Volatile
+    private var isCercaniasInitialized = false
+    private val cercaniasInitLock = Any()
+    private var heavyInitJob: Job? = null
 
-            val savedLang = repository.getPreference("app_language", "CA")
-            _appLanguage.value = try { AppLanguage.valueOf(savedLang) } catch (e: Exception) { AppLanguage.CA }
+    private fun triggerHeavyInitialization() {
+        if (isCercaniasInitialized) return
+        synchronized(cercaniasInitLock) {
+            if (isCercaniasInitialized) return
+            if (heavyInitJob?.isActive == true) return
 
-            val isOnboardingCompleted = repository.getPreference("has_completed_onboarding", "false") == "true"
-            if (isOnboardingCompleted) {
-                renfeRepository.initDatabaseFromAssetsIfNeeded()
-                renfeRepository.syncScheduleFromRemoteIfNeeded()
-            }
+            heavyInitJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    CercaniasRouteUtils.init(getApplication())
+                    renfeRepository.initDatabaseFromAssetsIfNeeded()
 
-            val savedCercaniasFavs = repository.getPreference("favorite_cercanias_stations", "")
-            if (savedCercaniasFavs.isNotBlank() && isOnboardingCompleted) {
-                val favIds = savedCercaniasFavs.split(",").filter { it.isNotBlank() }.toSet()
-                val all = renfeRepository.getAllStations()
-                if (all.any { it.stop_id in favIds && !it.isFavorite }) {
-                    val updated = all.map { station ->
-                        station.copy(isFavorite = favIds.contains(station.stop_id))
+                    val isOnboardingCompleted = repository.getPreference("has_completed_onboarding", "false") == "true"
+                    if (isOnboardingCompleted) {
+                        renfeRepository.syncScheduleFromRemoteIfNeeded()
                     }
-                    renfeRepository.updateAllStations(updated)
-                }
-            }
 
-            _allCercaniasStations.value = renfeRepository.getAllStations()
-            fetchCercaniasRealTimeAlerts()
+                    val savedCercaniasFavs = repository.getPreference("favorite_cercanias_stations", "")
+                    if (savedCercaniasFavs.isNotBlank() && isOnboardingCompleted) {
+                        val favIds = savedCercaniasFavs.split(",").filter { it.isNotBlank() }.toSet()
+                        val all = renfeRepository.getAllStations()
+                        if (all.any { it.stop_id in favIds && !it.isFavorite }) {
+                            val updated = all.map { station ->
+                                station.copy(isFavorite = favIds.contains(station.stop_id))
+                            }
+                            renfeRepository.updateAllStations(updated)
+                        }
+                    }
 
-            renfeRepository.getFavoriteStationsFlow().collect { favs ->
-                _cercaniasFavoriteStations.value = favs
-                if (!hasUserManuallySelectedStation) {
-                    autoSelectNearestCercaniasStationIfNeeded()
+                    _allCercaniasStations.value = renfeRepository.getAllStations()
+                    fetchCercaniasRealTimeAlerts()
+                    isCercaniasInitialized = true
+                } catch (e: Exception) {
+                    Log.e("CercaniasViewModel", "Error in heavy initialization", e)
                 }
             }
         }
+    }
 
-        viewModelScope.launch {
-            cercaniasFavoriteStations.collect { sortedFavs ->
-                if (!hasUserManuallySelectedStation && sortedFavs.isNotEmpty()) {
-                    val topFav = sortedFavs.first()
-                    val targetId = topFav.stop_id.ifBlank { topFav.id }
-                    if (_cercaniasSelectedStationId.value != targetId) {
-                        selectCercaniasStation(targetId, isUserAction = false)
+    init {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val savedLang = repository.getPreference("app_language", "CA")
+            _appLanguage.value = try { AppLanguage.valueOf(savedLang) } catch (e: Exception) { AppLanguage.CA }
+
+            // Step 1: Load lightweight cache of stations immediately, so favorite chips are visible instantly on startup!
+            try {
+                val cachedStations = renfeRepository.getAllStations()
+                _allCercaniasStations.value = cachedStations
+            } catch (_: Exception) {}
+
+            launch {
+                renfeRepository.getFavoriteStationsFlow().collect { favs ->
+                    _cercaniasFavoriteStations.value = favs
+                    if (!hasUserManuallySelectedStation) {
+                        autoSelectNearestCercaniasStationIfNeeded()
                     }
                 }
             }
+
+            // Step 2: Defer the heavy database unpacking/GTFS mapping block by 3.5 seconds
+            // to allow dashboard and first tab to load completely without storage/CPU competition.
+            delay(3500L)
+            triggerHeavyInitialization()
         }
     }
 
@@ -243,11 +289,16 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun fetchCercaniasDepartures() {
+        triggerHeavyInitialization()
         cercaniasJob?.cancel()
         _cercaniasLoading.value = true
         _cercaniasError.value = null
 
         cercaniasJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            if (heavyInitJob == null) {
+                triggerHeavyInitialization()
+            }
+            heavyInitJob?.join()
             var isFirstLoop = true
             while (isActive) {
                 val startTime = System.currentTimeMillis()
@@ -279,7 +330,8 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                     }
                 } catch (e: Exception) {
-                    if (_cercaniasDepartures.value.isEmpty()) {
+                    Log.e("CercaniasViewModel", "Error fetching departures inside poll loop", e)
+                    if (_cercaniasDepartures.value.isEmpty() && (heavyInitJob?.isCompleted == true)) {
                         _cercaniasError.value = "Error conectando con Renfe"
                     }
                 } finally {
@@ -307,6 +359,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun forceSyncCercaniasSchedule() {
+        triggerHeavyInitialization()
         cercaniasJob?.cancel()
         _cercaniasLoading.value = true
         _cercaniasError.value = null
@@ -329,6 +382,8 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun selectCercaniasStation(stationId: String, isUserAction: Boolean = true) {
+        triggerHeavyInitialization()
+        _selectedCercaniasLineFilters.value = emptySet()
         if (isUserAction) {
             hasUserManuallySelectedStation = true
         }
@@ -472,229 +527,24 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         return VALENCIA_VALID_LINES.filter { found.contains(it) }
     }
 
-    fun fetchCercaniasRealTimeAlerts() {
+    fun fetchCercaniasRealTimeAlerts(force: Boolean = false) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             _isCercaniasAlertsLoading.value = true
             _hasCercaniasAlertsError.value = false
             try {
-                val allValenciaStations = database.cercaniasStationDao().getAllStations()
-                val valenciaStopIds = allValenciaStations.map { it.id }.toSet()
-                
-                val valenciaStationNamesNoAccents = allValenciaStations.map { 
-                    removeAccents(it.nombre.lowercase(java.util.Locale.ROOT).trim()) 
-                }
-
-                val request = okhttp3.Request.Builder()
-                    .url("https://gtfsrt.renfe.com/alerts.json")
-                    .header("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
-                    .build()
-
-                val responseBody = com.example.data.network.NetworkModule.okHttpClient.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) response.body?.string() else null
-                }
-
-                if (!responseBody.isNullOrBlank()) {
-                    val jsonObject = org.json.JSONObject(responseBody)
-                    val entitiesArray = jsonObject.optJSONArray("entity") ?: jsonObject.optJSONArray("entities")
-                    val list = mutableListOf<CercaniasAlert>()
-
-                    if (entitiesArray != null) {
-                        for (i in 0 until entitiesArray.length()) {
-                            val entity = entitiesArray.optJSONObject(i) ?: continue
-                            val id = entity.optString("id", "")
-                            val alertObj = entity.optJSONObject("alert") ?: continue
-                            
-                            val headerTextObj = alertObj.optJSONObject("header_text") ?: alertObj.optJSONObject("headerText")
-                            val descTextObj = alertObj.optJSONObject("description_text") ?: alertObj.optJSONObject("descriptionText")
-                            
-                            val headerEs = parseGtfsRtText(headerTextObj)
-                            val descEs = parseGtfsRtText(descTextObj)
-                            
-                            if (headerEs.isBlank() && descEs.isBlank()) {
-                                continue
-                            }
-                            
-                            val informedEntitiesArray = alertObj.optJSONArray("informed_entity") ?: alertObj.optJSONArray("informedEntity")
-                            val routeIds = mutableListOf<String>()
-                            val tripIds = mutableListOf<String>()
-                            val stopIds = mutableListOf<String>()
-
-                            if (informedEntitiesArray != null) {
-                                for (j in 0 until informedEntitiesArray.length()) {
-                                    val inf = informedEntitiesArray.optJSONObject(j) ?: continue
-                                    val routeId = inf.optString("route_id", "").ifBlank { inf.optString("routeId", "") }
-                                    if (routeId.isNotBlank()) {
-                                        routeIds.add(routeId)
-                                        // Renfe encodes trip-specific alerts inside routeId e.g. "40T0053C2"
-                                        val m = Regex("""40[A-Za-z0-9]*?(\d{4})C?[1-6]?""").find(routeId)
-                                        if (m != null) {
-                                            val num4 = m.groupValues[1]
-                                            val numShort = num4.trimStart('0')
-                                            tripIds.add(routeId)
-                                            tripIds.add(num4)
-                                            if (numShort.isNotBlank()) tripIds.add(numShort)
-                                        }
-                                    }
-                                    
-                                    val tripIdObj = inf.optJSONObject("trip")
-                                    val tripId = tripIdObj?.optString("trip_id", "")?.ifBlank { tripIdObj.optString("tripId", "") } ?: ""
-                                    if (tripId.isNotBlank()) tripIds.add(tripId)
-                                    
-                                    val stopId = inf.optString("stop_id", "").ifBlank { inf.optString("stopId", "") }
-                                    if (stopId.isNotBlank()) stopIds.add(stopId)
-                                }
-                            }
-                            
-                            val cleanAlertStopIds = stopIds.map { sId -> sId.substringBefore('_').substringBefore('-').trim() }
-                            
-                            val hasValenciaRoute = routeIds.isNotEmpty() && routeIds.any { it.startsWith("40") }
-                            val hasValenciaStop = cleanAlertStopIds.isNotEmpty() && cleanAlertStopIds.any { valenciaStopIds.contains(it) }
-                            
-                            val hasOtherHubRoute = routeIds.isNotEmpty() && routeIds.any { !it.startsWith("40") }
-                            val hasOtherHubStop = cleanAlertStopIds.isNotEmpty() && cleanAlertStopIds.any { !valenciaStopIds.contains(it) }
-
-                            val textToSearch = "$headerEs $descEs".lowercase(java.util.Locale.ROOT)
-                            val textToSearchNoAccents = removeAccents(textToSearch)
-                            
-                            var isValencia = false
-                            if (hasValenciaRoute || hasValenciaStop) {
-                                isValencia = !hasOtherHubRoute && !hasOtherHubStop
-                            } else if (!hasOtherHubRoute && !hasOtherHubStop) {
-                                // Fallback to searching text only if there are no entity routes/stops of other hubs
-                                val mentionsValenciaOrCastellon = textToSearchNoAccents.contains("valencia") || 
-                                                                   textToSearchNoAccents.contains("valència") || 
-                                                                   textToSearchNoAccents.contains("castello") || 
-                                                                   textToSearchNoAccents.contains("castellon") || 
-                                                                   textToSearchNoAccents.contains("gandia")
-                                
-                                var hasValenciaStation = false
-                                if (!mentionsValenciaOrCastellon) {
-                                    hasValenciaStation = valenciaStationNamesNoAccents.any { stationName ->
-                                        if (stationName.isBlank()) return@any false
-                                        val cleanName = stationName.replace("(", " ").replace(")", " ").replace("-", " ").trim()
-                                        if (cleanName.length > 3) {
-                                            containsWordBoundaryMatch(textToSearchNoAccents, cleanName)
-                                        } else {
-                                            false
-                                        }
-                                    }
-                                }
-                                
-                                isValencia = mentionsValenciaOrCastellon || hasValenciaStation
-                                
-                                val mentionsOtherHub = textToSearchNoAccents.contains("madrid") || 
-                                                       textToSearchNoAccents.contains("barcelona") || 
-                                                       textToSearchNoAccents.contains("catalunya") || 
-                                                       textToSearchNoAccents.contains("sevilla") || 
-                                                       textToSearchNoAccents.contains("malaga") || 
-                                                       textToSearchNoAccents.contains("bilbao") || 
-                                                       textToSearchNoAccents.contains("san sebastian") || 
-                                                       textToSearchNoAccents.contains("donostia") || 
-                                                       textToSearchNoAccents.contains("asturias") || 
-                                                       textToSearchNoAccents.contains("cantabria") || 
-                                                       textToSearchNoAccents.contains("zaragoza") || 
-                                                       textToSearchNoAccents.contains("cadiz") ||
-                                                       textToSearchNoAccents.contains("valdemoro") ||
-                                                       textToSearchNoAccents.contains("aranjuez") ||
-                                                       textToSearchNoAccents.contains("getafe") ||
-                                                       textToSearchNoAccents.contains("mostoles") ||
-                                                       textToSearchNoAccents.contains("alcala") ||
-                                                       textToSearchNoAccents.contains("parla") ||
-                                                       textToSearchNoAccents.contains("leganes")
-                                if (mentionsOtherHub && !textToSearchNoAccents.contains("valencia")) {
-                                    isValencia = false
-                                }
-                            }
-                            
-                            // If alert explicitly targets ONLY other hubs with zero Valencia references, skip it
-                            if (!isValencia) {
-                                continue 
-                            }
-                            
-                            val isAccessibility = CercaniasAlertClassifier.isAccessibility(textToSearch)
-                            val isCirculation = !isAccessibility && CercaniasAlertClassifier.isStrongCirculationIncident(headerEs, descEs)
-                            
-                            val timestamp = alertObj.optLong("timestamp", System.currentTimeMillis() / 1000)
-
-                            val linesInText = extractLinesFromAlertText("$headerEs. $descEs")
-                            val entityRouteIds = routeIds.mapNotNull { normalizeValenciaRouteId(it) }.distinct()
-
-                            // If text explicitly mentions specific line(s) (e.g. "Línea C1. Tren con salida..."),
-                            // prioritize them over entity routes to avoid over-matching multi-route hub stations.
-                            val finalRouteIds = if (linesInText.isNotEmpty()) {
-                                linesInText
-                            } else if (entityRouteIds.isNotEmpty()) {
-                                VALENCIA_VALID_LINES.filter { entityRouteIds.contains(it) }
-                            } else {
-                                emptyList()
-                            }
-
-                            list.add(
-                                CercaniasAlert(
-                                    id = id,
-                                    headerEs = headerEs,
-                                    descriptionEs = descEs,
-                                    routeIds = finalRouteIds,
-                                    tripIds = tripIds,
-                                    stopIds = stopIds,
-                                    isAccessibility = isAccessibility,
-                                    isCirculationIncident = isCirculation,
-                                    timestamp = timestamp
-                                )
-                            )
-                        }
-                    }
-                    _cercaniasAlerts.value = list
-                    _hasCercaniasAlertsError.value = false
-                } else {
-                    _hasCercaniasAlertsError.value = true
-                }
-            } catch (e: java.net.SocketTimeoutException) {
-                _hasCercaniasAlertsError.value = true
-                android.util.Log.w("CercaniasAlerts", "Timeout fetching Cercanías alerts from Renfe GTFS-RT: ${e.message}")
-            } catch (e: java.io.IOException) {
-                _hasCercaniasAlertsError.value = true
-                android.util.Log.w("CercaniasAlerts", "Network error fetching Cercanías alerts: ${e.message}")
+                val alerts = renfeAlertsRepository.fetchActiveAlerts(force = force)
+                _cercaniasAlerts.value = alerts
+                _hasCercaniasAlertsError.value = renfeAlertsRepository.hasError.value
             } catch (e: Exception) {
                 _hasCercaniasAlertsError.value = true
-                android.util.Log.w("CercaniasAlerts", "Unexpected error fetching Cercanías alerts: ${e.message}")
+                Log.w("CercaniasAlerts", "Error fetching Cercanías alerts: ${e.message}")
             } finally {
                 _isCercaniasAlertsLoading.value = false
             }
         }
     }
 
-    private fun parseGtfsRtText(textObj: org.json.JSONObject?): String {
-        if (textObj == null) return ""
-        val translations = textObj.optJSONArray("translation") ?: textObj.optJSONArray("translations")
-        if (translations != null && translations.length() > 0) {
-            for (t in 0 until translations.length()) {
-                val trans = translations.optJSONObject(t) ?: continue
-                val lang = trans.optString("language", "").lowercase(java.util.Locale.ROOT)
-                if (lang.startsWith("es")) {
-                    return trans.optString("text", "")
-                }
-            }
-            for (t in 0 until translations.length()) {
-                val trans = translations.optJSONObject(t) ?: continue
-                val lang = trans.optString("language", "").lowercase(java.util.Locale.ROOT)
-                if (lang.startsWith("ca") || lang.startsWith("va")) {
-                    return trans.optString("text", "")
-                }
-            }
-            for (t in 0 until translations.length()) {
-                val trans = translations.optJSONObject(t) ?: continue
-                val lang = trans.optString("language", "").lowercase(java.util.Locale.ROOT)
-                if (lang.startsWith("en")) {
-                    return trans.optString("text", "")
-                }
-            }
-            val firstTrans = translations.optJSONObject(0)
-            return firstTrans?.optString("text", "") ?: ""
-        }
-        return ""
-    }
-
+    // Legacy parsing removed in favor of RenfeAlertsRepository
     private fun containsWordBoundaryMatch(text: String, keyword: String): Boolean {
         if (keyword.isBlank() || text.isBlank()) return false
         var startIndex = 0
@@ -723,42 +573,27 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun startLiveTrainsPolling() {
         liveTrainsJob?.cancel()
-        if (_liveCercaniasVehicles.value.isEmpty()) {
-            _isLiveMapLoading.value = true
-        }
+        _isLiveMapLoading.value = true
         liveTrainsJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            // 1. Instant cache load: populate train markers with ZERO latency if currently empty
             try {
-                val cached = renfeRepository.getUniqueLiveVehicles()
-                if (cached.isNotEmpty()) {
-                    _liveCercaniasVehicles.value = cached
-                }
+                val (vehicles, isFresh) = renfeRepository.getLiveVehiclesWithFreshness(forceFetch = true)
+                _liveCercaniasVehicles.value = vehicles
             } catch (e: Exception) {
-                Log.d("CercaniasViewModel", "Error fetching cached live vehicles: ${e.message}")
+                Log.d("CercaniasViewModel", "Error fetching live vehicles: ${e.message}")
             } finally {
                 _isLiveMapLoading.value = false
             }
 
-            // 2. Continuous background poll with adaptive cadence:
-            // - If Renfe header timestamp is unchanged: wait 5s to re-query (body parse is skipped to save resources).
-            // - If Renfe provides fresh data: emit updated vehicles and wait 20s before next standard cycle.
             while (isActive) {
-                var hasNewData = false
+                delay(26_000L)
                 try {
                     val (vehicles, isFresh) = renfeRepository.getLiveVehiclesWithFreshness(forceFetch = true)
-                    hasNewData = isFresh
                     if (isFresh || _liveCercaniasVehicles.value.isEmpty()) {
                         _liveCercaniasVehicles.value = vehicles
                     }
                 } catch (e: Exception) {
-                    if (e !is kotlinx.coroutines.CancellationException) {
-                        Log.w("CercaniasViewModel", "Error polling live vehicles: ${e.message}")
-                    }
                     if (e is kotlinx.coroutines.CancellationException) throw e
                 }
-
-                val nextDelay = if (hasNewData) 20_000L else 5_000L
-                delay(nextDelay)
             }
         }
     }
@@ -770,5 +605,32 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
             _liveCercaniasVehicles.value = emptyList()
         }
         _isLiveMapLoading.value = false
+    }
+
+    private var wasLiveTrainsPollingActive = false
+    private var wasDeparturesPollingActive = false
+
+    fun onAppBackgrounded() {
+        if (liveTrainsJob != null) {
+            wasLiveTrainsPollingActive = true
+            stopLiveTrainsPolling(clearState = false)
+        }
+        if (cercaniasJob != null) {
+            wasDeparturesPollingActive = true
+            stopCercaniasPolling()
+        }
+    }
+
+    fun onAppForegrounded() {
+        if (wasLiveTrainsPollingActive) {
+            wasLiveTrainsPollingActive = false
+            startLiveTrainsPolling()
+        }
+        if (wasDeparturesPollingActive) {
+            wasDeparturesPollingActive = false
+            if (_cercaniasSelectedStationId.value.isNotBlank()) {
+                fetchCercaniasDepartures()
+            }
+        }
     }
 }

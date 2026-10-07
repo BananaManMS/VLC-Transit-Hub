@@ -226,13 +226,13 @@ fun CardDetailDialog(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Avisos de saldo / caducitat" else "Avisos de saldo / caducidad",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.card_alerts_setting_title),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Avisar quan queden pocs viatges o saldo" else "Avisar cuando queden pocos viajes o saldo",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.card_alerts_setting_desc),
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -278,13 +278,13 @@ fun CardDetailDialog(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Mostrar a l'inici" else "Mostrar en inicio",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.card_show_on_home_title),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = if (appLanguage == AppLanguage.CA) "Mostrar aquesta targeta a la pantalla principal" else "Mostrar esta tarjeta en la pantalla de inicio",
+                                    text = androidx.compose.ui.res.stringResource(com.example.R.string.card_show_on_home_desc),
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

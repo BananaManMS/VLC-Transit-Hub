@@ -196,7 +196,7 @@ fun ValenbisiTab(
                 BusFilterChip(
                     selected = filterSource == ValenbisiFilterSource.FAVORITES,
                     onClick = { onFilterSourceSelected(ValenbisiFilterSource.FAVORITES) },
-                    label = if (appLanguage == AppLanguage.CA) "Preferides" else "Favoritas",
+                    label = androidx.compose.ui.res.stringResource(com.example.R.string.chip_favorites),
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Star,
@@ -210,7 +210,7 @@ fun ValenbisiTab(
                 BusFilterChip(
                     selected = filterSource == ValenbisiFilterSource.NEARBY,
                     onClick = { onFilterSourceSelected(ValenbisiFilterSource.NEARBY) },
-                    label = if (appLanguage == AppLanguage.CA) "Prop de mi" else "Cerca de mí",
+                    label = androidx.compose.ui.res.stringResource(com.example.R.string.chip_nearby),
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.LocationOn,
@@ -224,7 +224,7 @@ fun ValenbisiTab(
                 BusFilterChip(
                     selected = filterSource == ValenbisiFilterSource.METRO_STATION,
                     onClick = { onFilterSourceSelected(ValenbisiFilterSource.METRO_STATION) },
-                    label = "Metro",
+                    label = androidx.compose.ui.res.stringResource(com.example.R.string.metro_service_label),
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Subway,
@@ -242,7 +242,7 @@ fun ValenbisiTab(
             if (filterSource == ValenbisiFilterSource.METRO_STATION) {
                 Column(modifier = Modifier.padding(bottom = 8.dp)) {
                     Text(
-                        text = if (appLanguage == AppLanguage.CA) "Selecciona l'estació de metro:" else "Selecciona estación de metro:",
+                        text = androidx.compose.ui.res.stringResource(com.example.R.string.select_metro_station_label),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp)
@@ -288,13 +288,13 @@ fun ValenbisiTab(
                         .testTag("valenbisi_search_bar"),
                     placeholder = {
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Cercar estació de Valenbisi" else "Buscar estación de Valenbisi"
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_search_placeholder)
                         )
                     },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Cercar" else "Buscar"
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.search_label)
                         )
                     },
                     trailingIcon = {
@@ -302,7 +302,7 @@ fun ValenbisiTab(
                             IconButton(onClick = { onSearchQueryChanged("") }) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = if (appLanguage == AppLanguage.CA) "Netejar" else "Limpiar"
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.clear_search_desc)
                                 )
                             }
                         }
@@ -421,7 +421,7 @@ fun ValenbisiTab(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) "Sense connexió a internet" else "Sin conexión a internet",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.offline_banner_title),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground,
@@ -429,9 +429,7 @@ fun ValenbisiTab(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = if (appLanguage == AppLanguage.CA) 
-                                    "La informació de les estacions de Valenbisi requereix connexió a internet." 
-                                    else "La información de las estaciones de Valenbisi requiere conexión a internet.",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_check_connection_departures),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center
@@ -444,10 +442,12 @@ fun ValenbisiTab(
                                 tint = MaterialTheme.colorScheme.outline
                             )
                             Spacer(modifier = Modifier.height(12.dp))
+                            val noStationsFound = androidx.compose.ui.res.stringResource(com.example.R.string.no_stops_active)
+                            val noFavValenbisi = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_no_favs_saved)
                             Text(
                                 text = when (filterSource) {
-                                    ValenbisiFilterSource.FAVORITES -> if (appLanguage == AppLanguage.CA) "No tens cap estació de Valenbisi als teus favorits" else "No tienes ninguna estación de Valenbisi en tus favoritos"
-                                    else -> if (appLanguage == AppLanguage.CA) "No s'han trobat estacions" else "No se encontraron estaciones"
+                                    ValenbisiFilterSource.FAVORITES -> noFavValenbisi
+                                    else -> noStationsFound
                                 },
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -522,12 +522,12 @@ fun EditValenbisiAliasDialog(
                 OutlinedTextField(
                     value = aliasInput,
                     onValueChange = { if (it.length <= 32) aliasInput = it },
-                    label = { Text(if (appLanguage == AppLanguage.CA) "Nom/Alias (màx. 32 lletres)" else "Nombre/Alias (máx. 32 letras)") },
-                    placeholder = { Text("Ej: Casa, Trabajo, Facultad...") },
+                    label = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_field_label)) },
+                    placeholder = { Text(androidx.compose.ui.res.stringResource(com.example.R.string.alias_placeholder)) },
                     singleLine = true,
                     supportingText = {
                         Text(
-                            text = "${aliasInput.length}/32 ${if (appLanguage == AppLanguage.CA) "lletres" else "letras"}",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_length_format, aliasInput.length),
                             modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.End,
                             style = MaterialTheme.typography.labelSmall

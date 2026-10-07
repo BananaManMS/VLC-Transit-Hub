@@ -348,6 +348,8 @@ object EmtMapOverlayLoader {
         return mainShapes
     }
 
+    private val shapeCache = android.util.LruCache<String, List<EmtRouteShape>>(32)
+
     /**
      * Builds Osmdroid Polyline overlays for the requested lines.
      * Uses official EMT Red with directional arrows anchored every 500m fixed meters
@@ -365,63 +367,72 @@ object EmtMapOverlayLoader {
     ): List<Polyline> {
         if (lines.isEmpty()) return emptyList()
 
-        val polylines = mutableListOf<Polyline>()
         val sortedLines = lines.sortedWith(compareBy { it.toIntOrNull() ?: Int.MAX_VALUE })
-
         val config = getMilestoneConfig(currentZoom)
         val finalStrokeWidth = strokeWidth ?: config.strokeWidth
 
-        sortedLines.forEachIndexed { index, rawLine ->
-            val cleanLine = normalizeLine(rawLine)
-            val rawShapes = lineToShapesMap[cleanLine] ?: return@forEachIndexed
-            val shapes = pruneShapesForLine(rawShapes, cleanLine, targetHeadsign, stopLocation)
+        val cacheKey = "${sortedLines.joinToString(",")}_${finalStrokeWidth}_${showArrows}_${targetHeadsign ?: ""}_${stopLocation?.latitude ?: 0.0}_${stopLocation?.longitude ?: 0.0}"
+        val cachedShapes = shapeCache.get(cacheKey)
 
-            val colorInt = Color.parseColor(DEFAULT_EMT_COLOR)
-
-            for (shape in shapes) {
-                val polyline = Polyline(mapView).apply {
-                    setPoints(shape.points)
-                    outlinePaint.color = colorInt
-                    outlinePaint.strokeWidth = finalStrokeWidth
-                    outlinePaint.isAntiAlias = true
-                    outlinePaint.strokeCap = Paint.Cap.ROUND
-                    outlinePaint.strokeJoin = Paint.Join.ROUND
-                    infoWindow = null
-                    relatedObject = shape
-                    setOnClickListener { _, _, _ -> true }
-
-                    if (showArrows && config.arrowPath != null) {
-                        // 1. High-contrast white fill inside the chevron
-                        val fillPaint = Paint().apply {
-                            color = Color.WHITE
-                            style = Paint.Style.FILL
-                            isAntiAlias = true
-                        }
-                        // 2. Integrated EMT Red stroke border matching the route line
-                        val borderPaint = Paint().apply {
-                            color = colorInt
-                            style = Paint.Style.STROKE
-                            this.strokeWidth = config.arrowStrokeWidth
-                            strokeCap = Paint.Cap.ROUND
-                            strokeJoin = Paint.Join.ROUND
-                            isAntiAlias = true
-                        }
-
-                        // Fixed 500 meters recurrence across all zoom levels
-                        val lister = MilestoneMeterDistanceLister(FIXED_ARROW_INTERVAL_METERS)
-                        val fillDisplayer = MilestonePathDisplayer(0.0, true, config.arrowPath, fillPaint)
-                        val borderDisplayer = MilestonePathDisplayer(0.0, true, config.arrowPath, borderPaint)
-
-                        setMilestoneManagers(listOf(
-                            MilestoneManager(lister, fillDisplayer),
-                            MilestoneManager(lister, borderDisplayer)
-                        ))
-                    }
-                }
-                polylines.add(polyline)
+        val shapes = if (cachedShapes != null) {
+            cachedShapes
+        } else {
+            val computed = mutableListOf<EmtRouteShape>()
+            sortedLines.forEachIndexed { index, rawLine ->
+                val cleanLine = normalizeLine(rawLine)
+                val rawShapes = lineToShapesMap[cleanLine] ?: return@forEachIndexed
+                val pruned = pruneShapesForLine(rawShapes, cleanLine, targetHeadsign, stopLocation)
+                computed.addAll(pruned)
             }
+            shapeCache.put(cacheKey, computed)
+            computed
         }
 
+        val polylines = mutableListOf<Polyline>()
+        val colorInt = Color.parseColor(DEFAULT_EMT_COLOR)
+
+        for (shape in shapes) {
+            val safePolyline = SafePolyline(mapView).apply {
+                setPoints(ArrayList(shape.points))
+                outlinePaint.color = colorInt
+                outlinePaint.strokeWidth = finalStrokeWidth
+                outlinePaint.isAntiAlias = true
+                outlinePaint.strokeCap = Paint.Cap.ROUND
+                outlinePaint.strokeJoin = Paint.Join.ROUND
+                infoWindow = null
+                relatedObject = shape
+                setOnClickListener { _, _, _ -> true }
+
+                if (showArrows && config.arrowPath != null) {
+                    // 1. High-contrast white fill inside the chevron
+                    val fillPaint = Paint().apply {
+                        color = Color.WHITE
+                        style = Paint.Style.FILL
+                        isAntiAlias = true
+                    }
+                    // 2. Integrated EMT Red stroke border matching the route line
+                    val borderPaint = Paint().apply {
+                        color = colorInt
+                        style = Paint.Style.STROKE
+                        this.strokeWidth = config.arrowStrokeWidth
+                        strokeCap = Paint.Cap.ROUND
+                        strokeJoin = Paint.Join.ROUND
+                        isAntiAlias = true
+                    }
+
+                    // Fixed 500 meters recurrence across all zoom levels
+                    val lister = MilestoneMeterDistanceLister(FIXED_ARROW_INTERVAL_METERS)
+                    val fillDisplayer = MilestonePathDisplayer(0.0, true, config.arrowPath, fillPaint)
+                    val borderDisplayer = MilestonePathDisplayer(0.0, true, config.arrowPath, borderPaint)
+
+                    setMilestoneManagers(listOf(
+                        MilestoneManager(lister, fillDisplayer),
+                        MilestoneManager(lister, borderDisplayer)
+                    ))
+                }
+            }
+            polylines.add(safePolyline)
+        }
         return polylines
     }
 }
