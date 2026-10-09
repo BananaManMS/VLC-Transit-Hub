@@ -171,7 +171,7 @@ fun MetroLineDepartureCard(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Icon(
                                     imageVector = Icons.Default.PushPin,
-                                    contentDescription = "Pinned",
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.quick_track_pinned_desc),
                                     tint = badgeColor,
                                     modifier = Modifier.size(14.dp)
                                 )
@@ -179,7 +179,7 @@ fun MetroLineDepartureCard(
                         }
                         
                         val extraInfo = listOfNotNull(
-                            primaryDep.estimatedTime?.let { "Salida $it" },
+                            primaryDep.estimatedTime?.let { androidx.compose.ui.res.stringResource(com.example.R.string.departure_time_prefix, it) },
                             primaryDep.track,
                             primaryDep.status?.takeIf { it != "En hora" && it.isNotBlank() }
                         ).joinToString(" • ")
@@ -284,7 +284,7 @@ fun MetroLineDepartureCard(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Icon(
                                     imageVector = Icons.Default.PushPin,
-                                    contentDescription = "Pinned",
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.quick_track_pinned_desc),
                                     tint = badgeColor,
                                     modifier = Modifier.size(14.dp)
                                 )
@@ -292,7 +292,7 @@ fun MetroLineDepartureCard(
                         }
                         
                         val extraInfo = listOfNotNull(
-                            primaryDep.estimatedTime?.let { "Salida $it" },
+                            primaryDep.estimatedTime?.let { androidx.compose.ui.res.stringResource(com.example.R.string.departure_time_prefix, it) },
                             primaryDep.track,
                             primaryDep.status?.takeIf { it != "En hora" && it.isNotBlank() }
                         ).joinToString(" • ")

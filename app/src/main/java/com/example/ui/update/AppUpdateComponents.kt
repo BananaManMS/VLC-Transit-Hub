@@ -48,18 +48,28 @@ class AppUpdateViewModel : ViewModel() {
 
     fun checkForUpdate(silentIfUpToDate: Boolean = false) {
         viewModelScope.launch {
-            _updateState.value = UpdateDownloadState.Checking
+            if (!silentIfUpToDate) {
+                _updateState.value = UpdateDownloadState.Checking
+            }
             val result = AppUpdateManager.checkForUpdate()
             result.onSuccess { info ->
                 if (info.isNewerVersion) {
                     _updateState.value = UpdateDownloadState.UpdateAvailable(info)
                 } else {
-                    _updateState.value = UpdateDownloadState.UpToDate(BuildConfig.VERSION_NAME)
+                    _updateState.value = if (silentIfUpToDate) {
+                        UpdateDownloadState.Idle
+                    } else {
+                        UpdateDownloadState.UpToDate(BuildConfig.VERSION_NAME)
+                    }
                 }
             }.onFailure { error ->
-                _updateState.value = UpdateDownloadState.Error(
-                    error.message ?: "No se pudo conectar con GitHub"
-                )
+                _updateState.value = if (silentIfUpToDate) {
+                    UpdateDownloadState.Idle
+                } else {
+                    UpdateDownloadState.Error(
+                        error.message ?: "No se pudo conectar con GitHub"
+                    )
+                }
             }
         }
     }

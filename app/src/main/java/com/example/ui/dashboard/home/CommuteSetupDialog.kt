@@ -50,8 +50,8 @@ fun CommuteSetupDialog(
     val isHomeType = commuteType == "HOME"
 
     val defaultTitle = when {
-        isHomeType -> "Casa"
-        isWork -> "Trabajo"
+        isHomeType -> androidx.compose.ui.res.stringResource(com.example.R.string.commute_home_title)
+        isWork -> androidx.compose.ui.res.stringResource(com.example.R.string.commute_work_title)
         else -> ""
     }
 

@@ -292,7 +292,7 @@ fun ProximosTrenesScreen(
             val currentMinOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
             val diffMin = (scheduledItem.timeMinutes - currentMinOfDay).coerceAtLeast(0)
             if (diffMin > 60) {
-                val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
+                val msg = context.getString(com.example.R.string.quick_track_limit_one_hour)
                 android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
             } else {
                 val realTimeDep = scheduledItem.toRealTimeDeparture(appLanguage, forQuickTrack = true)
@@ -693,7 +693,7 @@ fun ProximosTrenesScreen(
                                                     },
                                                     onLongClickDeparture = { dep ->
                                                         if (dep.minutesRemaining > 60) {
-                                                            val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
+                                                            val msg = context.getString(com.example.R.string.quick_track_limit_one_hour)
                                                             android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
                                                         } else {
                                                             quickTrackDeparture = dep
@@ -745,7 +745,7 @@ fun ProximosTrenesScreen(
                                                     },
                                                     onLongClickDeparture = { dep ->
                                                         if (dep.minutesRemaining > 60) {
-                                                            val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
+                                                            val msg = context.getString(com.example.R.string.quick_track_limit_one_hour)
                                                             android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
                                                         } else {
                                                             quickTrackDeparture = dep
@@ -798,7 +798,7 @@ fun ProximosTrenesScreen(
                                                 },
                                                 onLongClickDeparture = { dep ->
                                                     if (dep.minutesRemaining > 60) {
-                                                        val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
+                                                        val msg = context.getString(com.example.R.string.quick_track_limit_one_hour)
                                                         android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
                                                     } else {
                                                         quickTrackDeparture = dep
@@ -876,11 +876,7 @@ fun ProximosTrenesScreen(
                 android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
             }
         } else {
-            val warn = if (appLanguage == AppLanguage.CA) {
-                "Activa les notificacions per a veure el seguiment en la barra d'estat"
-            } else {
-                "Activa las notificaciones para ver el seguimiento en la barra de estado"
-            }
+            val warn = context.getString(com.example.R.string.quick_track_permission_warn)
             android.widget.Toast.makeText(context, warn, android.widget.Toast.LENGTH_LONG).show()
         }
         pendingTrackVehicle = null

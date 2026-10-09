@@ -344,6 +344,10 @@ fun DashboardHomeTab(
                     }
 
                     // Quick Commute Navigation Bar (3 buttons: Casa, Trabajo, Sitio Fijado)
+                    val defaultHomeTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_home_title)
+                    val defaultWorkTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_work_title)
+                    val defaultPinnedTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_pinned_title)
+
                     QuickCommuteBar(
                         appLanguage = appLanguage,
                         homeName = homeName,
@@ -352,21 +356,21 @@ fun DashboardHomeTab(
                         isDarkMode = isDarkMode,
                         onHomeClick = {
                             if (homeLat != 0.0 && homeLon != 0.0) {
-                                onOpenRoutePlanner(PlannerLocation(title = homeName.ifBlank { "Casa" }, latitude = homeLat, longitude = homeLon))
+                                onOpenRoutePlanner(PlannerLocation(title = homeName.ifBlank { defaultHomeTitle }, latitude = homeLat, longitude = homeLon))
                             } else {
                                 showCommuteDialogFor = "HOME"
                             }
                         },
                         onWorkClick = {
                             if (workLat != 0.0 && workLon != 0.0) {
-                                onOpenRoutePlanner(PlannerLocation(title = workName.ifBlank { "Trabajo" }, latitude = workLat, longitude = workLon))
+                                onOpenRoutePlanner(PlannerLocation(title = workName.ifBlank { defaultWorkTitle }, latitude = workLat, longitude = workLon))
                             } else {
                                 showCommuteDialogFor = "WORK"
                             }
                         },
                         onPinnedClick = {
                             if (pinnedLat != 0.0 && pinnedLon != 0.0) {
-                                onOpenRoutePlanner(PlannerLocation(title = pinnedName.ifBlank { "Destacado" }, latitude = pinnedLat, longitude = pinnedLon))
+                                onOpenRoutePlanner(PlannerLocation(title = pinnedName.ifBlank { defaultPinnedTitle }, latitude = pinnedLat, longitude = pinnedLon))
                             } else {
                                 showCommuteDialogFor = "PINNED"
                             }

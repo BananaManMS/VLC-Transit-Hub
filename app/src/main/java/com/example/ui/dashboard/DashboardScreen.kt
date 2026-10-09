@@ -94,6 +94,8 @@ fun DashboardScreen(
     val isOnline by viewModel.isOnline.collectAsState()
     val lastLocation by viewModel.lastLocation.collectAsState()
 
+    val appUpdateViewModel = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.update.AppUpdateViewModel>()
+
     var activeTab by remember { mutableStateOf(DashboardTab.Inicio) }
     var previousTabForBack by remember { mutableStateOf<DashboardTab?>(null) }
     var busInitialPage by remember { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -665,6 +667,7 @@ fun DashboardScreen(
                 DashboardTab.Ajustes -> {
                     AjustesScreen(
                         viewModel = viewModel,
+                        appUpdateViewModel = appUpdateViewModel,
                         onBackClick = { activeTab = DashboardTab.Inicio },
                         modifier = Modifier
                             .fillMaxSize()
@@ -935,6 +938,13 @@ fun DashboardScreen(
                 onCloseAll = { viewModel.dismissAllRemoteAnnouncements() }
             )
         }
+
+        com.example.ui.update.DashboardAutoUpdateHandler(
+            appUpdateViewModel = appUpdateViewModel,
+            hasActiveRemoteAnnouncements = remoteAnnouncements.isNotEmpty(),
+            isShowingOnboarding = shouldShowOnboarding,
+            isDarkMode = isDarkMode
+        )
 
     } // closes Box
     } // closes Surface

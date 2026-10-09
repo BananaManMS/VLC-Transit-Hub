@@ -493,9 +493,9 @@ fun QuickTrainTrackerBottomSheet(
                                     )
                                     val etaStr = stop.scheduledArrivalTime ?: ""
                                     val subtitleText = if (etaStr.isNotBlank()) {
-                                        if (appLanguage == AppLanguage.CA) "Arribada a les $etaStr · +${stop.deltaMinutesFromOrigin} min" else "Llegada a las $etaStr · +${stop.deltaMinutesFromOrigin} min"
+                                        stringResource(R.string.quick_track_stop_arrival_format, etaStr, stop.deltaMinutesFromOrigin)
                                     } else {
-                                        if (appLanguage == AppLanguage.CA) "+${stop.deltaMinutesFromOrigin} min de trajecte" else "+${stop.deltaMinutesFromOrigin} min de trayecto"
+                                        stringResource(R.string.quick_track_stop_duration_format, stop.deltaMinutesFromOrigin)
                                     }
                                     Text(
                                         text = subtitleText,

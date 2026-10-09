@@ -591,15 +591,25 @@ class QuickVehicleTrackingService : Service() {
         notificationManager.notify(NOTIFICATION_ID, notif)
     }
 
+    private fun getLocalizedContext(): Context {
+        val prefs = getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
+        val langStr = prefs.getString("app_language", null) ?: "CA"
+        val locale = if (langStr == "CA") Locale("ca") else Locale("es")
+        val config = android.content.res.Configuration(resources.configuration).apply {
+            setLocale(locale)
+        }
+        return createConfigurationContext(config)
+    }
+
     private fun buildOngoingNotification(vehicle: QuickTrackedVehicle): Notification {
         val nowMs = System.currentTimeMillis()
         val cleanLine = vehicle.cleanLineNumber
 
-        // Micro-copy strictly designed for Android 16+ status bar chips (<7 chars)
         val chipText: String
         val titleText: String
         val bodyText: String
 
+        val localizedCtx = getLocalizedContext()
         val madridTz = TimeZone.getTimeZone("Europe/Madrid")
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
             timeZone = madridTz
@@ -614,9 +624,9 @@ class QuickVehicleTrackingService : Service() {
             titleText = "L$cleanLine ${vehicle.destination} · ${vehicle.originStationName}"
             val etaStr = timeFormat.format(Date(vehicle.targetArrivalEpochMs))
             bodyText = if (mins <= 0) {
-                getString(R.string.quick_track_departing_now)
+                localizedCtx.getString(R.string.quick_track_departing_now)
             } else {
-                "Pasa en $mins min · Salida prevista: $etaStr"
+                localizedCtx.getString(R.string.quick_track_notif_origin_body, mins, etaStr)
             }
         } else {
             val destName = vehicle.targetStationName ?: vehicle.destination
@@ -627,12 +637,12 @@ class QuickVehicleTrackingService : Service() {
                 // Before metro arrives / departs origin: Display time to origin station where user is waiting (e.g. L6: 1m / L6: 5m)
                 val originMins = vehicle.liveMinutesRemaining(nowMs)
                 chipText = "L$cleanLine: ${originMins}m"
-                titleText = "L$cleanLine · En $originMins min en ${vehicle.originStationName}"
+                titleText = localizedCtx.getString(R.string.quick_track_notif_origin_title, cleanLine, originMins, vehicle.originStationName)
                 val originEtaStr = timeFormat.format(Date(vehicle.targetArrivalEpochMs))
                 bodyText = if (originMins <= 0) {
-                    "Pasa ahora por ${vehicle.originStationName} · Destino: $destName ($destEtaStr)"
+                    localizedCtx.getString(R.string.quick_track_notif_passing_now, vehicle.originStationName, destName, destEtaStr)
                 } else {
-                    "Pasa por ${vehicle.originStationName} a las $originEtaStr · Destino: $destName ($destEtaStr)"
+                    localizedCtx.getString(R.string.quick_track_notif_passing_at, vehicle.originStationName, originEtaStr, destName, destEtaStr)
                 }
             } else {
                 // After metro has arrived / departed origin: Display time to destination station (e.g. ➔ 1m / ➔ 20m)
@@ -641,13 +651,13 @@ class QuickVehicleTrackingService : Service() {
                 val isPastPenultimate = penRemainingSec <= 0 || (destMins <= 1 && penRemainingSec <= 30)
 
                 if (isPastPenultimate) {
-                    chipText = getString(R.string.quick_track_chip_next_stop)
-                    titleText = getString(R.string.quick_track_approaching_dest_title, destName)
-                    bodyText = getString(R.string.quick_track_approaching_dest_desc, cleanLine)
+                    chipText = localizedCtx.getString(R.string.quick_track_chip_next_stop)
+                    titleText = localizedCtx.getString(R.string.quick_track_approaching_dest_title, destName)
+                    bodyText = localizedCtx.getString(R.string.quick_track_approaching_dest_desc, cleanLine)
                 } else {
                     chipText = "➔ ${destMins}m"
                     titleText = "L$cleanLine ➔ $destName"
-                    bodyText = "Llegada a $destName en $destMins min · Hora: $destEtaStr"
+                    bodyText = localizedCtx.getString(R.string.quick_track_notif_dest_body, destName, destMins, destEtaStr)
                 }
             }
         }
@@ -705,7 +715,7 @@ class QuickVehicleTrackingService : Service() {
 
                 val dismissAction = Notification.Action.Builder(
                     android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_stat_train_logo),
-                    getString(R.string.quick_track_action_dismiss),
+                    localizedCtx.getString(R.string.quick_track_action_dismiss),
                     dismissPendingIntent
                 ).build()
 
@@ -751,7 +761,7 @@ class QuickVehicleTrackingService : Service() {
             .setContentIntent(contentPendingIntent)
             .addAction(
                 R.drawable.ic_stat_train_logo,
-                getString(R.string.quick_track_action_dismiss),
+                localizedCtx.getString(R.string.quick_track_action_dismiss),
                 dismissPendingIntent
             )
 
@@ -775,9 +785,10 @@ class QuickVehicleTrackingService : Service() {
     }
 
     private fun triggerDebarkAlert(vehicle: QuickTrackedVehicle) {
+        val localizedCtx = getLocalizedContext()
         val destName = vehicle.targetStationName ?: vehicle.destination
-        val title = getString(R.string.quick_track_approaching_dest_title, destName)
-        val desc = getString(R.string.quick_track_approaching_dest_desc, vehicle.cleanLineNumber)
+        val title = localizedCtx.getString(R.string.quick_track_approaching_dest_title, destName)
+        val desc = localizedCtx.getString(R.string.quick_track_approaching_dest_desc, vehicle.cleanLineNumber)
 
         TripSensoryAlertManager.triggerLevel2AttentionCall(this, playAudio = false)
 
@@ -807,7 +818,8 @@ class QuickVehicleTrackingService : Service() {
 
     private fun showDepartureFinishedNotification(vehicle: QuickTrackedVehicle) {
         isSelfTerminating = true
-        val text = getString(R.string.quick_track_train_departed, vehicle.originStationName)
+        val localizedCtx = getLocalizedContext()
+        val text = localizedCtx.getString(R.string.quick_track_train_departed, vehicle.originStationName)
         val notif = NotificationCompat.Builder(this, CHANNEL_ONGOING)
             .setSmallIcon(R.drawable.ic_stat_train_logo)
             .setContentTitle("L${vehicle.cleanLineNumber} ${vehicle.destination}")
@@ -825,8 +837,9 @@ class QuickVehicleTrackingService : Service() {
 
     private fun showArrivalFinishedNotification(vehicle: QuickTrackedVehicle) {
         isSelfTerminating = true
+        val localizedCtx = getLocalizedContext()
         val destName = vehicle.targetStationName ?: vehicle.destination
-        val text = getString(R.string.quick_track_arrived_dest, destName)
+        val text = localizedCtx.getString(R.string.quick_track_arrived_dest, destName)
         val notif = NotificationCompat.Builder(this, CHANNEL_ONGOING)
             .setSmallIcon(R.drawable.ic_stat_train_logo)
             .setContentTitle("L${vehicle.cleanLineNumber} ${vehicle.destination}")

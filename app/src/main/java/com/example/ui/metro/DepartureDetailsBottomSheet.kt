@@ -450,7 +450,7 @@ fun DepartureDetailsBottomSheet(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Seguir este tren (Notificació en viu)" else "Seguir este tren (Notificación en vivo)",
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.quick_track_btn_follow_train),
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.labelLarge
                         )
