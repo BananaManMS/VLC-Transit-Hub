@@ -37,12 +37,15 @@ jobs:
             echo "Using keystore from GitHub Secret DEBUG_KEYSTORE_BASE64..."
             echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > debug.keystore
           elif [ -f "debug.keystore.base64" ]; then
-            echo "Decoding local debug.keystore.base64..."
+            echo "Decoding repository debug.keystore.base64..."
             base64 -d debug.keystore.base64 > debug.keystore
-          elif [ ! -f "debug.keystore" ]; then
-            echo "Generating debug keystore..."
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          elif [ -f "debug.keystore" ]; then
+            echo "Found debug.keystore in workspace."
+          else
+            echo "::error::Neither DEBUG_KEYSTORE_BASE64 secret nor debug.keystore.base64 found! Required for signature consistency."
+            exit 1
           fi
+          ls -la debug.keystore
 
       - name: Build APK with Gradle
         run: gradle assembleDebug --no-daemon

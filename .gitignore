@@ -18,12 +18,12 @@ local.properties
 .env
 .env.local
 
-# Signing keys & keystores (never upload to public git)
+# Signing keys & keystores (never upload private production keys to git)
 *.jks
 *.keystore
 debug.keystore
-debug.keystore.base64
 my-upload-key.jks
+# debug.keystore.base64 is tracked so CI/GitHub Actions builds match the exact app signature fingerprint
 
 # IDE & Editor caches
 .idea/
