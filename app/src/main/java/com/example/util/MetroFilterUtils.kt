@@ -88,6 +88,38 @@ object MetroFilterUtils {
     }
 
     /**
+     * Checks if line represents Line 3 (L3).
+     */
+    fun isLine3(lineId: String?): Boolean {
+        if (lineId.isNullOrBlank()) return false
+        val digits = extractLineDigits(lineId)
+        if (digits == "3") return true
+        val upper = lineId.trim().uppercase(Locale.ROOT)
+        return upper == "L3" || upper == "3" || upper.contains("LINEA 3") || upper.contains("LÍNEA 3")
+    }
+
+    /**
+     * Checks if the station belongs to the La Cova -> Riba-roja de Túria branch:
+     * - La Cova (183)
+     * - La Presa (184)
+     * - València la Vella (188)
+     * - Masia de Traver (185)
+     * - Riba-roja de Túria (186)
+     */
+    fun isLaCovaToRibarrojaSection(stationIdOrName: String?): Boolean {
+        if (stationIdOrName.isNullOrBlank()) return false
+        val norm = normalizeStationName(stationIdOrName)
+        if (norm.contains("cova") || norm.contains("presa") ||
+            norm.contains("vella") || norm.contains("traver") ||
+            norm.contains("riba-roja") || norm.contains("riba roja") ||
+            norm.contains("ribarroja")) {
+            return true
+        }
+        val cleanDigits = norm.filter { it.isDigit() }
+        return cleanDigits in setOf("183", "184", "185", "188", "186")
+    }
+
+    /**
      * Determines if a given line is valid for arrival/departure display at a station.
      */
     fun isValidLineForStation(
@@ -101,6 +133,12 @@ object MetroFilterUtils {
 
         // Permitir explícitamente Líneas 5 y 7 con origen o destino a Machado (salidas y retiradas a cocheras)
         if (isMachadoService(lineId, destination, origin)) {
+            return true
+        }
+
+        // Permitir explícitamente Línea 3 (L3) en las estaciones desde La Cova hasta Riba-roja de Túria
+        // si aparece en las salidas en vivo de la API de Metrovalencia
+        if (isLine3(lineId) && isLaCovaToRibarrojaSection(stationIdOrName)) {
             return true
         }
 

@@ -1,5 +1,6 @@
 package com.example.ui.map.components
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -10,6 +11,8 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.SystemClock
+import android.view.animation.DecelerateInterpolator
+import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.Projection
 import org.osmdroid.views.overlay.Marker
@@ -21,6 +24,7 @@ import java.lang.ref.WeakReference
  * 2. Clean, compact vibrant blue ball with crisp white border.
  * 3. Directional pointer triangle indicating forward heading/bearing.
  * 4. Lightweight orientation sensor listener for real-time bearing updates without battery drain.
+ * 5. Smooth sliding animation (Point A to Point B) when user location updates.
  */
 class UserLocationMarker(mapView: MapView) : Marker(mapView), SensorEventListener {
 
@@ -34,6 +38,70 @@ class UserLocationMarker(mapView: MapView) : Marker(mapView), SensorEventListene
 
     // Cell tower subterranean localization mode (green dot, no directional arrow)
     var isCellTowerLocation: Boolean = false
+
+    // Smooth position sliding animation (Point A to Point B)
+    private var currentAnimatedLocation: GeoPoint? = null
+    private var positionAnimator: ValueAnimator? = null
+
+    fun animateToPosition(targetLocation: GeoPoint, durationMs: Long = 450L) {
+        val startLoc = currentAnimatedLocation ?: mPosition
+        if (startLoc == null) {
+            currentAnimatedLocation = GeoPoint(targetLocation.latitude, targetLocation.longitude)
+            super.setPosition(currentAnimatedLocation)
+            mapRef.get()?.postInvalidate()
+            return
+        }
+
+        val distanceMeters = startLoc.distanceToAsDouble(targetLocation)
+        if (distanceMeters < 0.1) {
+            currentAnimatedLocation = GeoPoint(targetLocation.latitude, targetLocation.longitude)
+            super.setPosition(currentAnimatedLocation)
+            return
+        }
+
+        if (distanceMeters > 800.0) {
+            positionAnimator?.cancel()
+            positionAnimator = null
+            currentAnimatedLocation = GeoPoint(targetLocation.latitude, targetLocation.longitude)
+            super.setPosition(currentAnimatedLocation)
+            mapRef.get()?.postInvalidate()
+            return
+        }
+
+        positionAnimator?.cancel()
+
+        val startLat = startLoc.latitude
+        val startLon = startLoc.longitude
+        val targetLat = targetLocation.latitude
+        val targetLon = targetLocation.longitude
+
+        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = durationMs
+            interpolator = DecelerateInterpolator(1.2f)
+            addUpdateListener { anim ->
+                val fraction = anim.animatedValue as Float
+                val lat = startLat + (targetLat - startLat) * fraction
+                val lon = startLon + (targetLon - startLon) * fraction
+                val interpolated = GeoPoint(lat, lon)
+                currentAnimatedLocation = interpolated
+                super.setPosition(interpolated)
+                mapRef.get()?.postInvalidate()
+            }
+        }
+        positionAnimator = animator
+        animator.start()
+    }
+
+    override fun setPosition(aPosition: GeoPoint?) {
+        if (aPosition == null) {
+            positionAnimator?.cancel()
+            positionAnimator = null
+            currentAnimatedLocation = null
+            super.setPosition(null)
+            return
+        }
+        animateToPosition(aPosition)
+    }
 
     fun updateCellTowerMode(isCellTower: Boolean) {
         if (isCellTowerLocation != isCellTower) {
@@ -113,8 +181,8 @@ class UserLocationMarker(mapView: MapView) : Marker(mapView), SensorEventListene
         val phase = (timeMs / 4000.0) * 2.0 * Math.PI - (Math.PI / 2.0)
         val breath = ((Math.sin(phase) + 1.0) / 2.0).toFloat() // 0.0 -> 1.0 -> 0.0
 
-        val minPulseRadius = 9.5f * density
-        val maxPulseRadius = 18f * density
+        val minPulseRadius = 11.5f * density
+        val maxPulseRadius = 22f * density
         val currentPulseRadius = minPulseRadius + (maxPulseRadius - minPulseRadius) * breath
 
         // Subtle, gentle alpha (between 10 and 26)
@@ -127,8 +195,8 @@ class UserLocationMarker(mapView: MapView) : Marker(mapView), SensorEventListene
         pulseStrokePaint.alpha = (currentPulseAlpha * 0.4f).toInt()
         canvas.drawCircle(cx, cy, currentPulseRadius, pulseStrokePaint)
 
-        val ballRadius = 5.5f * density
-        val whiteHaloRadius = 8f * density
+        val dynamicBallRadius = (6.0f + 0.9f * breath) * density
+        val whiteHaloRadius = 9.5f * density
 
         canvas.save()
 
@@ -143,9 +211,10 @@ class UserLocationMarker(mapView: MapView) : Marker(mapView), SensorEventListene
 
             canvas.rotate(smoothedBearing, cx, cy)
 
-            val tipDistance = 13.5f * density
-            val baseDistance = 5f * density
-            val baseHalfWidth = 4.2f * density
+            // Equilateral triangle (side width = 9.0dp, height = 7.8dp), positioned slightly outer to the white halo (gap of 1.5dp)
+            val baseDistance = 11f * density
+            val tipDistance = 18.8f * density
+            val baseHalfWidth = 4.5f * density
 
             outerArrowPath.reset()
             outerArrowPath.moveTo(cx, cy - tipDistance)
@@ -165,7 +234,7 @@ class UserLocationMarker(mapView: MapView) : Marker(mapView), SensorEventListene
 
         // 4. Vibrant inner core circle (emerald green for cellular tower, vibrant blue for satellite GNSS)
         blueCorePaint.color = coreColor
-        canvas.drawCircle(cx, cy, ballRadius, blueCorePaint)
+        canvas.drawCircle(cx, cy, dynamicBallRadius, blueCorePaint)
 
         canvas.restore()
 
@@ -199,6 +268,8 @@ class UserLocationMarker(mapView: MapView) : Marker(mapView), SensorEventListene
     override fun onDetach(mapView: MapView) {
         super.onDetach(mapView)
         try {
+            positionAnimator?.cancel()
+            positionAnimator = null
             sensorManager?.unregisterListener(this)
         } catch (_: Exception) {}
     }

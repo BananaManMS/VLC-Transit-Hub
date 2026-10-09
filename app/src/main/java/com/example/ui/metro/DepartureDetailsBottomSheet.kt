@@ -178,18 +178,30 @@ fun DepartureDetailsBottomSheet(
 
         val lineStationsMap by metroViewModel.lineStationsState.collectAsState()
 
-        val lineStations = remember(lineStationsMap, departure.lineId, departure.destination) {
+        val lineStations = remember(lineStationsMap, departure.lineId, departure.destination, selectedStationId) {
             val primaryList = lineStationsMap[departure.lineId] ?: emptyList()
+            val isL3 = departure.lineId.filter { it.isDigit() } == "3"
+            val isBranch = com.example.util.MetroFilterUtils.isLaCovaToRibarrojaSection(selectedStationId) ||
+                com.example.util.MetroFilterUtils.isLaCovaToRibarrojaSection(departure.destination)
+
+            val baseList = if (isL3 && isBranch) {
+                val l9Stations = lineStationsMap["L9"] ?: lineStationsMap["9"] ?: emptyList()
+                val branch = l9Stations.takeWhile { it.id != "120" && !it.name.contains("Roses", ignoreCase = true) }
+                if (branch.isNotEmpty()) {
+                    branch + primaryList.filter { it.id != "121" && !it.name.contains("Aeroport", ignoreCase = true) }
+                } else primaryList
+            } else primaryList
+
             val normDest = Normalizer.normalize(departure.destination, Normalizer.Form.NFD)
                 .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "").lowercase()
             
-            val hasDest = primaryList.any {
+            val hasDest = baseList.any {
                 val normName = Normalizer.normalize(it.name, Normalizer.Form.NFD)
                     .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "").lowercase()
                 normName == normDest || normName.contains(normDest) || normDest.contains(normName)
             }
             if (hasDest) {
-                primaryList
+                baseList
             } else {
                 var foundList: List<LineStationInfo>? = null
                 for ((_, stations) in lineStationsMap) {
@@ -203,7 +215,7 @@ fun DepartureDetailsBottomSheet(
                         break
                     }
                 }
-                foundList ?: primaryList
+                foundList ?: baseList
             }
         }
 
@@ -282,7 +294,14 @@ fun DepartureDetailsBottomSheet(
                 val h = parts.getOrNull(0)?.toIntOrNull()
                 val m = parts.getOrNull(1)?.toIntOrNull()
                 if (h != null && m != null) {
-                    h * 60 + m
+                    val cal = Calendar.getInstance(madridTimeZone)
+                    val currentHour = cal.get(Calendar.HOUR_OF_DAY)
+                    val baseMin = h * 60 + m
+                    if (currentHour >= 12 && h < 6) {
+                        baseMin + 1440
+                    } else {
+                        baseMin
+                    }
                 } else {
                     val cal = Calendar.getInstance(madridTimeZone)
                     val nowMin = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)

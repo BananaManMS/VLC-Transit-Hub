@@ -68,17 +68,17 @@ object RealTimeTransitRepository {
 
     private val standardHttpClient: OkHttpClient by lazy {
         NetworkModule.okHttpClient.newBuilder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .callTimeout(12, TimeUnit.SECONDS)
+            .connectTimeout(6500, TimeUnit.MILLISECONDS)
+            .readTimeout(6500, TimeUnit.MILLISECONDS)
+            .callTimeout(7500, TimeUnit.MILLISECONDS)
             .build()
     }
 
     private val fastHttpClient: OkHttpClient by lazy {
         NetworkModule.okHttpClient.newBuilder()
-            .connectTimeout(3, TimeUnit.SECONDS)
-            .readTimeout(3, TimeUnit.SECONDS)
-            .callTimeout(4, TimeUnit.SECONDS)
+            .connectTimeout(3500, TimeUnit.MILLISECONDS)
+            .readTimeout(3500, TimeUnit.MILLISECONDS)
+            .callTimeout(4500, TimeUnit.MILLISECONDS)
             .build()
     }
 
@@ -266,10 +266,12 @@ object RealTimeTransitRepository {
                 val elapsedSec = ((now - timestamp) / 1000L).toInt()
                 return data.mapNotNull { arrival ->
                     val remainingSec = arrival.seconds - elapsedSec
-                    if (remainingSec >= 0) {
+                    if (remainingSec >= -65) {
+                        val safeSec = remainingSec.coerceAtLeast(0)
+                        val safeMin = if (safeSec <= 20) 0 else ((safeSec + 30) / 60)
                         arrival.copy(
-                            seconds = remainingSec,
-                            minutes = remainingSec / 60
+                            seconds = safeSec,
+                            minutes = safeMin
                         )
                     } else null
                 }
@@ -341,14 +343,14 @@ object RealTimeTransitRepository {
                         } else "L"
                     }
                     val cleanLine = lineId.replace("L", "").trim()
-                    if (com.example.util.MetroDepotFilterHelper.isDepotExcludedStationLine(cleanStation, null, cleanLine)) {
+                    val destino = item.optString("destino", "Desconocido")
+                    if (com.example.util.MetroDepotFilterHelper.isDepotExcludedStationLine(cleanStation, null, cleanLine, destino)) {
                         continue
                     }
-                    val destino = item.optString("destino", "Desconocido")
                     val minutes = item.optInt("minutos", -1)
                     val seconds = item.optInt("segundos", item.optInt("seconds", -1))
                     val finalSeconds = if (seconds >= 0) seconds else if (minutes >= 0) minutes * 60 else 0
-                    val finalMinutes = if (minutes >= 0) minutes else finalSeconds / 60
+                    val finalMinutes = if (minutes >= 0) minutes else if (finalSeconds <= 20) 0 else ((finalSeconds + 30) / 60)
                     
                     val estTime = item.optString("hora_estimada", item.optString("horaEstimada", item.optString("hora", item.optString("time", "")))).ifEmpty { null }
                     val status = item.optString("estado", item.optString("status", "")).ifEmpty { null }

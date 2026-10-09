@@ -81,6 +81,32 @@ object SingleTransitLegReconciler {
                             onMatchedOrigin(key, targetArrival.vehicleId, epochMs)
                         }
                     }
+                } else if (theoreticalMinutesRemaining != null && theoreticalMinutesRemaining in 0..120) {
+                    // Non-EMT bus (Metrobus/Interurban) scheduled departure estimation
+                    liveMinutes = theoreticalMinutesRemaining
+                    liveSeconds = theoreticalMinutesRemaining * 60
+                    liveDestination = leg.headsign?.ifBlank { null } ?: leg.toName
+                    isLive = false
+                    delayMinutes = 0
+                    matchedLineShortName = leg.routeShortName ?: normalizedLine
+                    matchedDestination = liveDestination
+                    val key = "METROBUS_${leg.routeShortName}_${leg.fromStopId ?: leg.fromName}"
+                    val epochMs = nowMs + (theoreticalMinutesRemaining * 60 * 1000L)
+                    onMatchedOrigin(key, null, epochMs)
+                }
+            }
+            TransitMode.METROBUS -> {
+                if (theoreticalMinutesRemaining != null && theoreticalMinutesRemaining in 0..120) {
+                    liveMinutes = theoreticalMinutesRemaining
+                    liveSeconds = theoreticalMinutesRemaining * 60
+                    liveDestination = leg.headsign?.ifBlank { null } ?: leg.toName
+                    isLive = false
+                    delayMinutes = 0
+                    matchedLineShortName = leg.routeShortName ?: normalizedLine
+                    matchedDestination = liveDestination
+                    val key = "METROBUS_${leg.routeShortName}_${leg.fromStopId ?: leg.fromName}"
+                    val epochMs = nowMs + (theoreticalMinutesRemaining * 60 * 1000L)
+                    onMatchedOrigin(key, null, epochMs)
                 }
             }
             TransitMode.SUBWAY, TransitMode.TRAM -> {
@@ -89,12 +115,17 @@ object SingleTransitLegReconciler {
 
                 if (!stationId.isNullOrBlank()) {
                     val departures = TransitOperatorArrivalProvider.fetchMetroDepartures(stationId)
-                    val allowedLines = TransitIdMapper.getAlternativeTransitLines(
-                        mode = leg.mode,
-                        originalLine = normalizedLine,
-                        fromName = leg.fromName,
-                        toName = leg.toName
-                    )
+                    val allowedLines = if (isBoarded) {
+                        val digits = normalizedLine.filter { it.isDigit() }
+                        setOfNotNull(normalizedLine, if (digits.isNotBlank()) digits else null, "L$digits")
+                    } else {
+                        TransitIdMapper.getAlternativeTransitLines(
+                            mode = leg.mode,
+                            originalLine = normalizedLine,
+                            fromName = leg.fromName,
+                            toName = leg.toName
+                        )
+                    }
 
                     val matchingDepartures = departures.filter { dep ->
                         val depDigits = dep.line.filter { it.isDigit() }

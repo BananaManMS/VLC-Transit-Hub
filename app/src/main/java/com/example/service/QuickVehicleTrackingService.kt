@@ -212,21 +212,16 @@ class QuickVehicleTrackingService : Service() {
                     }
 
                     // Penultimate station arrival check:
-                    // Condition 1: Si es programado, se avisa cuando llegue la hora programada de la penúltima parada antes del destino
-                    if (!vehicle.isRealTime && !hasAlertedDebark && isBoardedNow) {
+                    // Condition: When the train reaches the penultimate stop (penRemainingSec <= 0 or target remaining <= 60s),
+                    // the next stop is the target destination, so trigger the debark alert.
+                    // Safeguard: If the penultimate station is the origin station, ignore penRemainingSec <= 0
+                    // to prevent triggering the alert prematurely while still boarded at the platform.
+                    if (!hasAlertedDebark && isBoardedNow) {
                         val penRemainingSec = vehicle.liveSecondsRemainingToPenultimate(nowMs)
-                        if (penRemainingSec <= 0) {
-                            hasAlertedDebark = true
-                            currentVehicle = currentVehicle?.copy(hasAlertedDebark = true)
-                            QuickVehicleTrackerManager.updateVehicle(currentVehicle)
-                            triggerDebarkAlert(currentVehicle ?: vehicle)
-                        }
-                    } else if (vehicle.isRealTime && !hasAlertedDebark && isBoardedNow) {
-                        // Para metros en vivo: si se filtró la desaparición por quedar > 5 min o la API falló,
-                        // avisar automáticamente cuando queden menos de 2 minutos para bajar (< 2 min / <= 120s)
                         val targetRemainingSec = vehicle.liveSecondsRemainingToTarget(nowMs)
-                        val targetRemainingMin = vehicle.minutesRemainingToTarget(nowMs)
-                        if (targetRemainingSec <= 120 || targetRemainingMin < 2) {
+                        val isPenOrigin = vehicle.penultimateStationId == null || vehicle.penultimateStationId == vehicle.originStationId
+                        val shouldTrigger = (!isPenOrigin && penRemainingSec <= 0) || targetRemainingSec <= 60
+                        if (shouldTrigger) {
                             hasAlertedDebark = true
                             currentVehicle = currentVehicle?.copy(hasAlertedDebark = true)
                             QuickVehicleTrackerManager.updateVehicle(currentVehicle)
@@ -438,17 +433,15 @@ class QuickVehicleTrackingService : Service() {
                                         QuickVehicleTrackerManager.updateVehicle(currentVehicle)
                                         updateNotification(currentVehicle!!)
 
-                                        // Alerta de bajada en la próxima parada cuando está en rango del destino (<= 2 min o inminente)
-                                        val isArrivingAtDest = matchedDest.minutes <= 1 ||
-                                                matchedDest.seconds <= 120 ||
-                                                matchedDest.status?.let { s ->
+                                        // Alerta de bajada en la próxima parada cuando está en rango del destino (llegando a la penúltima parada o destino inminente <= 60s)
+                                        val penRemainingSec = vehicle.liveSecondsRemainingToPenultimate(nowMs)
+                                        val isPenOrigin = vehicle.penultimateStationId == null || vehicle.penultimateStationId == vehicle.originStationId
+                                         val isArrivingAtDest = (matchedDest.seconds <= 60 && (penRemainingSec <= 0 || isPenOrigin)) ||
+                                                (matchedDest.seconds <= 45) ||
+                                                (matchedDest.status?.let { s ->
                                                     val lower = s.lowercase()
                                                     lower.contains("lleg") || lower.contains("arrib") || lower.contains("inmin") || lower.contains("andén") || lower.contains("anden")
-                                                } == true ||
-                                                matchedDest.estimatedTime?.let { e ->
-                                                    val lower = e.lowercase()
-                                                    lower.contains("lleg") || lower.contains("arrib") || lower.contains("inmin")
-                                                } == true
+                                                } == true && (penRemainingSec <= 0 || isPenOrigin))
 
                                         if (isArrivingAtDest && !hasAlertedDebark && isBoardedNow) {
                                             hasAlertedDebark = true
@@ -458,13 +451,12 @@ class QuickVehicleTrackingService : Service() {
                                         }
                                     } else {
                                         // Si no aparece en salidas del destino:
-                                        // Filtro: si faltan > 5 min no avisar (falso aviso / caída API).
-                                        // Fallback: si quedan <= 2 min (< 120s), avisar automáticamente.
+                                        // Fallback: solo avisar cuando realmente se llegue a la penúltima parada o queden <= 60s
+                                        val penRemainingSec = vehicle.liveSecondsRemainingToPenultimate(nowMs)
                                         val targetRemainingSec = vehicle.liveSecondsRemainingToTarget(nowMs)
-                                        val targetRemainingMin = vehicle.minutesRemainingToTarget(nowMs)
 
                                         if (!hasAlertedDebark && isBoardedNow) {
-                                            if (targetRemainingSec <= 120 || targetRemainingMin < 2) {
+                                            if (penRemainingSec <= 0 || targetRemainingSec <= 60) {
                                                 hasAlertedDebark = true
                                                 currentVehicle = currentVehicle?.copy(hasAlertedDebark = true)
                                                 QuickVehicleTrackerManager.updateVehicle(currentVehicle)
@@ -549,17 +541,13 @@ class QuickVehicleTrackingService : Service() {
                                         QuickVehicleTrackerManager.updateVehicle(currentVehicle)
                                         updateNotification(currentVehicle!!)
 
-                                        // Condition 2.A: Si es en vivo, cuando aparezca como llegando
-                                        val isArrivingNow = matchedPen.minutes <= 0 ||
-                                                matchedPen.seconds <= 60 ||
-                                                matchedPen.status?.let { s ->
+                                        val penRemainingSec = vehicle.liveSecondsRemainingToPenultimate(nowMs)
+                                        val isPenOrigin = vehicle.penultimateStationId == null || vehicle.penultimateStationId == vehicle.originStationId
+                                         val isArrivingNow = !isPenOrigin && ((matchedPen.seconds <= 30 && penRemainingSec <= 15) ||
+                                                (matchedPen.status?.let { s ->
                                                     val lower = s.lowercase()
                                                     lower.contains("lleg") || lower.contains("arrib") || lower.contains("inmin") || lower.contains("andén") || lower.contains("anden")
-                                                } == true ||
-                                                matchedPen.estimatedTime?.let { e ->
-                                                    val lower = e.lowercase()
-                                                    lower.contains("lleg") || lower.contains("arrib") || lower.contains("inmin")
-                                                } == true
+                                                } == true && penRemainingSec <= 30))
 
                                         if (isArrivingNow && !hasAlertedDebark && isBoardedNow) {
                                             hasAlertedDebark = true
@@ -569,21 +557,12 @@ class QuickVehicleTrackingService : Service() {
                                         }
                                     } else {
                                         // Condition 2.B: Si es en vivo, cuando no aparezca ya ese metro en el panel de salidas en vivo
-                                        // con filtro de si el vehículo desaparece y quedan más de 5 min no avisar porque sería un falso aviso
+                                        // Solo avisar si se ha alcanzado la penúltima estación (penRemainingSec <= 0) o quedan <= 60s para el destino
                                         val penRemainingSec = vehicle.liveSecondsRemainingToPenultimate(nowMs)
-                                        val penRemainingMins = vehicle.minutesRemainingToPenultimate(nowMs)
                                         val targetRemainingSec = vehicle.liveSecondsRemainingToTarget(nowMs)
-                                        val targetRemainingMin = vehicle.minutesRemainingToTarget(nowMs)
 
                                         if (!hasAlertedDebark && isBoardedNow) {
-                                            if (penRemainingSec <= 300 && penRemainingMins <= 5) {
-                                                hasAlertedDebark = true
-                                                currentVehicle = currentVehicle?.copy(hasAlertedDebark = true)
-                                                QuickVehicleTrackerManager.updateVehicle(currentVehicle)
-                                                triggerDebarkAlert(currentVehicle ?: vehicle)
-                                            } else if (targetRemainingSec <= 120 || targetRemainingMin < 2) {
-                                                // Si desapareció con > 5 min pero ahora ya quedan < 2 min para bajar:
-                                                // avisar automáticamente para no quedarse sin aviso
+                                            if (penRemainingSec <= 0 || targetRemainingSec <= 60) {
                                                 hasAlertedDebark = true
                                                 currentVehicle = currentVehicle?.copy(hasAlertedDebark = true)
                                                 QuickVehicleTrackerManager.updateVehicle(currentVehicle)
@@ -659,10 +638,10 @@ class QuickVehicleTrackingService : Service() {
                 // After metro has arrived / departed origin: Display time to destination station (e.g. ➔ 1m / ➔ 20m)
                 val destMins = vehicle.minutesRemainingToTarget(nowMs)
                 val penRemainingSec = vehicle.liveSecondsRemainingToPenultimate(nowMs)
-                val isPastPenultimate = penRemainingSec <= 10 || destMins <= 1
+                val isPastPenultimate = penRemainingSec <= 0 || (destMins <= 1 && penRemainingSec <= 30)
 
                 if (isPastPenultimate) {
-                    chipText = "➔ $destName"
+                    chipText = getString(R.string.quick_track_chip_next_stop)
                     titleText = getString(R.string.quick_track_approaching_dest_title, destName)
                     bodyText = getString(R.string.quick_track_approaching_dest_desc, cleanLine)
                 } else {

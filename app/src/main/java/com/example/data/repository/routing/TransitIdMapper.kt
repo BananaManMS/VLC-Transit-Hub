@@ -577,10 +577,12 @@ object TransitIdMapper {
         }
 
         // Strictly verify that the real physical line route connects both fromIndex and toIndex
+        // in the valid travel direction (fromIndex to toIndex without topological breaks)
         for ((lineKey, stationList) in RAIL_SUBWAY_LINE_STATIONS) {
             val fromIndex = stationList.indexOfFirst { it == fromNorm || it.contains(fromNorm) || fromNorm.contains(it) }
             val toIndex = stationList.indexOfFirst { it == toNorm || it.contains(toNorm) || toNorm.contains(it) }
 
+            // Both fromName AND toName MUST be physically served by this candidate line
             if (fromIndex != -1 && toIndex != -1 && fromIndex != toIndex) {
                 val lineDigits = lineKey.filter { it.isDigit() }
                 if (mode == com.example.data.model.routing.TransitMode.RAIL) {
@@ -597,7 +599,7 @@ object TransitIdMapper {
             }
         }
 
-        // If no topological lines match the requested stations, fall back to original line only if non-blank
+        // If no topological lines match both requested stations, fall back to original line only
         if (result.isEmpty() && normOrig.isNotBlank()) {
             result.add(normOrig)
             val digitsOnly = normOrig.filter { it.isDigit() }
@@ -683,21 +685,40 @@ object TransitIdMapper {
             return false
         }
 
-        // 2. Direct or bidirectional match with headsign
+        // 2. Candidate line topology check: if candidate line is specified for rail/subway/tram,
+        // it MUST serve BOTH fromName AND toName. If it doesn't serve toName, it cannot carry the user to their destination.
+        if (!candidateLine.isNullOrBlank() && (leg.mode == com.example.data.model.routing.TransitMode.SUBWAY ||
+                    leg.mode == com.example.data.model.routing.TransitMode.TRAM ||
+                    leg.mode == com.example.data.model.routing.TransitMode.RAIL)) {
+            val cleanDigits = candidateLine.filter { it.isDigit() }
+            val stationList = RAIL_SUBWAY_LINE_STATIONS.entries.firstOrNull { (k, _) ->
+                k.equals(candidateLine, ignoreCase = true) || (cleanDigits.isNotEmpty() && k.filter { it.isDigit() } == cleanDigits)
+            }?.value
+
+            if (stationList != null) {
+                val fromIdx = stationList.indexOfFirst { it == fromNameNorm || it.contains(fromNameNorm) || fromNameNorm.contains(it) }
+                val toIdx = stationList.indexOfFirst { it == toNameNorm || it.contains(toNameNorm) || toNameNorm.contains(it) }
+                if (fromIdx != -1 && toIdx == -1) {
+                    return false
+                }
+            }
+        }
+
+        // 3. Direct or bidirectional match with headsign
         if (headsignNorm.isNotBlank()) {
             if (depNorm == headsignNorm || depNorm.contains(headsignNorm) || headsignNorm.contains(depNorm)) {
                 return true
             }
         }
 
-        // 3. Direct or bidirectional match with leg destination name
+        // 4. Direct or bidirectional match with leg destination name
         if (toNameNorm.isNotBlank()) {
             if (depNorm == toNameNorm || depNorm.contains(toNameNorm) || toNameNorm.contains(depNorm)) {
                 return true
             }
         }
 
-        // 4. Token-level matching for compound destination names (e.g. "Marítim - Serrería" vs "Marítim", "Aeroport" vs "Aeropuerto")
+        // 5. Token-level matching for compound destination names (e.g. "Marítim - Serrería" vs "Marítim", "Aeroport" vs "Aeropuerto")
         val depWords = depNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 4 }
         val headsignWords = headsignNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 4 }
         val toWords = toNameNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 4 }
@@ -710,7 +731,7 @@ object TransitIdMapper {
             return true
         }
 
-        // 5. Downstream sequence check for trains and metros (destination is further down the line than toName)
+        // 6. Downstream sequence check for trains and metros (destination is further down the line than toName)
         if (leg.mode == com.example.data.model.routing.TransitMode.SUBWAY ||
             leg.mode == com.example.data.model.routing.TransitMode.TRAM ||
             leg.mode == com.example.data.model.routing.TransitMode.RAIL) {

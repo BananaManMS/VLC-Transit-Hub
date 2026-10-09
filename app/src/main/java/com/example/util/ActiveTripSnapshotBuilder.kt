@@ -116,11 +116,14 @@ object ActiveTripSnapshotBuilder {
         } else false
 
         val isImminentDebark = (isBoarded && hasDepartedOrigin && formattedUiState.isDebarkNotice) ||
-                (isBoarded && hasDepartedOrigin && isAtFinalStopApproach && (
-                    isNearPenultimateOrTime ||
-                    (arrivalMins != null && arrivalMins <= 2) ||
-                    (distToTarget != null && distToTarget <= 350.0) ||
-                    (progressFraction >= 0.85f)
+                (isBoarded && hasDepartedOrigin && (
+                    remainingStops == 1 ||
+                    (isAtFinalStopApproach && (
+                        isNearPenultimateOrTime ||
+                        (arrivalMins != null && arrivalMins <= 2) ||
+                        (distToTarget != null && distToTarget <= 350.0) ||
+                        (progressFraction >= 0.85f)
+                    ))
                 ))
 
         return UnifiedActiveTripSnapshot(

@@ -22,25 +22,43 @@ object EmtPolylineUtils {
      */
     fun getMilestoneConfig(zoom: Double): MilestoneConfig {
         return when {
-            zoom < 14.0 -> {
+            zoom < 11.5 -> {
                 MilestoneConfig(
-                    strokeWidth = 6.5f,
+                    strokeWidth = 4.5f,
                     recurrencePixels = 0.0,
                     initialOffsetPixels = 0.0,
                     arrowPath = null,
                     arrowStrokeWidth = 0f
                 )
             }
-            zoom < 15.5 -> {
+            zoom < 13.0 -> {
+                MilestoneConfig(
+                    strokeWidth = 5.5f,
+                    recurrencePixels = 320.0,
+                    initialOffsetPixels = 120.0,
+                    arrowPath = createStyledChevronPath(length = 8f, halfWidth = 4.5f, indent = 3f),
+                    arrowStrokeWidth = 1.4f
+                )
+            }
+            zoom < 14.5 -> {
+                MilestoneConfig(
+                    strokeWidth = 6.5f,
+                    recurrencePixels = 290.0,
+                    initialOffsetPixels = 100.0,
+                    arrowPath = createStyledChevronPath(length = 11f, halfWidth = 6.5f, indent = 4f),
+                    arrowStrokeWidth = 1.8f
+                )
+            }
+            zoom < 16.0 -> {
                 MilestoneConfig(
                     strokeWidth = 7.5f,
                     recurrencePixels = 260.0,
-                    initialOffsetPixels = 100.0,
+                    initialOffsetPixels = 90.0,
                     arrowPath = createStyledChevronPath(length = 14f, halfWidth = 8f, indent = 5f),
                     arrowStrokeWidth = 2.2f
                 )
             }
-            zoom < 17.0 -> {
+            zoom < 17.5 -> {
                 MilestoneConfig(
                     strokeWidth = 9.0f,
                     recurrencePixels = 220.0,

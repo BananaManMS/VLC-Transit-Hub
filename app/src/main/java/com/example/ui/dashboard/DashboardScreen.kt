@@ -71,15 +71,8 @@ fun DashboardScreen(
 
     val handleLocationResult: (Double, Double) -> Unit = { lat, lng ->
         viewModel.updateLocation(lat, lng)
-        viewModel.updateWeatherByLocation(lat, lng, context)
     }
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        com.example.util.StartupProfiler.log("DashboardScreen", ">>> PRIMER FRAME ÚTIL RENDERIZADO <<<")
-        if (LocationUtils.hasLocationPermission(context)) {
-            LocationUtils.requestDeviceLocation(context, handleLocationResult)
-        }
-    }
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val isFahrenheit by viewModel.isFahrenheit.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -222,10 +215,13 @@ fun DashboardScreen(
         if (isAppInForeground) {
             viewModel.onAppForegrounded()
             if (LocationUtils.hasLocationPermission(context)) {
-                LocationUtils.requestDeviceLocation(context, handleLocationResult)
-                LocationUtils.getLocationUpdates(context, intervalMs = 10000L, minDistanceMeters = 5.0f)
+                LocationUtils.requestDeviceLocation(context) { lat, lng ->
+                    viewModel.updateLocation(lat, lng)
+                    viewModel.updateWeatherByLocation(lat, lng, context)
+                }
+                LocationUtils.getLocationUpdates(context, intervalMs = 15000L, minDistanceMeters = 10.0f)
                     .collect { loc ->
-                        handleLocationResult(loc.latitude, loc.longitude)
+                        viewModel.updateLocation(loc.latitude, loc.longitude)
                     }
             }
         }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 import com.example.data.mapper.CercaniasDepartureMapper
 import java.util.Calendar
@@ -71,8 +72,17 @@ class RenfeRepository(
         gtfsVehiclePositions: Map<String, LiveVehicleInfo>? = null
     ): List<CercaniasDeparture> = withContext(Dispatchers.IO) {
         syncManager.ensureScheduleLoadedInMemory()
-        val updates = try { gtfsRtUpdates ?: fetchGtfsRtTripUpdates() } catch (e: Exception) { emptyMap() }
-        val vehicles = try { gtfsVehiclePositions ?: fetchGtfsRtVehiclePositions() } catch (e: Exception) { emptyMap() }
+        val timeoutMs = try {
+            com.example.util.getTransitFetchTimeoutMs(context.applicationContext)
+        } catch (_: Exception) { 5000L }
+
+        val updates = try {
+            gtfsRtUpdates ?: withTimeoutOrNull(timeoutMs) { fetchGtfsRtTripUpdates() } ?: emptyMap()
+        } catch (e: Exception) { emptyMap() }
+
+        val vehicles = try {
+            gtfsVehiclePositions ?: withTimeoutOrNull(timeoutMs) { fetchGtfsRtVehiclePositions() } ?: emptyMap()
+        } catch (e: Exception) { emptyMap() }
         
         val horarios = syncManager.getHorariosForStation(stopId)
         if (horarios.isEmpty()) return@withContext emptyList()

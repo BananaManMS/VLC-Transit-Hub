@@ -1,5 +1,4 @@
 package com.example.ui.metro
-import okhttp3.Response
 
 import android.app.Application
 import android.location.Location
@@ -14,7 +13,6 @@ import com.example.data.repository.DashboardRepository
 import com.example.data.repository.MetroRepository
 import com.example.data.model.MetroStation
 import com.example.data.model.ValenciaMetroData
-import com.example.data.model.Departure
 import com.example.util.LocationUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,32 +20,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
-
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.StringReader
-import org.xmlpull.v1.XmlPullParser
-import org.xmlpull.v1.XmlPullParserFactory
-
-import com.example.data.database.TransitCardEntity
-import com.example.ui.dashboard.TransitCardUiModel
-import com.example.ui.dashboard.TransitTripUiModel
 import com.example.data.repository.MetroCardRepository
 import com.example.data.repository.MetroAlertsRepository
 import kotlinx.coroutines.flow.map
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import com.example.util.normalizeForSearch
+import java.util.Calendar
+import java.util.TimeZone
 
 class MetroViewModel(application: Application, private val metroRepository: MetroRepository) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, MetroRepository(application))
@@ -56,10 +39,6 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
     private val repository = DashboardRepository(application, database)
     private val metroCardRepository = MetroCardRepository(application, database)
     private val metroAlertsRepository = MetroAlertsRepository()
-    private val client = com.example.data.network.NetworkModule.okHttpClient.newBuilder()
-        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
 
     companion object {
         class Factory(private val application: Application, private val metroRepository: MetroRepository) : ViewModelProvider.Factory {
@@ -78,9 +57,6 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
 
     private val _internalLineStationsMap = MutableStateFlow<Map<String, List<com.example.data.repository.LineStationInfo>>>(emptyMap())
     val lineStationsState = _internalLineStationsMap.asStateFlow()
-
-    private val _selectedStationId = MutableStateFlow("")
-    val selectedStationId = _selectedStationId.asStateFlow()
 
     var hasUserManuallySelectedStation = false
         private set
@@ -110,8 +86,9 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
     val metroNews = metroAlertsRepository.metroNews
     val isNewsLoading = metroAlertsRepository.isNewsLoading
 
-    private val _realTimeSelectedStationId = MutableStateFlow<String?>("")
+    private val _realTimeSelectedStationId = MutableStateFlow("")
     val realTimeSelectedStationId = _realTimeSelectedStationId.asStateFlow()
+    val selectedStationId = realTimeSelectedStationId
 
     private val _selectedDepartureForDetails = MutableStateFlow<RealTimeDeparture?>(null)
     val selectedDepartureForDetails = _selectedDepartureForDetails.asStateFlow()
@@ -124,6 +101,9 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
 
     private val _realTimeLoading = MutableStateFlow(false)
     val realTimeLoading = _realTimeLoading.asStateFlow()
+
+    private val _hasCompletedInitialLiveFetch = MutableStateFlow(false)
+    val hasCompletedInitialLiveFetch = _hasCompletedInitialLiveFetch.asStateFlow()
 
     private var lastAlertsFetchTime = 0L
     private val _isAppInForeground = MutableStateFlow(true)
@@ -314,19 +294,90 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
             _favoriteStations.value = stationIds
             viewModelScope.launch {
                 repository.savePreference("favorite_stations", stationIds.joinToString(","))
-                if (stationIds.isNotEmpty() && !stationIds.contains(_selectedStationId.value)) {
+                if (stationIds.isNotEmpty() && !stationIds.contains(_realTimeSelectedStationId.value)) {
                     selectStation(stationIds.first())
                 }
             }
         }
     }
 
-fun getSortedStations(): List<MetroStation> {
-        val stations = _allNetworkStations.value
-        val favIds = _favoriteStations.value.toSet()
-        val favorites = stations.filter { it.id in favIds }.sortedBy { MetroMapper.normalizeForSort(it.name) }
-        val nonFavorites = stations.filter { it.id !in favIds }.sortedBy { MetroMapper.normalizeForSort(it.name) }
-        return favorites + nonFavorites
+    private suspend fun getScheduledDeparturesFallback(
+        stationId: String,
+        currentStation: MetroStation?,
+        stationLines: List<String>
+    ): List<RealTimeDeparture> = withContext(Dispatchers.Default) {
+        try {
+            val metroScheduleRepo = com.example.data.repository.MetroScheduleRepository.getInstance(getApplication())
+            metroScheduleRepo.ensureLoaded()
+            val webId = metroScheduleRepo.getWebIdForStationId(stationId, currentStation?.name ?: "") ?: return@withContext emptyList()
+            val cal = Calendar.getInstance(TimeZone.getTimeZone("Europe/Madrid"))
+            val currentMinOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+            val currentSec = cal.get(Calendar.SECOND)
+            val nowEpochMs = System.currentTimeMillis()
+
+            val schedDeps = metroScheduleRepo.getScheduledDepartures(
+                stationWebId = webId,
+                fromMinutesOfDay = currentMinOfDay
+            )
+            val mapped = schedDeps.mapNotNull { sched ->
+                val diffMinutes = sched.timeMinutes - currentMinOfDay
+                val diffSeconds = diffMinutes * 60 - currentSec
+                if (diffSeconds < -30) return@mapNotNull null
+
+                val lineObj = ValenciaMetroData.lines.find {
+                    it.id.equals(sched.line, ignoreCase = true) ||
+                    it.id.replace("L", "").trim().equals(sched.line.replace("L", "").trim(), ignoreCase = true)
+                }
+                val colorHex = lineObj?.colorHex ?: "#7F8C8D"
+                val arrivalEpoch = nowEpochMs + (diffSeconds * 1000L).coerceAtLeast(0L)
+                val targetMinBucket = arrivalEpoch / 60_000L
+                val depId = "sched_${sched.line}_${sched.destinationName}_$targetMinBucket"
+
+                RealTimeDeparture(
+                    id = depId,
+                    lineId = sched.line,
+                    destination = sched.destinationName,
+                    minutesRemaining = kotlin.math.max(0, (diffSeconds + 30) / 60),
+                    secondsRemaining = kotlin.math.max(0, diffSeconds),
+                    colorHex = colorHex,
+                    estimatedTime = sched.timeFormatted,
+                    status = null,
+                    track = null,
+                    capacidad = null,
+                    aforoBloqueado = null,
+                    vehicleId = null,
+                    originStationName = currentStation?.name,
+                    originStationId = stationId,
+                    targetArrivalEpochMs = arrivalEpoch,
+                    isRealTime = false
+                )
+            }.sortedBy { it.secondsRemaining }
+
+            mapped.filter { dep ->
+                val cleanDep = dep.lineId.replace("L", "").trim()
+                if (com.example.util.MetroDepotFilterHelper.isDepotExcludedStationLine(stationId, currentStation?.name, cleanDep)) {
+                    return@filter false
+                }
+                // Permitir explícitamente L3 en las estaciones desde La Cova hasta Riba-roja de Túria si aparece en la API
+                if (cleanDep == "3" && (
+                    com.example.util.MetroFilterUtils.isLaCovaToRibarrojaSection(stationId) ||
+                    com.example.util.MetroFilterUtils.isLaCovaToRibarrojaSection(currentStation?.name)
+                )) {
+                    return@filter true
+                }
+                if (stationLines.isNotEmpty()) {
+                    stationLines.any { sl ->
+                        sl.equals(dep.lineId, ignoreCase = true) ||
+                        sl.replace("L", "").trim().equals(cleanDep, ignoreCase = true)
+                    }
+                } else {
+                    true
+                }
+            }.take(20)
+        } catch (e: Exception) {
+            Log.w("MetroViewModel", "Error loading scheduled fallback departures for $stationId", e)
+            emptyList()
+        }
     }
 
     fun fetchRealTimeDepartures(stationId: String, isAutoRefresh: Boolean = false) {
@@ -340,13 +391,8 @@ fun getSortedStations(): List<MetroStation> {
                 _realTimeError.value = null
             }
             try {
-                if (!com.example.util.isNetworkAvailable(getApplication())) {
-                    if (_realTimeSelectedStationId.value == stationId) {
-                        _realTimeDepartures.value = emptyList()
-                        _realTimeError.value = "Sin conexión a internet"
-                    }
-                    return@launch
-                }
+                val currentStation = _allNetworkStations.value.find { it.id == stationId || getStationSlug(it.id) == getStationSlug(stationId) }
+                val stationLines = currentStation?.lines ?: emptyList()
 
                 val numericId = stationId.toIntOrNull()
                 if (numericId == null) {
@@ -358,13 +404,26 @@ fun getSortedStations(): List<MetroStation> {
                     return@launch
                 }
 
-                val currentStation = _allNetworkStations.value.find { it.id == stationId || getStationSlug(it.id) == getStationSlug(stationId) }
-                val stationLines = currentStation?.lines ?: emptyList()
+                val isNetworkOnline = com.example.util.isNetworkAvailable(getApplication())
+                if (!isNetworkOnline) {
+                    if (_realTimeSelectedStationId.value == stationId) {
+                        _realTimeDepartures.value = emptyList()
+                        _realTimeError.value = "Sin conexión a internet"
+                    }
+                    return@launch
+                }
 
-                val rawArrivals = com.example.data.repository.RealTimeTransitRepository.getMetroLiveArrivals(
-                    stationId = numericId.toString(),
-                    forceRefresh = !isAutoRefresh
-                )
+                // Adaptive timeout: 4.5s under weak signal / 7.5s under good signal
+                val timeoutMs = com.example.util.getTransitFetchTimeoutMs(getApplication())
+                val isWeakSignal = timeoutMs <= 4500L
+
+                val rawArrivals = kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
+                    com.example.data.repository.RealTimeTransitRepository.getMetroLiveArrivals(
+                        stationId = numericId.toString(),
+                        forceRefresh = !isAutoRefresh,
+                        useFastTimeout = isWeakSignal
+                    )
+                } ?: emptyList()
 
                 // If user switched stations while network request was running, discard result
                 if (_realTimeSelectedStationId.value != stationId) {
@@ -413,6 +472,13 @@ fun getSortedStations(): List<MetroStation> {
                     if (com.example.util.MetroDepotFilterHelper.isDepotExcludedStationLine(stationId, currentStation?.name, cleanDep)) {
                         return@filter false
                     }
+                    // Permitir explícitamente L3 en las estaciones desde La Cova hasta Riba-roja de Túria si aparece en la API en vivo
+                    if (cleanDep == "3" && (
+                        com.example.util.MetroFilterUtils.isLaCovaToRibarrojaSection(stationId) ||
+                        com.example.util.MetroFilterUtils.isLaCovaToRibarrojaSection(currentStation?.name)
+                    )) {
+                        return@filter true
+                    }
                     if (stationLines.isNotEmpty()) {
                         stationLines.any { sl ->
                             sl.equals(dep.lineId, ignoreCase = true) ||
@@ -424,9 +490,10 @@ fun getSortedStations(): List<MetroStation> {
                 }
 
                 if (_realTimeSelectedStationId.value == stationId) {
-                    if (filteredList.isNotEmpty() || !isAutoRefresh) {
+                    if (filteredList.isNotEmpty()) {
                         _realTimeDepartures.value = filteredList
-                    } else if (filteredList.isEmpty() && isAutoRefresh && _realTimeDepartures.value.isNotEmpty()) {
+                        _realTimeError.value = null
+                    } else if (isAutoRefresh && _realTimeDepartures.value.isNotEmpty()) {
                         // On auto-refresh, if empty received from transient network, keep existing non-expired departures
                         val elapsedSeconds = 30
                         val updated = _realTimeDepartures.value.mapNotNull { dep ->
@@ -443,16 +510,20 @@ fun getSortedStations(): List<MetroStation> {
                         } else {
                             _realTimeDepartures.value = emptyList()
                         }
+                        _realTimeError.value = null
+                    } else {
+                        // Live API returned no arrivals or timed out: keep empty
+                        _realTimeDepartures.value = emptyList()
+                        _realTimeError.value = null
                     }
                     _stationAforoBloqueado.value = detectedAforo
-                    _realTimeError.value = null
                 }
             } catch (e: Exception) {
                 Log.w("RealTimeMetro", "Could not fetch live departures for $stationId: ${e.message}")
                 if (_realTimeSelectedStationId.value == stationId && !isAutoRefresh) {
                     _realTimeDepartures.value = emptyList()
                     val isOffline = !com.example.util.isNetworkAvailable(getApplication())
-                    _realTimeError.value = if (isOffline) "Sin conexión a internet" else null
+                    _realTimeError.value = if (isOffline) "Sin conexión a internet" else "Error al cargar salidas"
                 }
             } finally {
                 if (!isAutoRefresh && _realTimeSelectedStationId.value == stationId) {
@@ -461,6 +532,7 @@ fun getSortedStations(): List<MetroStation> {
                         delay(300L - elapsed)
                     }
                     _realTimeLoading.value = false
+                    _hasCompletedInitialLiveFetch.value = true
                 }
             }
         }
@@ -592,12 +664,17 @@ fun autoSelectNearestMetroStationIfNeeded(force: Boolean = false) {
         }
         val sameStation = _realTimeSelectedStationId.value == stationId
         _realTimeSelectedStationId.value = stationId
-        _selectedStationId.value = stationId
+
+        // Si es la misma estación y se dispara automáticamente, no cancelar ni relanzar peticiones activas
+        if (sameStation && !isUserAction && (_realTimeLoading.value || _realTimeDepartures.value.isNotEmpty())) {
+            return
+        }
 
         if (!sameStation) {
             fetchDeparturesJob?.cancel()
             _realTimeDepartures.value = emptyList()
             _realTimeLoading.value = true
+            _hasCompletedInitialLiveFetch.value = false
             _realTimeError.value = null
         }
 
@@ -626,14 +703,6 @@ fun autoSelectNearestMetroStationIfNeeded(force: Boolean = false) {
             "10" -> listOf("10")
             else -> listOf(lineDigit)
         }
-    }
-
-    fun getStationNameForEstacionId(estacionId: Int?, tituloEs: String? = null, descripcionEs: String? = null): String {
-        if (estacionId != null) {
-            val found = _allNetworkStations.value.find { it.id == estacionId.toString() }?.name
-            if (found != null) return found
-        }
-        return "Estación de Metro"
     }
 
     fun selectDepartureDetails(departure: RealTimeDeparture) {

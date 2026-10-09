@@ -49,9 +49,9 @@ object TripStepProgressionEngine {
     const val SUSTAINED_WALKING_SPEED_MPS: Double = 1.4
 
     /**
-     * Set of leg indices that have been explicitly or automatically confirmed as boarded.
+     * Thread-safe set of leg indices that have been explicitly or automatically confirmed as boarded.
      */
-    private val boardedLegIndices = mutableSetOf<Int>()
+    private val boardedLegIndices: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
     /**
      * Checks if a specific leg index has been confirmed as boarded.
@@ -335,10 +335,15 @@ object TripStepProgressionEngine {
             TransitMode.SUBWAY, TransitMode.BUS, TransitMode.TRAM, TransitMode.RAIL, TransitMode.METROBUS, TransitMode.CERCANIAS
         )
 
-        val captureRadius = if (isTransitLeg) 75.0 else CAPTURE_RADIUS_METERS
+        val captureRadius = if (isTransitLeg) 110.0 else CAPTURE_RADIUS_METERS
+        val currentProgress = ActiveTripProgressTracker.progressState.value
+        val isCurrentTransitBoardedOrAdvanced = !isTransitLeg || 
+                boardedLegIndices.contains(currentIndex) || 
+                (currentProgress.isBoarded && currentProgress.trackedLegIndex == currentIndex) || 
+                (currentProgress.progressWithinLeg >= 0.70f)
 
         // Capture condition: Within capture radius of leg destination (Only for WALK or if already boarded/moving on transit)
-        if (distanceToTarget <= captureRadius) {
+        if (distanceToTarget <= captureRadius && isCurrentTransitBoardedOrAdvanced) {
             val nextIndex = currentIndex + 1
             val isFinalLeg = nextIndex >= legs.size
             boardedLegIndices.remove(currentIndex)
@@ -364,8 +369,6 @@ object TripStepProgressionEngine {
         if (currentIndex + 1 < legs.size) {
             val nextLeg = legs[currentIndex + 1]
             val nextOriginCoords = getLegOriginCoordinates(nextLeg)
-            val currentProgress = ActiveTripProgressTracker.progressState.value
-            val isCurrentTransitBoardedOrAdvanced = !isTransitLeg || (currentProgress.isBoarded && currentProgress.trackedLegIndex == currentIndex) || (currentProgress.progressWithinLeg >= 0.70f)
 
             if (nextOriginCoords != null && isCurrentTransitBoardedOrAdvanced) {
                 val distanceToNextOrigin = calculateDistanceMeters(
@@ -493,8 +496,14 @@ object TripStepProgressionEngine {
                     var passedStops = previouslyPassedStops
                     if (intermediateStops.isNotEmpty()) {
                         for (i in intermediateStops.indices) {
+                            val stop = intermediateStops[i]
+                            val distToStop = if (userLat != 0.0 && userLon != 0.0) {
+                                calculateDistanceMeters(userLat, userLon, stop.lat, stop.lon)
+                            } else null
+                            val isStopReachedByCell = distToStop != null && distToStop <= 140.0
                             val stopProgressThreshold = (i + 1.0f) / totalStopsInLeg
-                            if (deadReckoningProgress >= stopProgressThreshold + 0.05f && i <= passedStops) {
+                            if (isStopReachedByCell || deadReckoningProgress >= stopProgressThreshold + 0.03f) {
+                                // Allow forward advance, never regress backward
                                 passedStops = maxOf(passedStops, i + 1)
                             }
                         }
@@ -502,6 +511,7 @@ object TripStepProgressionEngine {
                         passedStops = (deadReckoningProgress * totalStopsInLeg).toInt().coerceIn(0, intermediateStops.size)
                     }
 
+                    // Strict monotonic non-decreasing invariant: only advance forward, block any regression
                     passedStops = maxOf(previouslyPassedStops, passedStops).coerceIn(0, intermediateStops.size)
 
                     val remainingStops = if (distanceToTarget <= captureRadius || deadReckoningProgress >= 0.98f) {
@@ -510,8 +520,13 @@ object TripStepProgressionEngine {
                         (totalStopsInLeg - passedStops).coerceAtLeast(1)
                     }
 
+                    val minProgressFromPassedStops = if (totalStopsInLeg > 0) {
+                        (passedStops.toFloat() / totalStopsInLeg).coerceIn(0.05f, 0.95f)
+                    } else 0.05f
+                    val resolvedDeadReckoning = maxOf(minProgressFromPassedStops, deadReckoningProgress, currentProgressInfo.progressWithinLeg).coerceIn(0.05f, 0.98f)
+
                     ActiveTripProgressTracker.updateProgress(
-                        progressWithinLeg = deadReckoningProgress,
+                        progressWithinLeg = resolvedDeadReckoning,
                         waitTimeMessage = null,
                         isDeadReckoning = true,
                         isBoarded = true,
@@ -534,10 +549,13 @@ object TripStepProgressionEngine {
                             } else null
 
                             val stopProgressThreshold = (i + 1.0f) / totalStopsInLeg
-                            val isStopReached = (distToStop != null && distToStop <= 100.0) ||
-                                    (progress >= stopProgressThreshold + 0.05f)
+                            // Station platforms are 100-120m long; 130m tolerance ensures trains passing at speed are detected
+                            val isStopReached = (distToStop != null && distToStop <= 130.0) ||
+                                    (progress >= stopProgressThreshold + 0.03f)
 
-                            if (isStopReached && i <= passedStops) {
+                            if (isStopReached) {
+                                // Forward advance: detecting stop i advances passed count to at least i + 1.
+                                // Stale GPS readings from older stops (behind current passedStops) cannot regress the count.
                                 passedStops = maxOf(passedStops, i + 1)
                             }
                         }
@@ -545,6 +563,7 @@ object TripStepProgressionEngine {
                         passedStops = (progress * totalStopsInLeg).toInt().coerceIn(0, intermediateStops.size)
                     }
 
+                    // Strict monotonic non-decreasing invariant: only advance forward, block any regression
                     passedStops = maxOf(previouslyPassedStops, passedStops).coerceIn(0, intermediateStops.size)
 
                     val remainingStops = if (distanceToTarget <= captureRadius || progress >= 0.98f) {
@@ -553,8 +572,13 @@ object TripStepProgressionEngine {
                         (totalStopsInLeg - passedStops).coerceAtLeast(1)
                     }
 
+                    val minProgressFromPassedStops = if (totalStopsInLeg > 0) {
+                        (passedStops.toFloat() / totalStopsInLeg).coerceIn(0.05f, 0.95f)
+                    } else 0.05f
+                    val resolvedGpsProgress = maxOf(minProgressFromPassedStops, progress, currentProgressInfo.progressWithinLeg).coerceIn(0.05f, 0.98f)
+
                     ActiveTripProgressTracker.updateProgress(
-                        progressWithinLeg = progress,
+                        progressWithinLeg = resolvedGpsProgress,
                         waitTimeMessage = null,
                         isDeadReckoning = false,
                         isBoarded = true,

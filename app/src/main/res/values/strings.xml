@@ -752,4 +752,22 @@
     <string name="quick_track_scheduled_vs_live">Programado: %1$s · Estimado en vivo: %2$s</string>
     <string name="quick_track_opposite_direction_warning">Este tren circula hacia %1$s. Para ir a %2$s debes tomar un tren en sentido contrario.</string>
     <string name="quick_track_direct_official_source">Horario y tiempos oficiales (%1$d min de trayecto)</string>
+    <string name="quick_track_chip_next_stop">➔ Próx.</string>
+
+    <!-- App Updates & GitHub OTA -->
+    <string name="update_check_title">Actualizaciones de la app</string>
+    <string name="update_check_subtitle">Versión instalada: v%1$s</string>
+    <string name="update_btn_check">Buscar actualizaciones</string>
+    <string name="update_status_checking">Buscando actualizaciones en GitHub...</string>
+    <string name="update_status_up_to_date">Tienes instalada la versión más reciente (v%1$s).</string>
+    <string name="update_status_available">Nueva versión disponible: v%1$s</string>
+    <string name="update_btn_download_install">Descargar e instalar</string>
+    <string name="update_btn_install">Instalar actualización</string>
+    <string name="update_downloading_progress">Descargando actualización: %1$d%% (%2$s de %3$s)</string>
+    <string name="update_downloading_title">Descargando actualización...</string>
+    <string name="update_ready_title">Actualización lista</string>
+    <string name="update_ready_desc">El instalador se ha descargado correctamente. Pulsa en Instalar para completar la actualización.</string>
+    <string name="update_release_notes_title">Novedades de la versión</string>
+    <string name="update_size_format">Tamaño: %1$s</string>
+    <string name="update_permission_needed">Para continuar, concede permiso para instalar aplicaciones desde esta fuente en los ajustes de tu dispositivo.</string>
 </resources>

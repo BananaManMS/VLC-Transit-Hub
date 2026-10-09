@@ -31,15 +31,45 @@ class GeocodingRepository(
                 return Result.success(emptyList())
             }
 
-            // Query remote Nominatim OpenStreetMap API
-            val dtoList = api.search(query = trimmedQuery)
+            val localMatches = try {
+                val db = database
+                if (db != null) {
+                    db.geoportalStopDao().searchActiveStops(trimmedQuery).map { stop ->
+                        NominatimResult(
+                            displayName = stop.denominacion,
+                            latitude = stop.lat,
+                            longitude = stop.lon,
+                            type = "stop",
+                            category = "highway",
+                            isLocalStop = true,
+                            stopId = stop.id_parada,
+                            stopType = "EMT"
+                        )
+                    }
+                } else emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
 
-            // Keep results within reasonable bounds of Comunitat Valenciana & Spain
+            // Query remote Nominatim OpenStreetMap API
+            val dtoList = try {
+                api.search(query = trimmedQuery)
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            // Keep results within reasonable bounds of Valencia province & Spain (excluding other provinces)
             val filtered = dtoList.filter { item ->
                 val lat = item.latitude
                 val lon = item.longitude
-                // Comunitat Valenciana and connecting rail corridors
-                lat in 37.5..41.5 && lon in -2.5..1.5
+                val display = item.displayName ?: ""
+                // Valencia province bounds, and explicitly exclude external provinces
+                lat in 38.7..40.2 && lon in -1.45..0.35 &&
+                    !display.contains("Albacete", ignoreCase = true) &&
+                    !display.contains("Alpera", ignoreCase = true) &&
+                    !display.contains("Alicante", ignoreCase = true) &&
+                    !display.contains("Castellón", ignoreCase = true) &&
+                    !display.contains("Castelló", ignoreCase = true)
             }.map { it.toNominatimResult() }
 
             // Proximity sorting if user coordinates are provided
@@ -51,7 +81,8 @@ class GeocodingRepository(
                 filtered
             }
 
-            Result.success(sortedResults)
+            val combined = (localMatches + sortedResults).distinctBy { "${it.displayName}_${it.latitude}_${it.longitude}" }
+            Result.success(combined)
         } catch (e: Exception) {
             Result.failure(e)
         }

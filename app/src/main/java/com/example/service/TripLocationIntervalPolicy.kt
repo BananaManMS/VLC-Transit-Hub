@@ -12,7 +12,7 @@ import com.example.util.RealTimeTripStatus
  */
 object TripLocationIntervalPolicy {
 
-    private const val TTFF_GUARANTEE_WINDOW_SECONDS = 30L
+    private const val CRITICAL_APPROACH_WINDOW_SECONDS = 90L
 
     fun computeLocationInterval(
         trip: ActiveTripState,
@@ -30,8 +30,13 @@ object TripLocationIntervalPolicy {
         val realTimeRemainingSeconds = realTime?.vehicleSecondsRemaining?.toLong()
         val effectiveRemainingSeconds = realTimeRemainingSeconds ?: remainingLegSeconds
 
-        if (effectiveRemainingSeconds <= TTFF_GUARANTEE_WINDOW_SECONDS && !isGeofenceGateOpen) {
-            onOpenHighAccuracyGate("TTFF Guarantee Dynamic Fail-safe: Remaining ETA <= ${TTFF_GUARANTEE_WINDOW_SECONDS}s")
+        // Critical approach window: penultimate stop reached (remainingStops <= 1), remaining ETA <= 90s, or progress >= 80%
+        val isCriticalPenultimateOrArrivalApproach = (progressInfo.remainingStopsCount != null && progressInfo.remainingStopsCount!! <= 1) ||
+                effectiveRemainingSeconds <= CRITICAL_APPROACH_WINDOW_SECONDS ||
+                progressInfo.progressWithinLeg >= 0.80f
+
+        if (isCriticalPenultimateOrArrivalApproach && !isGeofenceGateOpen) {
+            onOpenHighAccuracyGate("Critical approach window: penultimate stop or ETA <= ${CRITICAL_APPROACH_WINDOW_SECONDS}s (stops remaining: ${progressInfo.remainingStopsCount})")
         }
 
         // OPTIMIZATION 1: If the user is standing at a station/stop waiting for transit (unboarded public transit leg)
@@ -39,29 +44,24 @@ object TripLocationIntervalPolicy {
         if (isTransitLeg && !progressInfo.isBoarded) {
             val vehicleArrivalMins = realTime?.vehicleArrivalMinutes ?: progressInfo.lastSeenArrivalMins ?: 99
             return if (vehicleArrivalMins <= 2) {
-                // Vehicle is arriving in <= 2 mins, increase GPS frequency to detect boarding event
+                // Vehicle is arriving in <= 2 mins, increase frequency to 10s to detect boarding event
                 10000L // 10s
             } else {
-                // Stationary at station waiting for metro/bus/train, drop GPS frequency to 30s to save immense battery!
+                // Stationary at station waiting for metro/bus/train, drop frequency to 30s to save battery
                 30000L // 30s
             }
         }
 
         return when (currentLeg.mode) {
             TransitMode.SUBWAY -> {
-                val isNearEndOrTransfer = progressInfo.progressWithinLeg >= 0.80f ||
-                        (realTime != null && ((realTime.vehicleArrivalMinutes ?: 99) <= 1 || (realTime.vehicleSecondsRemaining ?: 999) <= 60)) ||
-                        (currentLegIndex == legs.size - 1 && progressInfo.progressWithinLeg >= 0.70f)
-
-                if (isNearEndOrTransfer) {
-                    5000L // 5s interval near station/transfer to catch GPS fix during platform stop / exit
+                if (isCriticalPenultimateOrArrivalApproach) {
+                    5000L // 5s accelerated frequency during approach to penultimate/destination platform
                 } else {
-                    // Boarded subway tunnel: zero GPS reception, waste no battery, drop frequency to 20s
-                    20000L // 20s
+                    // Boarded subway tunnel cruise: GNSS sleeping, listening to cell towers/Wi-Fi every 30s
+                    30000L // 30s
                 }
             }
             TransitMode.WALK, TransitMode.BICYCLE -> {
-                // OPTIMIZATION 2: If walking/cycling on a long straight path, relax GPS interval in the middle
                 val isLongSegment = currentLeg.durationSeconds > 180 // > 3 minutes
                 val isInTheMiddleOfWalk = progressInfo.progressWithinLeg in 0.15f..0.85f
                 
@@ -71,14 +71,11 @@ object TripLocationIntervalPolicy {
                     6000L // 6s high-frequency for junctions, starting point, and final destination approaches
                 }
             }
-            TransitMode.BUS, TransitMode.TRAM, TransitMode.RAIL -> {
-                val isNearTransferOrDest = (realTime != null && (realTime.vehicleArrivalMinutes ?: 99) <= 1) ||
-                        progressInfo.progressWithinLeg >= 0.85f
-                
-                if (isNearTransferOrDest) {
-                    6000L // 6s frequency during approach to transfer point or final stop
+            TransitMode.BUS, TransitMode.TRAM, TransitMode.RAIL, TransitMode.METROBUS, TransitMode.CERCANIAS -> {
+                if (isCriticalPenultimateOrArrivalApproach) {
+                    5000L // 5s frequency during approach to penultimate stop, transfer point or final stop
                 } else {
-                    // Superficial transit: 20s interval during steady ride
+                    // Surface transit cruise: 20s interval during steady ride
                     20000L // 20s
                 }
             }

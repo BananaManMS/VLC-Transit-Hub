@@ -293,7 +293,7 @@ class MapDataLoader(
                 if (numericId != null) {
                     val arrivals = com.example.data.repository.RealTimeTransitRepository.getMetroLiveArrivals(numericId.toString())
                     liveDeps = arrivals.mapIndexed { i, arrival ->
-                        val lineObj = ValenciaMetroData.lines.find { it.id == arrival.line }
+                        val lineObj = ValenciaMetroData.getLine(arrival.line)
                         val colorHex = lineObj?.colorHex ?: "#1E88E5"
                         RealTimeDeparture(
                             lineId = arrival.line,

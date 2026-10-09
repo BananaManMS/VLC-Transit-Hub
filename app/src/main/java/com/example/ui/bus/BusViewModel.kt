@@ -6,7 +6,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.database.AppDatabase
 import com.example.data.repository.DashboardRepository
-import com.example.data.repository.StaticTransitDataCache
 import com.example.data.model.MetroStation
 import com.example.util.LocationUtils
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +14,6 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import com.example.data.network.NetworkModule
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -399,11 +397,10 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     private fun startBusCountdownTicker() {
         busCountdownJob?.cancel()
         busCountdownJob = viewModelScope.launch {
-            var tickCount = 0
+            var lastNetworkFetchMs = System.currentTimeMillis()
             while (isActive) {
                 delay(15000L) // 15-second battery-friendly cadence for EMT
                 if (!isActive) break
-                tickCount++
                 val currentList = _busTimes.value
                 if (currentList.isNotEmpty()) {
                     var changed = false
@@ -427,10 +424,19 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Poll real-time updates silently every 30 seconds (every 2 ticks)
-                if (tickCount % 2 == 0 && isActive) {
+                // Adaptive network polling delay based on closest bus arrival
+                val minMins = currentList.mapNotNull { it.minutos.toIntOrNull() }.minOfOrNull { it } ?: 999
+                val networkIntervalMs = when {
+                    minMins < 3 -> 20000L   // <3 min -> 20s
+                    minMins <= 10 -> 30000L // 3 to 10 min -> 30s
+                    else -> 60000L          // >10 min -> 60s
+                }
+
+                val now = System.currentTimeMillis()
+                if (now - lastNetworkFetchMs >= networkIntervalMs && isActive) {
                     val stop = _selectedBusStop.value
                     if (stop != null) {
+                        lastNetworkFetchMs = now
                         fetchBusTimes(
                             stopId = stop.opId,
                             limitPerLine = scheduledLimitPerLine,
@@ -471,23 +477,6 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
             currentMap.forEach { (k, v) -> jsonObj.put(k, v) }
             repository.savePreference("bus_stop_aliases", jsonObj.toString())
             loadBusStops()
-        }
-    }
-
-    fun syncGeoportalStops() {
-        viewModelScope.launch {
-            try {
-                val stops = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    BusMapper.loadStopsFromAssets(getApplication())
-                }
-                if (stops.isNotEmpty()) {
-                    database.geoportalStopDao().insertAll(stops)
-                    repository.savePreference("last_geoportal_sync", System.currentTimeMillis().toString())
-                    Log.d("GeoportalSync", "Successfully loaded ${stops.size} stops from emt_paradas_lineas.json asset!")
-                }
-            } catch (e: Exception) {
-                Log.e("GeoportalSync", "Error syncing bus stops from assets", e)
-            }
         }
     }
 
@@ -661,22 +650,6 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun markStopAsSuprimida(stopId: String) {
-        viewModelScope.launch {
-            try {
-                val stop = database.geoportalStopDao().getStopById(stopId)
-                if (stop != null) {
-                    val updated = stop.copy(suprimida = 1)
-                    database.geoportalStopDao().insertAll(listOf(updated))
-                    Log.d("EmtBus", "Successfully marked stop $stopId as suprimida (unused/inactive)")
-                    loadBusStops() // refresh lists instantly to hide it!
-                }
-            } catch (e: Exception) {
-                Log.e("EmtBus", "Error marking stop $stopId as suprimida: ${e.message}", e)
-            }
-        }
-    }
-
     private var isEmtScheduledExpanded = false
     private var scheduledLimitPerLine = 3
 
@@ -794,21 +767,6 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
             currentMap.forEach { (k, v) -> jsonObj.put(k, v) }
             repository.savePreference("metrobus_stop_aliases", jsonObj.toString())
             loadMetrobusStops()
-        }
-    }
-
-    fun refreshMetrobusDatabase() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _metrobusStopsLoading.value = true
-            try {
-                metrobusRepository.syncStops(forceRefresh = true)
-                Log.d("Metrobus", "Metrobús database refreshed successfully.")
-            } catch (e: Exception) {
-                Log.e("Metrobus", "Error refreshing Metrobus database", e)
-            } finally {
-                _metrobusStopsLoading.value = false
-                loadMetrobusStops()
-            }
         }
     }
 

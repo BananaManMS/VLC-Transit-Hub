@@ -113,7 +113,21 @@ object EmtStationHighlightManager {
         val stopLines = stop.lineas?.split(",")?.map { EmtMapOverlayLoader.normalizeLine(it) } ?: emptyList()
         val sharesLine = stopLines.any { highlightState.effectiveLinesToDraw.contains(it) }
 
-        return if (sharesLine) CONNECTED_ALPHA else DIMMED_ALPHA
+        if (!sharesLine) return DIMMED_ALPHA
+
+        if (highlightState.activeDirectionalShapeIds.isNotEmpty() && stop.lat != 0.0 && stop.lon != 0.0) {
+            val isNearActiveDirection = EmtMapOverlayLoader.isStopNearShapes(
+                stopLat = stop.lat,
+                stopLon = stop.lon,
+                shapeIds = highlightState.activeDirectionalShapeIds,
+                maxDistanceMeters = 150.0
+            )
+            if (!isNearActiveDirection) {
+                return DIMMED_ALPHA
+            }
+        }
+
+        return CONNECTED_ALPHA
     }
 
     /**

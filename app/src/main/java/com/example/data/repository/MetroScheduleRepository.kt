@@ -222,11 +222,10 @@ class MetroScheduleRepository private constructor(private val context: Context) 
                         if (effTodayMin >= currentMin - 2) {
                             effectiveMin = effTodayMin
                         }
-                    } else if (dateIdx == activeDateIdx) {
-                        // 2) Today's morning departures
-                        val effTodayMin = if (rawMin >= 1440) rawMin - 1440 else rawMin
-                        if (effTodayMin >= currentMin - 2) {
-                            effectiveMin = effTodayMin
+                    } else if (dateIdx == activeDateIdx && rawMin < 1440) {
+                        // 2) Today's morning departures (only diurnals starting today, not tomorrow's late night trains)
+                        if (rawMin >= currentMin - 2) {
+                            effectiveMin = rawMin
                         }
                     }
                 } else {
@@ -251,6 +250,7 @@ class MetroScheduleRepository private constructor(private val context: Context) 
                             timeMinutes = effectiveMin,
                             timeFormatted = formatted,
                             line = lineStr,
+                            destination = destName,
                             originWebId = origWebId,
                             originName = origName,
                             destinationWebId = destWebId,
@@ -336,7 +336,13 @@ class MetroScheduleRepository private constructor(private val context: Context) 
                     continue
                 }
 
-                val diff = kotlin.math.abs(arr[1] - estimatedArrivalMinutesOfDay)
+                val targetMinForComparison = if (currentHour < 6 && dIdx == prevDateIdx && arr[1] >= 1440 && estimatedArrivalMinutesOfDay < 360) {
+                    estimatedArrivalMinutesOfDay + 1440
+                } else {
+                    estimatedArrivalMinutesOfDay
+                }
+
+                val diff = kotlin.math.abs(arr[1] - targetMinForComparison)
 
                 if (diff < minDiff) {
                     minDiff = diff
@@ -356,12 +362,12 @@ class MetroScheduleRepository private constructor(private val context: Context) 
         val finalDestName = webIdToNameMap[finalDestWebId] ?: "Estación $finalDestWebId"
         val matchedCurrentTime = matchedEntry[1]
 
-        // Collect all departures for this exact service run (activeDateIdx, line, origin, destination) across all stations
+        // Collect all departures for this exact service run (matchedEntry[0], line, origin, destination) across all stations
         val stationTimes = mutableMapOf<Int, MutableList<Int>>()
         for ((sWebId, entries) in stopSchedules) {
             synchronized(entries) {
                 for (arr in entries) {
-                    if (arr[0] == activeDateIdx &&
+                    if (arr[0] == matchedEntry[0] &&
                         arr[2] == matchedEntry[2] &&
                         arr[3] == originWebId &&
                         arr[4] == finalDestWebId
@@ -430,8 +436,14 @@ class MetroScheduleRepository private constructor(private val context: Context) 
         if (idx >= 0) return idx
 
         // Fallback when GitHub file has not updated yet:
-        // The JSON contains 2 days [day0, day1]. If today is >= day0, day1 (index 1) represents
-        // the next day (el día siguiente) and is the closest/most recent schedule in the file.
+        val lastDateStr = datesList.lastOrNull()
+        if (lastDateStr != null && todayStr > lastDateStr) {
+            // Today is after the last date in the list (e.g., today is Saturday Oct 10 and last date in list is Friday Oct 9).
+            // We return datesList.size so the active index is logically positioned today,
+            // allowing getPreviousDateIndex() to correctly resolve to datesList.lastIndex (1).
+            return datesList.size
+        }
+
         return if (datesList.size > 1 && todayStr >= datesList[0]) {
             1
         } else {

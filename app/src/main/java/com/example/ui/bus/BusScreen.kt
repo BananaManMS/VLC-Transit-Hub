@@ -277,37 +277,9 @@ fun EmtBusScreen(
     }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    val busTimesState by busViewModel.busTimes.collectAsState()
-
     DisposableEffect(lifecycleOwner) {
         onDispose {
             busViewModel.onAppBackgrounded()
-        }
-    }
-
-    LaunchedEffect(selectedBusStop) {
-        if (selectedBusStop != null) {
-            showTimesSheet = true
-            lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
-                val stopId = selectedBusStop!!.opId
-                var isFirst = true
-                while (true) {
-                    if (!isFirst) {
-                        busViewModel.fetchBusTimes(stopId, isSilent = true)
-                    } else {
-                        isFirst = false
-                    }
-
-                    // Adaptive polling delay based on closest bus arrival
-                    val minMins = busTimesState.mapNotNull { it.minutos.toIntOrNull() }.minOfOrNull { it } ?: 999
-                    val nextDelayMs = when {
-                        minMins < 3 -> 20000L   // <3 min -> 20s
-                        minMins <= 10 -> 30000L // 3 to 10 min -> 30s
-                        else -> 60000L          // >10 min -> 60s
-                    }
-                    kotlinx.coroutines.delay(nextDelayMs)
-                }
-            }
         }
     }
 

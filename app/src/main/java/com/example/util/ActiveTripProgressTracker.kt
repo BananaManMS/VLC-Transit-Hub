@@ -40,7 +40,11 @@ object ActiveTripProgressTracker {
         val current = _progressState.value
         val isNewLeg = legIndex != -1 && legIndex != current.trackedLegIndex
 
-        val newBoarded = if (isNewLeg) (isBoarded ?: false) else (isBoarded ?: current.isBoarded)
+        val newBoarded = if (isNewLeg) {
+            (isBoarded ?: false)
+        } else {
+            if (current.isBoarded) true else (isBoarded ?: false)
+        }
         val newDepartureMs = if (isNewLeg) {
             (transitDepartureTimeMs ?: 0L)
         } else {
@@ -49,8 +53,15 @@ object ActiveTripProgressTracker {
         val newLastSeen = if (isNewLeg) lastSeenArrivalMins else (lastSeenArrivalMins ?: current.lastSeenArrivalMins)
         val newRemainingStops = if (isNewLeg) remainingStopsCount else (remainingStopsCount ?: current.remainingStopsCount)
 
+        // Monotonic forward lock (Candado de avance): once boarded on a transit leg, progress cannot regress
+        val resolvedProgress = if (!isNewLeg && current.isBoarded && newBoarded) {
+            maxOf(current.progressWithinLeg, progressWithinLeg.coerceIn(0.0f, 1.0f))
+        } else {
+            progressWithinLeg.coerceIn(0.0f, 1.0f)
+        }
+
         _progressState.value = ActiveProgressInfo(
-            progressWithinLeg = progressWithinLeg.coerceIn(0.0f, 1.0f),
+            progressWithinLeg = resolvedProgress,
             waitTimeMessage = waitTimeMessage,
             statusDetail = statusDetail,
             isDeadReckoning = isDeadReckoning,

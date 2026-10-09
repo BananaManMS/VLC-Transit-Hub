@@ -25,6 +25,9 @@ class MainApplication : Application() {
         AppDatabase.getDatabase(this)
         RealTimeTransitRepository.init(this)
         
+        // Clean any leftover update APK files from previous installs
+        com.example.util.AppUpdateManager.cleanOldUpdateApks(this)
+        
         com.example.util.StartupProfiler.log("MainApp", "scheduleDailyUpdateWorker")
         scheduleDailyUpdateWorker()
         

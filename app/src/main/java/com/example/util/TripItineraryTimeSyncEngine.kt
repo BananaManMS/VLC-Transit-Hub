@@ -31,7 +31,9 @@ object TripItineraryTimeSyncEngine {
         val updatedLegs = legs.toMutableList()
         var modified = false
 
-        val isBoarded = ActiveTripProgressTracker.progressState.value.isBoarded
+        val isBoarded = ActiveTripProgressTracker.progressState.value.isBoarded ||
+                ActiveTripStateManager.sessionState.value?.isBoarded == true ||
+                (targetTransitIdx != null && TripStepProgressionEngine.isLegBoarded(targetTransitIdx))
 
         if (targetTransitIdx != null && targetTransitIdx in updatedLegs.indices) {
             val targetLeg = updatedLegs[targetTransitIdx]
@@ -105,9 +107,9 @@ object TripItineraryTimeSyncEngine {
                 lineInAllowed && isDestinationValid
             } else false
 
-            val newRouteShortName = if (isLineAllowed && !matchedLine.isNullOrBlank()) matchedLine else targetLeg.routeShortName
-            val newHeadsign = if (isLineAllowed && !matchedDest.isNullOrBlank()) matchedDest else targetLeg.headsign
-            val newRouteColorHex = if (isLineAllowed && !matchedLine.isNullOrBlank() && matchedLine != targetLeg.routeShortName) {
+            val newRouteShortName = if (!isBoarded && isLineAllowed && !matchedLine.isNullOrBlank()) matchedLine else targetLeg.routeShortName
+            val newHeadsign = if (!isBoarded && isLineAllowed && !matchedDest.isNullOrBlank()) matchedDest else targetLeg.headsign
+            val newRouteColorHex = if (!isBoarded && isLineAllowed && !matchedLine.isNullOrBlank() && matchedLine != targetLeg.routeShortName) {
                 com.example.util.LineColorResolver.resolveRouteColorHex(targetLeg.mode, matchedLine, targetLeg.routeColorHex, targetLeg.agencyName).removePrefix("#")
             } else targetLeg.routeColorHex
 

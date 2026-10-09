@@ -214,7 +214,7 @@ object MetroMapper {
             val sharedDigits = sharedLineDigitsGetter(cleanDigit).filter { it != cleanDigit }
 
             val groupDirection = itemsInGroup.first().second
-            val terminus = MetroDirectionClassifier.getCanonicalLineTerminus(primaryDep.lineId, groupDirection)
+            val terminus = MetroDirectionClassifier.getCanonicalLineTerminus(primaryDep.lineId, groupDirection, currentStationId)
 
             LineDeparturesGroupUiModel(
                 lineId = primaryDep.lineId,

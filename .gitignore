@@ -1,18 +1,46 @@
-*.iml
-.gradle
-.kotlin
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
+# Build outputs & caches
+*.apk
+*.aab
+build/
 /build
-/captures
+app/build/
+**/build/
+.build-outputs/
+
+# Gradle & Kotlin
+.gradle/
+.kotlin/
+*.iml
+
+# Local & environment properties
+local.properties
+/local.properties
+.env
+.env.local
+
+# Signing keys & keystores (never upload to public git)
+*.jks
+*.keystore
+debug.keystore
+debug.keystore.base64
+my-upload-key.jks
+
+# IDE & Editor caches
+.idea/
 .externalNativeBuild
 .cxx
-local.properties
-.env
-debug.keystore
+/captures
+
+# AI Studio platform internal files
+.aistudio/
+tmp/
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Python & scripts
+__pycache__/
+*.pyc
+process_shapes_valencia.py

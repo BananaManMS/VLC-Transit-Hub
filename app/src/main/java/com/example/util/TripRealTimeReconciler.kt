@@ -80,6 +80,7 @@ class TripRealTimeReconciler(
     private var maxAccumulatedDelayMinutes = 0
     private var currentTripStartTimestamp = 0L
     private val boardedDriftReconciler = BoardedDriftReconciler()
+    private val boardedLegIndices = mutableSetOf<Int>()
     private var lastBoardedLegIndex: Int = -1
     private var lastReconciledLegIndex: Int = -1
     private var lastConfirmedBoardedMinsRemaining: Int? = null
@@ -97,6 +98,7 @@ class TripRealTimeReconciler(
         consecutiveOffRouteCount = 0
         maxAccumulatedDelayMinutes = 0
         currentTripStartTimestamp = 0L
+        boardedLegIndices.clear()
         lastBoardedLegIndex = -1
         lastReconciledLegIndex = -1
         lastConfirmedBoardedMinsRemaining = null
@@ -109,6 +111,8 @@ class TripRealTimeReconciler(
     }
 
     fun onBoardingConfirmed(leg: PlannedLeg, legIndex: Int, initialDepartureDelayMinutes: Int = maxAccumulatedDelayMinutes) {
+        boardedLegIndices.add(legIndex)
+        lastBoardedLegIndex = legIndex
         val vehicleIdToLock = originCache.lastMatchedOriginVehicleId
         originCache.clearMatchedOrigin()
         boardedDriftReconciler.onBoardingConfirmed(
@@ -140,6 +144,7 @@ class TripRealTimeReconciler(
     }
 
     fun clearGracePeriod() {
+        originCache.clearGracePeriod()
         originCache.clearMatchedOrigin()
     }
 
@@ -191,12 +196,12 @@ class TripRealTimeReconciler(
         val dynamicWalkMinutesRemaining = offRouteResult.dynamicWalkMinutesRemaining
 
         // 2. Identify target transit leg for current monitoring
-        val nextTransitLeg = if (isCurrentWalk && currentIdx + 1 < legs.size) {
-            legs[currentIdx + 1]
+        val (targetTransitIdx, nextTransitLeg) = if (isCurrentWalk && currentIdx + 1 < legs.size) {
+            (currentIdx + 1) to legs[currentIdx + 1]
         } else if (!isCurrentWalk) {
-            currentLeg
+            currentIdx to currentLeg
         } else {
-            null
+            null to null
         }
 
         if (nextTransitLeg == null) {
@@ -216,6 +221,13 @@ class TripRealTimeReconciler(
         val isConfirmedBoarded = progressState.isBoarded &&
                 (progressState.trackedLegIndex == currentIdx || progressState.trackedLegIndex == -1)
         val isLegBoardedByEngine = TripStepProgressionEngine.isLegBoarded(currentIdx)
+        val isExplicitlyBoarded = isConfirmedBoarded ||
+                isLegBoardedByEngine ||
+                boardedLegIndices.contains(currentIdx) ||
+                (targetTransitIdx != null && boardedLegIndices.contains(targetTransitIdx)) ||
+                (targetTransitIdx != null && TripStepProgressionEngine.isLegBoarded(targetTransitIdx)) ||
+                ActiveTripStateManager.sessionState.value?.isBoarded == true
+
         val isFarFromOrigin = if (userLat != null && userLon != null && nextTransitLeg.fromLat != 0.0) {
             TripStepProgressionEngine.calculateDistanceMeters(
                 userLat, userLon,
@@ -224,7 +236,7 @@ class TripRealTimeReconciler(
         } else false
         val isAdvancedAlongLeg = progressState.progressWithinLeg >= 0.15f
 
-        val isAlreadyBoarded = !isCurrentWalk && (isConfirmedBoarded || isLegBoardedByEngine || isFarFromOrigin || isAdvancedAlongLeg)
+        val isAlreadyBoarded = isExplicitlyBoarded || (!isCurrentWalk && (isFarFromOrigin || isAdvancedAlongLeg))
 
         // Grace Period is applicable if scheduled departure OR last matched live arrival has passed within last 5 minutes
         val scheduledStartMs = TripTimeParser.parseTimeToMillis(
@@ -455,7 +467,8 @@ class TripRealTimeReconciler(
         if (!isCurrentWalk) {
             val currentProgressInfo = ActiveTripProgressTracker.progressState.value
 
-            if (!currentProgressInfo.isBoarded) {
+            val isEngineBoarded = TripStepProgressionEngine.isLegBoarded(currentIdx)
+            if (!currentProgressInfo.isBoarded && !isEngineBoarded) {
                 ActiveTripProgressTracker.updateProgress(
                     progressWithinLeg = currentProgressInfo.progressWithinLeg,
                     waitTimeMessage = currentProgressInfo.waitTimeMessage,
@@ -476,10 +489,10 @@ class TripRealTimeReconciler(
             }
         }
 
-        if (delayMinutes > maxAccumulatedDelayMinutes) {
+        if (delayMinutes in 1..45 && delayMinutes > maxAccumulatedDelayMinutes) {
             maxAccumulatedDelayMinutes = delayMinutes
         }
-        val effectiveDelay = maxOf(delayMinutes, maxAccumulatedDelayMinutes)
+        val effectiveDelay = minOf(maxOf(delayMinutes, maxAccumulatedDelayMinutes), 45)
 
         RealTimeTripStatus(
             vehicleLine = normalizedLine.ifBlank { nextTransitLeg.routeShortName },

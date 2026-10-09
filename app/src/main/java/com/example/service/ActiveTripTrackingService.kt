@@ -83,13 +83,18 @@ class ActiveTripTrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                lastBoardedLegIndex.set(-1)
-                sensorFusionEngine.reset()
-                tripNotificationManager.resetAlerts()
-                hasAlertedFinalArrival = false
-                hasAlertedBoardingConfirmation = false
-                geofenceGpsController.startTrip()
-                startForegroundTracking()
+                val isAlreadyTracking = trackingJob?.isActive == true
+                if (!isAlreadyTracking) {
+                    lastBoardedLegIndex.set(-1)
+                    sensorFusionEngine.reset()
+                    tripNotificationManager.resetAlerts(keepForTripId = null)
+                    hasAlertedFinalArrival = false
+                    hasAlertedBoardingConfirmation = false
+                    geofenceGpsController.startTrip()
+                    startForegroundTracking()
+                } else {
+                    tripNotificationManager.resetAlerts(keepForTripId = currentActiveTrip?.tripId)
+                }
             }
             ACTION_STOP -> {
                 stopForegroundTracking()
@@ -208,8 +213,12 @@ class ActiveTripTrackingService : Service() {
                         updateSnapshotAndNotification(trip)
                     }
 
-                    // Adaptive cadence: 25s when app is foregrounded, 60s when backgrounded
-                    val cadenceMs = if (UnifiedActiveTripStateTracker.isAppForegrounded.value) 25_000L else 60_000L
+                    // Adaptive 3-speed cadence (120s relaxed / 50s standard / 25s imminent)
+                    val cadenceMs = com.example.util.TripAdaptiveCadenceEngine.calculateCadenceMs(
+                        activeTrip = trip,
+                        status = latestRealTimeStatus,
+                        isAppForegrounded = UnifiedActiveTripStateTracker.isAppForegrounded.value
+                    )
                     withTimeoutOrNull(cadenceMs) {
                         UnifiedActiveTripStateTracker.forceReconcileTrigger.first()
                     }
@@ -308,8 +317,13 @@ class ActiveTripTrackingService : Service() {
                                 ?: "Metro"
                             val vehicleName = formatVehicleNameForNotification(rawVehicleName, targetMode)
 
-                            // Prompt user via notification immediately when vehicle departs/disappears from departures board
-                            if (!hasAlertedBoardingConfirmation && latestRealTimeStatus?.isLive == true) {
+                            // Prompt user via notification when vehicle has departed
+                            // CRITICAL: NEVER alert "El vehículo ya ha salido" if real-time departures still show positive arrival minutes or if user already boarded!
+                            val isTrainStillApproaching = (latestRealTimeStatus?.vehicleArrivalMinutes != null && latestRealTimeStatus?.vehicleArrivalMinutes!! > 0) ||
+                                    (latestRealTimeStatus?.vehicleSecondsRemaining != null && latestRealTimeStatus?.vehicleSecondsRemaining!! > 20)
+                            val progressState = ActiveTripProgressTracker.progressState.value
+                            val departureGraceElapsedMs = (now - (graceUntilMs - 120_000L)).coerceAtLeast(0L)
+                            if (!hasAlertedBoardingConfirmation && latestRealTimeStatus?.isLive == true && !isTrainStillApproaching && !progressState.isBoarded && departureGraceElapsedMs >= 30_000L) {
                                 android.util.Log.i(TAG, "Grace period: vehicle departed/disappeared from board, prompting user for boarding confirmation: $vehicleName (leg $targetTransitLegIndex)")
                                 hasAlertedBoardingConfirmation = true
                                 tripNotificationManager.showBoardingConfirmationNotification(vehicleName, targetTransitLegIndex)
@@ -357,21 +371,14 @@ class ActiveTripTrackingService : Service() {
                 }
             }
 
-            // 5. Stream continuous GPS updates gated by target geofence (GPS sleeps while traveling between stations)
-            @OptIn(ExperimentalCoroutinesApi::class)
-            val gatedLocationFlow = geofenceGpsController.isGeofenceGateOpenState.flatMapLatest { isGateOpen ->
-                if (isGateOpen) {
-                    android.util.Log.i(TAG, "🟢 [GPS_GATE] Gate OPEN: Requesting GPS updates with PRIORITY_HIGH_ACCURACY")
-                    LocationUtils.getDynamicLocationUpdates(
-                        context = applicationContext,
-                        intervalFlow = locationIntervalState,
-                        minDistanceMeters = 10.0f
-                    )
-                } else {
-                    android.util.Log.i(TAG, "🔴 [GPS_GATE] Gate CLOSED: Cancelling HIGH_ACCURACY GPS requests. Receptor GNSS sleeping.")
-                    emptyFlow()
-                }
-            }
+            // 5. Stream continuous location updates: full GNSS when gate is open (walk/penultimate approach),
+            // and balanced power cellular/Wi-Fi when gate is closed (transit cruise/tunnels)
+            val gatedLocationFlow = LocationUtils.getDynamicLocationUpdates(
+                context = applicationContext,
+                intervalFlow = locationIntervalState,
+                minDistanceMeters = 10.0f,
+                allowSatelliteGpsFlow = geofenceGpsController.isGeofenceGateOpenState
+            )
 
             gatedLocationFlow.collectLatest { location ->
                 latestLocation = location
@@ -422,6 +429,37 @@ class ActiveTripTrackingService : Service() {
                                 stopSelf()
                             }
                         } else {
+                            tripNotificationManager.dismissBoardingConfirmationNotification()
+                            tripReconciler.clearGracePeriod()
+                            hasAlertedBoardingConfirmation = false
+
+                            val completedLeg = legs.getOrNull(result.completedLegIndex)
+                            val nextLeg = legs.getOrNull(result.nextLegIndex)
+                            val isCompletedTransit = completedLeg != null && completedLeg.mode in listOf(
+                                TransitMode.SUBWAY,
+                                TransitMode.BUS,
+                                TransitMode.TRAM,
+                                TransitMode.RAIL,
+                                TransitMode.METROBUS,
+                                TransitMode.CERCANIAS
+                            )
+
+                            if (isCompletedTransit) {
+                                val stationName = completedLeg.toName
+                                val nextTransitLeg = if (nextLeg?.mode in listOf(TransitMode.SUBWAY, TransitMode.BUS, TransitMode.TRAM, TransitMode.RAIL, TransitMode.METROBUS, TransitMode.CERCANIAS)) {
+                                    nextLeg
+                                } else {
+                                    legs.drop(result.nextLegIndex).firstOrNull { it.mode in listOf(TransitMode.SUBWAY, TransitMode.BUS, TransitMode.TRAM, TransitMode.RAIL, TransitMode.METROBUS, TransitMode.CERCANIAS) }
+                                }
+                                if (nextTransitLeg != null) {
+                                    tripNotificationManager.showTransferArrivalNotification(stationName, nextTransitLeg)
+                                } else {
+                                    TripSensoryAlertManager.triggerLevel1SilentConfirmation(applicationContext)
+                                }
+                            } else {
+                                TripSensoryAlertManager.triggerLevel1SilentConfirmation(applicationContext)
+                            }
+
                             activeTripRepository.advanceLegIndex(result.nextLegIndex)
                         }
                     }
@@ -489,7 +527,7 @@ class ActiveTripTrackingService : Service() {
             realTimeStatus = latestRealTimeStatus,
             appLanguage = appLanguage
         )
-        UnifiedActiveTripStateTracker.updateSnapshot(snapshot)
+        com.example.util.ActiveTripStateManager.updateFromSnapshot(snapshot, activeTripRepository)
 
         tripNotificationManager.updateNotificationWithSnapshot(
             snapshot = snapshot,
@@ -526,7 +564,7 @@ class ActiveTripTrackingService : Service() {
         lastBoardedLegIndex.set(-1)
         sensorFusionEngine.reset()
         geofenceGpsController.clearGeofences()
-        UnifiedActiveTripStateTracker.reset()
+        com.example.util.ActiveTripStateManager.reset()
         try {
             trackingJob?.cancel()
             trackingJob = null

@@ -180,4 +180,7 @@ data class ActiveTripState(
     val currentLegIndex: Int,
     val startTimestamp: Long,
     val lastUpdatedTimestamp: Long
-)
+) {
+    val tripId: String
+        get() = "${originName}_${destinationName}_$startTimestamp"
+}

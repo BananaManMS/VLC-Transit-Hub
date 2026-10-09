@@ -172,12 +172,10 @@ class BoardedDriftReconciler(
             )
         }
 
-        // Tramo final / Cerca del destino (últimos 3-4 min o >= 75% progreso): Detener polling de corredor para evitar desajustes
+        // Tramo final: Solo detener el polling si ya se ha alcanzado la estación de destino (>= 98% progreso)
         val progressFraction = ActiveTripProgressTracker.progressState.value.progressWithinLeg.coerceIn(0f, 1f)
-        val totalLegMins = (leg.durationSeconds / 60).toInt().coerceAtLeast(1)
-        val remainingMinsExpected = (totalLegMins * (1f - progressFraction)).toInt()
 
-        if (progressFraction >= 0.75f || remainingMinsExpected <= 3) {
+        if (progressFraction >= 0.98f) {
             return TransitDriftUpdate(
                 legIndex = legIndex,
                 driftMinutes = lastKnownDrift,

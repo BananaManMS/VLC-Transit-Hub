@@ -41,6 +41,7 @@ class MapLocationCoordinator(
     val isFollowingUser: StateFlow<Boolean> = _isFollowingUser.asStateFlow()
 
     private var locationTrackingJob: Job? = null
+    private var lastAccurateGpsTimeMs = 0L
 
     init {
         // Retrieve last known location synchronously from cache first, then LocationManager, then dashboard preferences
@@ -96,44 +97,46 @@ class MapLocationCoordinator(
     fun startLocationTracking(trackingContext: Context = context) {
         if (locationTrackingJob?.isActive == true) return
         locationTrackingJob = scope.launch(Dispatchers.IO) {
-            var lastGpsLat = 0.0
-            var lastGpsLon = 0.0
-            var gpsStaleRepetitions = 0
-
             locationTracker.getLocationUpdates(
                 context = trackingContext,
-                intervalMs = 12000L,
-                minDistanceMeters = 10.0f
+                intervalMs = 4000L,
+                minDistanceMeters = 2.0f
             ).collectLatest { location ->
                 withContext(Dispatchers.Main) {
+                    val now = System.currentTimeMillis()
                     val isNetworkProvider = location.provider == LocationManager.NETWORK_PROVIDER
                     val isGpsProvider = location.provider == LocationManager.GPS_PROVIDER
                     val progressInfo = ActiveTripProgressTracker.progressState.value
                     val isInTunnelOrDeadReckoning = progressInfo.isDeadReckoning && progressInfo.isBoarded
 
+                    var shouldIgnoreLocation = false
+
                     if (isGpsProvider) {
-                        val isSameLocation = Math.abs(location.latitude - lastGpsLat) < 0.00005 &&
-                                Math.abs(location.longitude - lastGpsLon) < 0.00005
-                        if (isSameLocation && lastGpsLat != 0.0) {
-                            gpsStaleRepetitions++
-                        } else {
-                            gpsStaleRepetitions = 0
-                            lastGpsLat = location.latitude
-                            lastGpsLon = location.longitude
+                        if (location.hasAccuracy() && location.accuracy <= 30f) {
+                            lastAccurateGpsTimeMs = now
+                        }
+                        if (isInTunnelOrDeadReckoning && (location.hasAccuracy() && location.accuracy > 25f)) {
+                            shouldIgnoreLocation = true
+                        }
+                        if (progressInfo.isBoarded && (location.hasAccuracy() && location.accuracy > 50f)) {
+                            shouldIgnoreLocation = true
+                        }
+                    } else if (isNetworkProvider) {
+                        val elapsedSinceGps = now - lastAccurateGpsTimeMs
+                        if (progressInfo.isBoarded && elapsedSinceGps < 8000L) {
+                            shouldIgnoreLocation = true
                         }
                     }
 
-                    val isGpsStale = gpsStaleRepetitions >= 2 || (location.hasAccuracy() && location.accuracy > 70f)
+                    val isCellTower = isInTunnelOrDeadReckoning || isNetworkProvider
 
-                    // If GPS sends repeated stale locations or we are in a tunnel/dead-reckoning leg,
-                    // prioritize network cellular updates and reject stale GPS rollbacks.
-                    val shouldIgnoreStaleGps = isGpsProvider && (isInTunnelOrDeadReckoning || isGpsStale) && _isCellTowerLocation.value
-                    val isCellTower = isNetworkProvider || (isInTunnelOrDeadReckoning && !isGpsProvider)
-
-                    if (!shouldIgnoreStaleGps) {
+                    if (!shouldIgnoreLocation) {
                         val geo = GeoPoint(location.latitude, location.longitude)
                         _userLocation.value = geo
                         _isCellTowerLocation.value = isCellTower
+
+                        val currentTarget = _cameraTarget.value
+                        val distanceToTarget = currentTarget?.distanceToAsDouble(geo) ?: Double.MAX_VALUE
 
                         if (!hasInitiallyCenteredOnUser) {
                             hasInitiallyCenteredOnUser = true
@@ -141,13 +144,15 @@ class MapLocationCoordinator(
                             _cameraTarget.value = geo
                             _cameraZoom.value = 15.5
                             _cameraAnimTrigger.value = _cameraAnimTrigger.value + 1
-                        } else if (_isFollowingUser.value) {
+                        } else if (_isFollowingUser.value && distanceToTarget > 3.0) {
                             _cameraTarget.value = geo
                             if (_cameraZoom.value < 13.0) {
                                 _cameraZoom.value = 15.5
                             }
                             _cameraAnimTrigger.value = _cameraAnimTrigger.value + 1
                         }
+                    } else {
+                        _isCellTowerLocation.value = isCellTower
                     }
                 }
             }
@@ -159,10 +164,21 @@ class MapLocationCoordinator(
         locationTrackingJob = null
     }
 
-    fun updateLocation(lat: Double, lon: Double, isCellTower: Boolean = false) {
+    fun updateLocation(lat: Double, lon: Double, isCellTower: Boolean? = null) {
+        if (locationTrackingJob?.isActive == true) {
+            // Ignore external raw/unfiltered updates when the map's dedicated tracker is active
+            return
+        }
+        val progressInfo = ActiveTripProgressTracker.progressState.value
+        val isInTunnelOrDeadReckoning = progressInfo.isDeadReckoning && progressInfo.isBoarded
+        val resolvedCell = when {
+            isInTunnelOrDeadReckoning -> true
+            isCellTower != null -> isCellTower
+            else -> _isCellTowerLocation.value
+        }
         val geo = GeoPoint(lat, lon)
         _userLocation.value = geo
-        _isCellTowerLocation.value = isCellTower
+        _isCellTowerLocation.value = resolvedCell
         if (!hasInitiallyCenteredOnUser) {
             hasInitiallyCenteredOnUser = true
             _isFollowingUser.value = true

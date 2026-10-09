@@ -43,6 +43,22 @@ object EmtMapOverlayLoader {
         _isLoadedState.value = true
     }
 
+    fun isStopNearShapes(
+        stopLat: Double,
+        stopLon: Double,
+        shapeIds: Set<String>,
+        maxDistanceMeters: Double = 150.0
+    ): Boolean {
+        if (shapeIds.isEmpty()) return true
+        val stopGeo = GeoPoint(stopLat, stopLon)
+        val allShapes = lineToShapesMap?.values?.flatten() ?: shapeCache.snapshot().values.flatten()
+        val matchingShapes = allShapes.filter { shapeIds.contains(it.shapeId) }
+        if (matchingShapes.isEmpty()) return true
+        return matchingShapes.any { shape ->
+            shape.points.any { pt -> BusRouteDirectionManager.distanceMeters(stopGeo, pt) <= maxDistanceMeters }
+        }
+    }
+
     private const val TAG = "EmtMapOverlayLoader"
 
     const val DEFAULT_EMT_COLOR = "#E52320"
@@ -242,39 +258,27 @@ object EmtMapOverlayLoader {
      * along the polyline path so they do not shift or jump when zooming.
      */
     private fun getMilestoneConfig(zoom: Double): MilestoneConfig {
-        return when {
-            zoom < 14.0 -> {
-                MilestoneConfig(
-                    strokeWidth = 6.5f,
-                    arrowPath = null,
-                    arrowStrokeWidth = 0f
-                )
-            }
-            zoom < 15.5 -> {
-                // Zoom medio: chevrons estilizados cada 500m
-                MilestoneConfig(
-                    strokeWidth = 7.5f,
-                    arrowPath = createStyledChevronPath(length = 14f, halfWidth = 8f, indent = 5f),
-                    arrowStrokeWidth = 2.2f
-                )
-            }
-            zoom < 17.0 -> {
-                // Zoom estándar de detalle cada 500m
-                MilestoneConfig(
-                    strokeWidth = 9.0f,
-                    arrowPath = createStyledChevronPath(length = 17f, halfWidth = 10f, indent = 6f),
-                    arrowStrokeWidth = 2.6f
-                )
-            }
-            else -> {
-                // Zoom cercano cada 500m
-                MilestoneConfig(
-                    strokeWidth = 10.0f,
-                    arrowPath = createStyledChevronPath(length = 20f, halfWidth = 12f, indent = 7.5f),
-                    arrowStrokeWidth = 3.0f
-                )
-            }
+        if (zoom < 11.5) {
+            return MilestoneConfig(
+                strokeWidth = 4.5f,
+                arrowPath = null,
+                arrowStrokeWidth = 0f
+            )
         }
+
+        // Smoothly interpolate size based on zoom level between 11.5 and 18.0
+        val t = ((zoom - 11.5) / (18.0 - 11.5)).coerceIn(0.0, 1.0).toFloat()
+        val length = 7.5f + 12.5f * t          // ranges from 7.5f to 20f
+        val halfWidth = 4.2f + 7.8f * t       // ranges from 4.2f to 12f
+        val indent = 2.8f + 4.7f * t          // ranges from 2.8f to 7.5f
+        val arrowStrokeWidth = 1.3f + 1.7f * t // ranges from 1.3f to 3.0f
+        val strokeWidth = 4.5f + 5.5f * t      // ranges from 4.5f to 10f
+
+        return MilestoneConfig(
+            strokeWidth = strokeWidth,
+            arrowPath = createStyledChevronPath(length, halfWidth, indent),
+            arrowStrokeWidth = arrowStrokeWidth
+        )
     }
 
     /**

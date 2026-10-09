@@ -6,11 +6,14 @@ object AccessibilityNoticeFormatter {
 
     fun cleanAccessibilityNoticeText(text: String, stationName: String? = null): String {
         var result = text.trim()
+        // Remove prefixes starting with Afectaci... up to the first colon
+        result = result.replace(Regex("(?i)^Afectaci[oó]n?[^:]*:\\s*"), "")
+
         if (stationName != null && stationName.isNotBlank()) {
             val escaped = Regex.escape(stationName)
             result = result.replace(Regex("(?i)^$escaped\\s*[-:]\\s*"), "")
         }
-        return result
+        return result.trim()
     }
 
     fun deduplicateAccessibilityTexts(texts: List<String>): List<String> {
@@ -37,8 +40,9 @@ object AccessibilityNoticeFormatter {
         val seen = LinkedHashSet<String>()
         val result = mutableListOf<AccessibilityIncident>()
         for (item in incidents) {
-            val key = "${item.id}_${cleanAccessibilityNoticeText(item.name, stationName)}"
-            if (seen.add(key)) {
+            val desc = item.descripcionEs.ifBlank { item.tituloEs }
+            val cleanDesc = cleanAccessibilityNoticeText(desc, stationName).lowercase().removeSuffix(".")
+            if (seen.add(cleanDesc)) {
                 result.add(item)
             }
         }
@@ -52,8 +56,9 @@ object AccessibilityNoticeFormatter {
         val seen = LinkedHashSet<String>()
         val result = mutableListOf<com.example.ui.cercanias.CercaniasAlert>()
         for (alert in alerts) {
-            val cleanHeader = cleanAccessibilityNoticeText(alert.headerEs, stationName)
-            if (seen.add(cleanHeader)) {
+            val text = alert.descriptionEs.ifBlank { alert.headerEs }
+            val cleanText = cleanAccessibilityNoticeText(text, stationName).lowercase().removeSuffix(".")
+            if (seen.add(cleanText)) {
                 result.add(alert)
             }
         }

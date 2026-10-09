@@ -83,6 +83,7 @@ fun MapTopBar(
     onRemoveRecentSearch: (String) -> Unit = {},
     onElegirEnMapaClick: () -> Unit = {},
     onSaveLocationShortcutClick: (isHome: Boolean) -> Unit = {},
+    onOpenNetworkPlans: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -199,40 +200,31 @@ fun MapTopBar(
                 }
             }
 
-            // SATELLITE / STREET MAP TOGGLE BUTTON (Collapses smoothly when searching)
+            // OFFICIAL NETWORK PLANS BUTTON (Round button to the right of search bar - without blue border)
             AnimatedVisibility(
-                visible = !isSearchFocused && searchQuery.isEmpty(),
+                visible = !isSearchFocused && searchQuery.isEmpty() && onOpenNetworkPlans != null,
                 enter = fadeIn(tween(200)) + expandHorizontally(tween(250)),
                 exit = fadeOut(tween(150)) + shrinkHorizontally(tween(200))
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = if (isSatelliteMode) MaterialTheme.colorScheme.primaryContainer else com.example.ui.theme.AppThemeColors.cardBackground(isDarkMode),
+                    color = com.example.ui.theme.AppThemeColors.cardBackground(isDarkMode),
                     shadowElevation = 4.dp,
-                    border = BorderStroke(
-                        1.dp,
-                        if (isSatelliteMode) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                        else if (isDarkMode) Color(0xFF334155)
-                        else Color(0xFFE2E8F0)
-                    ),
+                    border = null,
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
-                        .clickable(onClick = onToggleSatelliteMode)
-                        .testTag("map_satellite_toggle_button")
+                        .clickable { onOpenNetworkPlans?.invoke() }
+                        .testTag("map_network_plans_button")
                 ) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier.fillMaxSize()
                     ) {
                         Icon(
-                            imageVector = if (isSatelliteMode) Icons.Default.Map else Icons.Default.Layers,
-                            contentDescription = if (isSatelliteMode) {
-                                androidx.compose.ui.res.stringResource(com.example.R.string.map_switch_to_map_view)
-                            } else {
-                                androidx.compose.ui.res.stringResource(com.example.R.string.map_switch_to_sat_view)
-                            },
-                            tint = if (isSatelliteMode) MaterialTheme.colorScheme.primary else (if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)),
+                            imageVector = Icons.Default.Map,
+                            contentDescription = if (appLanguage == AppLanguage.CA) "Plànols de la xarxa" else "Planos de la red",
+                            tint = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569),
                             modifier = Modifier.size(22.dp)
                         )
                     }

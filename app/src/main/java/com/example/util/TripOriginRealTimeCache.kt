@@ -115,6 +115,10 @@ class TripOriginRealTimeCache {
         lastMatchedOriginArrivalEpochMs = arrivalEpochMs
     }
 
+    fun clearGracePeriod() {
+        clearDepartedState()
+    }
+
     fun isGracePeriodActive(): Boolean {
         val graceUntil = departedVehicleGraceUntilMs ?: return false
         return System.currentTimeMillis() < graceUntil
@@ -167,18 +171,19 @@ class TripOriginRealTimeCache {
                 nowMs
             }
 
-            // Check if a previously tracked vehicle has just departed and disappeared from the panel:
+            // Check if a previously tracked vehicle has truly departed from the platform:
             val hadTrackedVehicle = trackedVehicleLine != null || trackedVehicleKey != null
-            val wasImminentOrAtPlatform = trackedWasAtStationOrImminent ||
-                    (trackedLastSeenLiveMinutes != null && trackedLastSeenLiveMinutes!! <= 1) ||
-                    (trackedLiveDepartureEpochMs != null && nowMs >= (trackedLiveDepartureEpochMs!! - 45_000L))
+            val wasAtPlatformZeroMin = trackedLastSeenLiveMinutes == 0
+            val isDepartureEpochPast = trackedLiveDepartureEpochMs != null && nowMs >= (trackedLiveDepartureEpochMs!! + 35_000L)
 
-            // A jump to a subsequent vehicle occurs when the feed now returns a train >= 1 min (or >= 2 min)
-            // after the tracked train was already in its departure window (0 or 1 min)
-            val isCandidateJumpToSubsequent = hadTrackedVehicle && wasImminentOrAtPlatform && liveMins != null && (
-                (liveMins >= 2) ||
-                (liveMins >= 1 && trackedLastSeenLiveMinutes == 0) ||
-                (trackedLiveDepartureEpochMs != null && (incomingLiveDepEpochMs - trackedLiveDepartureEpochMs!!) >= 90_000L)
+            // A jump to a subsequent vehicle ONLY occurs if:
+            // 1) The departure epoch has actually arrived/elapsed in real time (+20s buffer), AND
+            // 2) The vehicle was genuinely confirmed at the platform (0 min) OR its departure epoch is definitely past, AND
+            // 3) The new incoming vehicle is truly a subsequent vehicle (epoch >= +90s after the tracked departure),
+            //    NEVER when the train is still approaching or if live minutes simply fluctuate between 1 and 2 mins!
+            val isCandidateJumpToSubsequent = hadTrackedVehicle && liveMins != null && (
+                (wasAtPlatformZeroMin && (nowMs >= (trackedLiveDepartureEpochMs ?: nowMs) - 5_000L) && (incomingLiveDepEpochMs - (trackedLiveDepartureEpochMs ?: nowMs)) >= 90_000L) ||
+                (isDepartureEpochPast && (incomingLiveDepEpochMs - (trackedLiveDepartureEpochMs ?: nowMs)) >= 90_000L)
             )
 
             if (isUserPhysicallyAtStation && isCandidateJumpToSubsequent) {
@@ -227,7 +232,7 @@ class TripOriginRealTimeCache {
             trackedLastSeenLiveMinutes = liveMins
             trackedLiveDepartureEpochMs = incomingLiveDepEpochMs
 
-            if (liveMins != null && liveMins <= 1) {
+            if (liveMins != null && liveMins == 0) {
                 trackedWasAtStationOrImminent = true
             }
 
@@ -248,14 +253,13 @@ class TripOriginRealTimeCache {
                 normalizedLine = incomingLine
             )
         } else {
-            // API returned empty/no live candidates for this stop/line
+            consecutiveEmptyOriginPolls++
             val hadTrackedVehicle = trackedVehicleLine != null || trackedVehicleKey != null
-            val wasImminentOrAtPlatform = trackedWasAtStationOrImminent ||
-                    (trackedLastSeenLiveMinutes != null && trackedLastSeenLiveMinutes!! <= 1) ||
-                    (trackedLiveDepartureEpochMs != null && nowMs >= (trackedLiveDepartureEpochMs!! - 45_000L))
+            val isDepartureEpochPast = trackedLiveDepartureEpochMs != null && nowMs >= (trackedLiveDepartureEpochMs!! + 40_000L)
+            val wasAtPlatformOrEpochPast = (trackedLastSeenLiveMinutes == 0 && consecutiveEmptyOriginPolls >= 2 && nowMs >= (trackedLiveDepartureEpochMs ?: nowMs) + 30_000L) || isDepartureEpochPast
 
-            if (isUserPhysicallyAtStation && hadTrackedVehicle && wasImminentOrAtPlatform) {
-                // The vehicle was at platform or imminent and disappeared completely from the feed:
+            if (isUserPhysicallyAtStation && hadTrackedVehicle && wasAtPlatformOrEpochPast) {
+                // The vehicle was at platform or its departure epoch elapsed, and disappeared completely from the feed:
                 // It just departed!
                 val liveDepartureMs = trackedLiveDepartureEpochMs ?: nowMs
                 val courtesyWindowMs = 120_000L // 2 full minutes
@@ -289,7 +293,6 @@ class TripOriginRealTimeCache {
                 )
             }
 
-            consecutiveEmptyOriginPolls++
             if (consecutiveEmptyOriginPolls < 4 && lastKnownOriginLiveMinutes != null) {
                 // Grace tolerance for micro network drops (< 4 polls / ~60s): smoothly decay and retain isLive
                 val decayedMins = (lastKnownOriginLiveMinutes!! - (consecutiveEmptyOriginPolls * 15 / 60)).coerceAtLeast(0)

@@ -63,6 +63,7 @@ fun AjustesScreen(
     viewModel: DashboardViewModel,
     cercaniasViewModel: CercaniasViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     metroViewModel: MetroViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+    appUpdateViewModel: com.example.ui.update.AppUpdateViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     onBackClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
@@ -619,7 +620,15 @@ fun AjustesScreen(
                     )
                 }
 
-                // 5. About the App Card
+                // 5. App Updates Card
+                item {
+                    com.example.ui.update.AppUpdateSettingCard(
+                        viewModel = appUpdateViewModel,
+                        isDarkMode = isDarkMode
+                    )
+                }
+
+                // 6. About the App Card
                 item {
                     UnifiedAppCard(
                         modifier = Modifier,

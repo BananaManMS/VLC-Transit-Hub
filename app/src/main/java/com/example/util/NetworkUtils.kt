@@ -13,6 +13,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 
+enum class NetworkSignalQuality {
+    OFFLINE,
+    POOR,      // Weak cellular signal (1-2 bars, low bandwidth, or unvalidated connection)
+    GOOD       // Robust WiFi or solid LTE/5G
+}
+
 fun isNetworkAvailable(context: Context): Boolean {
     return try {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -22,6 +28,66 @@ fun isNetworkAvailable(context: Context): Boolean {
         capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     } catch (e: Exception) {
         true
+    }
+}
+
+/**
+ * Detects the real-time quality of the active network connection.
+ */
+fun getNetworkSignalQuality(context: Context): NetworkSignalQuality {
+    return try {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return NetworkSignalQuality.GOOD
+        val activeNetwork = cm.activeNetwork ?: return NetworkSignalQuality.OFFLINE
+        val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return NetworkSignalQuality.OFFLINE
+        
+        if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+            return NetworkSignalQuality.OFFLINE
+        }
+
+        // On Android 10+ (API 29+), check signal strength level if reported
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val signalLevel = capabilities.signalStrength
+            // signalStrength is typically 0 to 4 (or SignalStrength.INVALID / Integer.MIN_VALUE if unmeasured)
+            if (signalLevel in 0..1) {
+                return NetworkSignalQuality.POOR
+            }
+        }
+
+        // Check estimated downstream bandwidth
+        val bandwidth = capabilities.linkDownstreamBandwidthKbps
+        if (bandwidth in 1..450) {
+            return NetworkSignalQuality.POOR
+        }
+
+        // If on mobile data without validated internet capability
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+            !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+            return NetworkSignalQuality.POOR
+        }
+
+        NetworkSignalQuality.GOOD
+    } catch (_: Exception) {
+        NetworkSignalQuality.GOOD
+    }
+}
+
+fun isWeakNetworkSignal(context: Context): Boolean {
+    val quality = getNetworkSignalQuality(context)
+    return quality == NetworkSignalQuality.POOR || quality == NetworkSignalQuality.OFFLINE
+}
+
+/**
+ * Calibrated adaptive timeout for transit departures fetching:
+ * - 4500ms (4.5s) under weak signal to quickly display official scheduled departures without freezing.
+ * - 7500ms (7.5s) under good signal to allow remote APIs a fair processing window before falling back.
+ * - 300ms if strictly offline (immediate local load).
+ */
+fun getTransitFetchTimeoutMs(context: Context): Long {
+    return when (getNetworkSignalQuality(context)) {
+        NetworkSignalQuality.OFFLINE -> 300L
+        NetworkSignalQuality.POOR -> 4500L
+        NetworkSignalQuality.GOOD -> 7500L
     }
 }
 

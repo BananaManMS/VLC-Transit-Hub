@@ -3,11 +3,13 @@ package com.example.ui.metro
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -19,13 +21,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
@@ -249,7 +260,8 @@ fun MetroScheduledHeaderAndFilters(
     isDarkMode: Boolean,
     onReset: () -> Unit,
     onLineFilterSelected: ((String?) -> Unit)?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    visibleDeparturesCount: Int? = null
 ) {
     Column(
         modifier = modifier
@@ -275,12 +287,30 @@ fun MetroScheduledHeaderAndFilters(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_next_trains_scheduled_count, scheduledDeparturesCount),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Column {
+                    val countTitle = if (visibleDeparturesCount != null && visibleDeparturesCount < scheduledDeparturesCount) {
+                        if (appLanguage == AppLanguage.CA) {
+                            "Següents trens ($visibleDeparturesCount de $scheduledDeparturesCount)"
+                        } else {
+                            "Siguientes trenes ($visibleDeparturesCount de $scheduledDeparturesCount)"
+                        }
+                    } else {
+                        androidx.compose.ui.res.stringResource(com.example.R.string.metro_next_trains_scheduled_count, scheduledDeparturesCount)
+                    }
+                    Text(
+                        text = countTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (visibleDeparturesCount != null && visibleDeparturesCount < scheduledDeparturesCount) {
+                        Text(
+                            text = if (appLanguage == AppLanguage.CA) "Fes scroll cap avall per carregar més" else "Haz scroll hacia abajo para cargar más",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
 
             IconButton(
@@ -486,10 +516,41 @@ fun MetroStretchPullUpFooter(
     stretchState: MetroPullUpStretchState? = null,
     availableLines: List<String> = emptyList(),
     selectedLineFilter: String? = null,
+    scrollState: ScrollState? = null,
     onLineFilterSelected: ((String?) -> Unit)? = null,
     onDepartureClick: ((MetroScheduledDeparture) -> Unit)? = null,
     onDepartureLongClick: ((MetroScheduledDeparture) -> Unit)? = null
 ) {
+    val pageSize = 20
+    // Initial partial load of 20 departures to open instantly and eliminate UI lag
+    var visibleLimit by remember(selectedLineFilter, isLoaded) {
+        mutableIntStateOf(pageSize)
+    }
+
+    var isLoadingMore by remember { mutableStateOf(false) }
+
+    // Auto-load next batch on scroll when user scrolls near the bottom of the list
+    LaunchedEffect(scrollState, isLoaded, scheduledDepartures.size, visibleLimit) {
+        if (scrollState == null) return@LaunchedEffect
+        snapshotFlow {
+            if (scrollState.maxValue > 0) {
+                scrollState.value >= (scrollState.maxValue - 500).coerceAtLeast(0)
+            } else false
+        }.distinctUntilChanged()
+        .collect { isNearBottom ->
+            if (isNearBottom && visibleLimit < scheduledDepartures.size && !isLoadingMore) {
+                isLoadingMore = true
+                delay(120L) // Small debounce for smooth UI frame composition
+                visibleLimit = (visibleLimit + pageSize).coerceAtMost(scheduledDepartures.size)
+                isLoadingMore = false
+            }
+        }
+    }
+
+    val chunkedDepartures = remember(scheduledDepartures, visibleLimit) {
+        scheduledDepartures.take(visibleLimit)
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -515,9 +576,10 @@ fun MetroStretchPullUpFooter(
         } else {
             AnimatedVisibility(
                 visible = isLoaded,
-                enter = fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)) +
-                        expandVertically(animationSpec = spring(stiffness = Spring.StiffnessLow)),
-                exit = fadeOut() + shrinkVertically()
+                enter = fadeIn(animationSpec = tween(200)) +
+                        expandVertically(animationSpec = tween(250)),
+                exit = fadeOut(animationSpec = tween(150)) +
+                        shrinkVertically(animationSpec = tween(200))
             ) {
                 Column(
                     modifier = Modifier
@@ -526,6 +588,7 @@ fun MetroStretchPullUpFooter(
                 ) {
                     MetroScheduledHeaderAndFilters(
                         scheduledDeparturesCount = scheduledDepartures.size,
+                        visibleDeparturesCount = chunkedDepartures.size,
                         availableLines = availableLines,
                         selectedLineFilter = selectedLineFilter,
                         appLanguage = appLanguage,
@@ -544,7 +607,7 @@ fun MetroStretchPullUpFooter(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            scheduledDepartures.forEach { item ->
+                            chunkedDepartures.forEach { item ->
                                 androidx.compose.runtime.key(item.trainServiceId, item.timeMinutes, item.destinationWebId, item.line) {
                                     MetroScheduledDepartureCard(
                                         item = item,
@@ -552,10 +615,90 @@ fun MetroStretchPullUpFooter(
                                         isDarkMode = isDarkMode,
                                         onClick = { onDepartureClick?.invoke(item) },
                                         onLongClick = if (onDepartureLongClick != null) {
-                                            { onDepartureLongClick(item) }
+                                             { onDepartureLongClick(item) }
                                         } else null
                                     )
                                 }
+                            }
+
+                            // Infinite scroll loading indicator & fallback button
+                            if (visibleLimit < scheduledDepartures.size) {
+                                val remaining = scheduledDepartures.size - visibleLimit
+                                val nextChunk = remaining.coerceAtMost(pageSize)
+
+                                if (isLoadingMore) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 14.dp)
+                                            .testTag("loading_more_scheduled_indicator"),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = if (appLanguage == AppLanguage.CA) "Carregant més trens programats..." else "Cargando más trenes programados...",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    Surface(
+                                        onClick = {
+                                            visibleLimit = (visibleLimit + pageSize).coerceAtMost(scheduledDepartures.size)
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isDarkMode) Color(0xFF1E212A) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 4.dp, bottom = 8.dp)
+                                            .testTag("load_more_scheduled_departures_btn")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 12.dp, horizontal = 16.dp),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ExpandMore,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            val btnLabel = if (appLanguage == AppLanguage.CA) {
+                                                "Carregar més trens programats (+${nextChunk} de ${remaining})"
+                                            } else {
+                                                "Cargar más trenes programados (+${nextChunk} de ${remaining})"
+                                            }
+                                            Text(
+                                                text = btnLabel,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            } else if (scheduledDepartures.size > pageSize) {
+                                Text(
+                                    text = if (appLanguage == AppLanguage.CA) "Has arribat al final dels trens programats per a hui" else "Has llegado al final de los trenes programados para hoy",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp)
+                                )
                             }
                         }
                     }

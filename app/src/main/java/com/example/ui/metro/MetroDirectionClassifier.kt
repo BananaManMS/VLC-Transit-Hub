@@ -83,8 +83,17 @@ object MetroDirectionClassifier {
         }
 
         if (currIdx == -1) {
-            // Si no encontramos la estación actual en esta línea, usamos la posición del destino respecto al punto medio
-            return if (destIdx >= lineStations.size / 2) 0 else 1
+            if (cleanLine == "3" && (
+                com.example.util.MetroFilterUtils.isLaCovaToRibarrojaSection(currentStationId) ||
+                com.example.util.MetroFilterUtils.isLaCovaToRibarrojaSection(currentStationName)
+            )) {
+                val destNorm = normalize(destination)
+                return if (destNorm.contains("riba") || destNorm.contains("traver") ||
+                    destNorm.contains("vella") || destNorm.contains("presa") ||
+                    destNorm.contains("cova") || destNorm.contains("aeroport")
+                ) 0 else 1
+            }
+            return fallbackHeuristic(cleanLine, destination)
         }
 
         if (destIdx == -1) {
@@ -231,12 +240,18 @@ object MetroDirectionClassifier {
     /**
      * Devuelve el nombre de la estación término canónica para una línea y sentido dados.
      */
-    fun getCanonicalLineTerminus(lineId: String, direction: Int): String {
+    fun getCanonicalLineTerminus(lineId: String, direction: Int, stationIdOrName: String? = null): String {
         val cleanLine = lineId.filter { it.isDigit() }
         return when (cleanLine) {
             "1" -> if (direction == 0) "Castelló" else "Bétera"
             "2" -> if (direction == 0) "Torrent Avinguda" else "Llíria"
-            "3" -> if (direction == 0) "Aeroport" else "Rafelbunyol"
+            "3" -> if (direction == 0) {
+                if (stationIdOrName != null && com.example.util.MetroFilterUtils.isLaCovaToRibarrojaSection(stationIdOrName)) {
+                    "Riba-roja de Túria"
+                } else {
+                    "Aeroport"
+                }
+            } else "Rafelbunyol"
             "4" -> if (direction == 0) "Mas del Rosari" else "Dr. Lluch"
             "5" -> if (direction == 0) "Aeroport" else "Marítim"
             "6" -> if (direction == 0) "Tossal del Rei" else "Marítim"

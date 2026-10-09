@@ -173,6 +173,7 @@ fun MapControlsOverlay(
                 appLanguage = appLanguage,
                 isSatelliteMode = isSatelliteMode,
                 onToggleSatelliteMode = { showLayersSheet = true },
+                onOpenNetworkPlans = onOpenNetworkPlans,
                 recentSearches = recentSearches,
                 homeLocation = homeLocation,
                 workLocation = workLocation,
@@ -262,24 +263,22 @@ fun MapControlsOverlay(
                     )
                     .width(56.dp)
             ) {
-                // Square FAB with Map Icon for Official Network Plans
-                if (onOpenNetworkPlans != null) {
-                    FloatingActionButton(
-                        onClick = onOpenNetworkPlans,
-                        shape = RoundedCornerShape(14.dp),
-                        containerColor = com.example.ui.theme.AppThemeColors.cardBackground(isDarkMode),
-                        contentColor = if (isDarkMode) Color(0xFF38BDF8) else Color(0xFF0284C7),
-                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
-                        modifier = Modifier
-                            .size(48.dp)
-                            .testTag("map_fab_network_plans")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Map,
-                            contentDescription = if (appLanguage == AppLanguage.CA) "Plànols de la xarxa" else "Planos de la red",
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                // Square FAB with Layers Icon for Map Details & Filters (shape preserved)
+                FloatingActionButton(
+                    onClick = { showLayersSheet = true },
+                    shape = RoundedCornerShape(14.dp),
+                    containerColor = com.example.ui.theme.AppThemeColors.cardBackground(isDarkMode),
+                    contentColor = if (isDarkMode) Color(0xFF38BDF8) else Color(0xFF0284C7),
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("map_fab_map_details")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Layers,
+                        contentDescription = if (appLanguage == AppLanguage.CA) "Detalls del mapa i filtres" else "Detalles del mapa y filtros",
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
 
                 // Recenter GPS FAB

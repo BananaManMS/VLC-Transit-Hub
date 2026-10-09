@@ -1,0 +1,70 @@
+name: Build and Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Publish Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Prepare Signing Keystore
+        run: |
+          if [ -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
+            echo "Using keystore from GitHub Secret DEBUG_KEYSTORE_BASE64..."
+            echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > debug.keystore
+          elif [ -f "debug.keystore.base64" ]; then
+            echo "Decoding local debug.keystore.base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f "debug.keystore" ]; then
+            echo "Generating debug keystore..."
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Build APK with Gradle
+        run: gradle assembleDebug --no-daemon
+
+      - name: Prepare APK Artifacts
+        id: prepare_apk
+        run: |
+          VERSION_TAG="${{ github.ref_name }}"
+          if [ -z "$VERSION_TAG" ] || [ "$VERSION_TAG" = "main" ]; then
+            VERSION_TAG="latest"
+          fi
+          OUTPUT_APK="app/build/outputs/apk/debug/VLC-Transit-Hub-${VERSION_TAG}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$OUTPUT_APK"
+          echo "apk_path=$OUTPUT_APK" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.prepare_apk.outputs.apk_path }}
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

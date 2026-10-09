@@ -42,12 +42,32 @@ class TripNotificationManager(private val context: Context) {
 
     private var lastAlertedTransferLegIndex: Int = -1
     private var lastAlertedLeaveNowLegIndex: Int = -1
+    private var hasAlertedLeaveNowForTrip: Boolean = false
+    private val alertedLeaveNowTripKeys = mutableSetOf<String>()
     private var lastAlertedDebarkLegIndex: Int = -1
+    private var lastAlertedTransferArrivalLegIndex: Int = -1
 
-    fun resetAlerts() {
-        lastAlertedTransferLegIndex = -1
-        lastAlertedLeaveNowLegIndex = -1
-        lastAlertedDebarkLegIndex = -1
+    private fun isLeaveNowAlertedInPrefs(tripId: String): Boolean {
+        val prefs = context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
+        val saved = prefs.getString("last_alerted_sal_ya_trip_id", null)
+        return saved == tripId
+    }
+
+    private fun markLeaveNowAlertedInPrefs(tripId: String) {
+        val prefs = context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
+        prefs.edit().putString("last_alerted_sal_ya_trip_id", tripId).apply()
+    }
+
+    fun resetAlerts(keepForTripId: String? = null) {
+        if (keepForTripId == null) {
+            lastAlertedTransferLegIndex = -1
+            lastAlertedLeaveNowLegIndex = -1
+            hasAlertedLeaveNowForTrip = false
+            alertedLeaveNowTripKeys.clear()
+            lastAlertedTransferArrivalLegIndex = -1
+            dismissTransferArrivalNotification()
+            lastAlertedDebarkLegIndex = -1
+        }
         lastNotificationTimeMs = 0L
         lastPostedHeadline = null
         lastPostedSubheadline = null
@@ -73,7 +93,7 @@ class TripNotificationManager(private val context: Context) {
             val alertChannel = NotificationChannel(
                 CHANNEL_ALERT_ID,
                 context.getString(R.string.notif_channel_critical_alerts),
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = context.getString(R.string.notif_channel_critical_alerts_desc)
                 enableVibration(true)
@@ -229,7 +249,7 @@ class TripNotificationManager(private val context: Context) {
                 .setSmallIcon(R.drawable.ic_stat_train_logo)
                 .setContentTitle(alertTitle)
                 .setContentText(alertBody)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setSortKey("z_trip_alert")
                 .setTimeoutAfter(12000L)
                 .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
@@ -249,8 +269,14 @@ class TripNotificationManager(private val context: Context) {
             lastAlertedTransferLegIndex = -1
         }
 
-        // B) "Sal ya" / Aviso de salida inminente hacia el primer transporte
-        if (isSalYa && currentLegIndex == 0 && lastAlertedLeaveNowLegIndex != currentLegIndex) {
+        // B) "Sal ya" / Aviso de salida inminente hacia el primer transporte (ESTRICTAMENTE UNA SOLA VEZ POR VIAJE)
+        val tripId = snapshot.activeTrip.tripId
+        val leaveNowKey = "${tripId}_$currentLegIndex"
+        val hasAlertedInPrefs = isLeaveNowAlertedInPrefs(tripId)
+        if (isSalYa && currentLegIndex == 0 && !hasAlertedLeaveNowForTrip && !hasAlertedInPrefs && !alertedLeaveNowTripKeys.contains(leaveNowKey)) {
+            hasAlertedLeaveNowForTrip = true
+            alertedLeaveNowTripKeys.add(leaveNowKey)
+            markLeaveNowAlertedInPrefs(tripId)
             lastAlertedLeaveNowLegIndex = currentLegIndex
             val leaveTitle = context.getString(R.string.notif_leave_now_title)
             val leaveBody = if (currentAppLanguage == AppLanguage.ES) {
@@ -263,7 +289,7 @@ class TripNotificationManager(private val context: Context) {
                 .setSmallIcon(R.drawable.ic_stat_train_logo)
                 .setContentTitle(leaveTitle)
                 .setContentText(leaveBody)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setSortKey("z_trip_alert")
                 .setTimeoutAfter(12000L)
                 .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
@@ -273,20 +299,36 @@ class TripNotificationManager(private val context: Context) {
                 .build()
             notificationManager.notify(NOTIFICATION_LEAVE_NOW_ID, leaveNotif)
             TripSensoryAlertManager.triggerLevel2AttentionCall(context, playAudio = true)
-        } else if (currentLegIndex > 0 || progressInfo.isBoarded || (!isSalYa && lastAlertedLeaveNowLegIndex != -1)) {
+        } else if (currentLegIndex > 0 || progressInfo.isBoarded) {
             notificationManager.cancel(NOTIFICATION_LEAVE_NOW_ID)
-            if (currentLegIndex > 0 || progressInfo.isBoarded) {
-                lastAlertedLeaveNowLegIndex = -1
+            if (currentLegIndex > 0 && progressInfo.isBoarded) {
+                dismissTransferArrivalNotification()
             }
         }
 
-        // C) Aviso de "Próxima parada / Prepárate para bajar"
-        if (progressInfo.isBoarded && currentLeg != null && currentLeg.mode in listOf(TransitMode.BUS, TransitMode.SUBWAY, TransitMode.TRAM, TransitMode.RAIL, TransitMode.METROBUS, TransitMode.CERCANIAS)) {
+        // Dismiss debark alert from previous leg if we have moved to another leg
+        if (lastAlertedDebarkLegIndex != -1 && lastAlertedDebarkLegIndex != currentLegIndex) {
+            notificationManager.cancel(NOTIFICATION_DEBARK_ID)
+            lastAlertedDebarkLegIndex = -1
+        }
+
+        // C) Aviso de "Próxima parada / Prepárate para bajar" (y transbordos)
+        val isTransitLeg = currentLeg != null && currentLeg.mode in listOf(
+            TransitMode.BUS,
+            TransitMode.SUBWAY,
+            TransitMode.TRAM,
+            TransitMode.RAIL,
+            TransitMode.METROBUS,
+            TransitMode.CERCANIAS
+        )
+
+        if (progressInfo.isBoarded && isTransitLeg) {
             val isImminentDebark = snapshot.isImminentDebark
 
             if (isImminentDebark && lastAlertedDebarkLegIndex != currentLegIndex) {
                 lastAlertedDebarkLegIndex = currentLegIndex
-                val modeLabel = when (currentLeg.mode) {
+                val isEs = currentAppLanguage == AppLanguage.ES
+                val modeLabel = when (currentLeg!!.mode) {
                     TransitMode.BUS -> "Bus"
                     TransitMode.METROBUS -> "Metrobús"
                     TransitMode.SUBWAY -> "Metro"
@@ -296,16 +338,44 @@ class TripNotificationManager(private val context: Context) {
                 }
                 val lineLabel = currentLeg.routeShortName ?: ""
                 val destStation = currentLeg.toName
-                val debarkTitle = context.getString(R.string.notif_next_stop_title, destStation)
-                val debarkBody = context.getString(R.string.notif_prepare_alight, modeLabel, lineLabel)
+
+                val nextTransitLeg = if (currentLegIndex + 1 < legs.size) {
+                    legs.subList(currentLegIndex + 1, legs.size).firstOrNull {
+                        it.mode in listOf(
+                            TransitMode.SUBWAY,
+                            TransitMode.BUS,
+                            TransitMode.TRAM,
+                            TransitMode.RAIL,
+                            TransitMode.METROBUS,
+                            TransitMode.CERCANIAS
+                        )
+                    }
+                } else null
+                val hasTransferAhead = nextTransitLeg != null
+
+                val debarkTitle = if (hasTransferAhead) {
+                    if (isEs) "Transbordo en $destStation" else "Transbordament en $destStation"
+                } else {
+                    context.getString(R.string.notif_next_stop_title, destStation)
+                }
+
+                val debarkBody = if (hasTransferAhead && nextTransitLeg != null) {
+                    val nextLine = nextTransitLeg.routeShortName ?: nextTransitLeg.routeLongName ?: ""
+                    if (isEs) {
+                        "Próxima parada. Prepárate para bajar y transbordar a $nextLine."
+                    } else {
+                        "Pròxima parada. Prepara't per baixar i transbordar a $nextLine."
+                    }
+                } else {
+                    context.getString(R.string.notif_prepare_alight, modeLabel, lineLabel)
+                }
 
                 val debarkNotif = NotificationCompat.Builder(context, CHANNEL_ALERT_ID)
                     .setSmallIcon(R.drawable.ic_stat_train_logo)
                     .setContentTitle(debarkTitle)
                     .setContentText(debarkBody)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                     .setSortKey("z_trip_alert")
-                    .setTimeoutAfter(12000L)
                     .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
                     .setDefaults(NotificationCompat.DEFAULT_ALL)
                     .setAutoCancel(true)
@@ -313,12 +383,7 @@ class TripNotificationManager(private val context: Context) {
                     .build()
                 notificationManager.notify(NOTIFICATION_DEBARK_ID, debarkNotif)
                 TripSensoryAlertManager.triggerLevel2AttentionCall(context, playAudio = true)
-            } else if (lastAlertedDebarkLegIndex != -1 && (progressInfo.progressWithinLeg >= 0.98f || distanceToTarget != null && distanceToTarget <= 50.0)) {
-                notificationManager.cancel(NOTIFICATION_DEBARK_ID)
             }
-        } else if (lastAlertedDebarkLegIndex != -1) {
-            notificationManager.cancel(NOTIFICATION_DEBARK_ID)
-            lastAlertedDebarkLegIndex = -1
         }
 
         // 3. System Dark/Light Mode Detection & Color Adaptation
@@ -557,7 +622,7 @@ class TripNotificationManager(private val context: Context) {
             .setTimeoutAfter(30000L)
             .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setDefaults(Notification.DEFAULT_ALL)
             .setVibrate(longArrayOf(0, 350, 150, 350))
             .setAutoCancel(true)
@@ -572,12 +637,59 @@ class TripNotificationManager(private val context: Context) {
         notificationManager.cancel(NOTIFICATION_BOARDING_CONFIRM_ID)
     }
 
+    fun showTransferArrivalNotification(stationName: String, nextTransitLeg: PlannedLeg?) {
+        if (nextTransitLeg == null) return
+        val currentAppLanguage = getAppLanguage()
+        val isEs = currentAppLanguage == AppLanguage.ES
+        val nextLine = nextTransitLeg.routeShortName ?: ""
+        val nextDest = nextTransitLeg.toName ?: ""
+        val title = if (isEs) "Transbordo en $stationName" else "Transbordament en $stationName"
+        val body = if (isEs) {
+            if (nextLine.isNotBlank()) "Has llegado a $stationName. Dirígete al andén de la Línea $nextLine ($nextDest)."
+            else "Has llegado a $stationName. Prepárate para realizar tu transbordo."
+        } else {
+            if (nextLine.isNotBlank()) "Has arribat a $stationName. Vés a l'andana de la Línia $nextLine ($nextDest)."
+            else "Has arribat a $stationName. Prepara't per al teu transbordament."
+        }
+
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notif = NotificationCompat.Builder(context, CHANNEL_ALERT_ID)
+            .setSmallIcon(R.drawable.ic_stat_train_logo)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setSortKey("z_trip_alert")
+            .setTimeoutAfter(30000L)
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        notificationManager.notify(NOTIFICATION_TRANSFER_ARRIVAL_ID, notif)
+        TripSensoryAlertManager.triggerLevel2AttentionCall(context, playAudio = true)
+    }
+
+    fun dismissTransferArrivalNotification() {
+        notificationManager.cancel(NOTIFICATION_TRANSFER_ARRIVAL_ID)
+    }
+
     fun cancelAllNotifications() {
         notificationManager.cancel(NOTIFICATION_ID)
         notificationManager.cancel(NOTIFICATION_ALERT_ID)
         notificationManager.cancel(NOTIFICATION_LEAVE_NOW_ID)
         notificationManager.cancel(NOTIFICATION_DEBARK_ID)
         notificationManager.cancel(NOTIFICATION_BOARDING_CONFIRM_ID)
+        notificationManager.cancel(NOTIFICATION_TRANSFER_ARRIVAL_ID)
     }
 
     fun getAppLanguage(): AppLanguage {
@@ -601,8 +713,9 @@ class TripNotificationManager(private val context: Context) {
         const val NOTIFICATION_LEAVE_NOW_ID = 4003
         const val NOTIFICATION_DEBARK_ID = 4004
         const val NOTIFICATION_BOARDING_CONFIRM_ID = 4005
+        const val NOTIFICATION_TRANSFER_ARRIVAL_ID = 4006
         const val CHANNEL_ID = "active_trip_channel_v4"
-        const val CHANNEL_ALERT_ID = "active_trip_alert_channel_v4"
+        const val CHANNEL_ALERT_ID = "active_trip_alert_channel_v5"
         const val GROUP_ACTIVE_TRIP_ONGOING = "com.example.transit.GROUP_ACTIVE_TRIP_ONGOING"
         const val GROUP_TRIP_ALERTS = "com.example.transit.GROUP_TRIP_ALERTS"
     }

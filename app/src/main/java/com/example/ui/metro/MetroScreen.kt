@@ -53,22 +53,6 @@ fun MetroScreen(
     val isLoading by metroViewModel.realTimeLoading.collectAsState()
     val error by metroViewModel.realTimeError.collectAsState()
 
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, metroViewModel) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) {
-                metroViewModel.startRealTimeRefreshTicker()
-            } else if (event == Lifecycle.Event.ON_STOP) {
-                metroViewModel.stopRealTimeRefreshTicker()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            metroViewModel.stopRealTimeRefreshTicker()
-        }
-    }
-
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 3 })
     LaunchedEffect(initialPage) {
         if (pagerState.currentPage != initialPage) {
@@ -76,6 +60,30 @@ fun MetroScreen(
         }
     }
     val scope = rememberCoroutineScope()
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val isSalidasTab = pagerState.currentPage == 0
+    DisposableEffect(lifecycleOwner, metroViewModel, isSalidasTab) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
+                if (isSalidasTab) {
+                    metroViewModel.startRealTimeRefreshTicker()
+                }
+            } else if (event == Lifecycle.Event.ON_STOP || event == Lifecycle.Event.ON_PAUSE) {
+                metroViewModel.stopRealTimeRefreshTicker()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (isSalidasTab && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            metroViewModel.startRealTimeRefreshTicker()
+        } else {
+            metroViewModel.stopRealTimeRefreshTicker()
+        }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            metroViewModel.stopRealTimeRefreshTicker()
+        }
+    }
 
     Column(
         modifier = modifier

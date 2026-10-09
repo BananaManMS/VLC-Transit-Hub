@@ -165,11 +165,17 @@ class RenfeScheduleSyncManager(
         }
 
         try {
+            val fastSyncClient = com.example.data.network.NetworkModule.okHttpClient.newBuilder()
+                .connectTimeout(4000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .readTimeout(4000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .callTimeout(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .build()
+
             val request = okhttp3.Request.Builder()
                 .url("https://raw.githubusercontent.com/BananaManMS/cercanias-vlc-schedule/refs/heads/main/cercanias_valencia_schedule.json")
                 .build()
 
-            com.example.data.network.NetworkModule.okHttpClient.newCall(request).execute().use { response ->
+            fastSyncClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val text = response.body?.string() ?: ""
                     if (isValidScheduleJson(text)) {
@@ -255,7 +261,7 @@ class RenfeScheduleSyncManager(
     suspend fun initDatabaseFromAssetsIfNeeded() = withContext(Dispatchers.IO) {
         try {
             val currentAssetsVersion = database.preferenceDao().getPreference("cercanias_assets_version")?.value ?: "0"
-            if (currentAssetsVersion != "17") {
+            if (currentAssetsVersion != "19") {
                 try {
                     if (localScheduleFile.exists()) {
                         localScheduleFile.delete()
@@ -265,7 +271,7 @@ class RenfeScheduleSyncManager(
                     stationDao.deleteAllStations()
                 } catch (e: Exception) {}
                 database.preferenceDao().insertPreference(
-                    com.example.data.database.PreferenceEntity("cercanias_assets_version", "17")
+                    com.example.data.database.PreferenceEntity("cercanias_assets_version", "19")
                 )
             }
         } catch (e: Exception) {

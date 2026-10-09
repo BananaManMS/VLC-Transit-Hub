@@ -924,6 +924,31 @@ fun ActiveTripOverlay(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            if (isLive) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF00A86B).copy(alpha = if (isDark) 0.22f else 0.12f))
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                ) {
+                                    com.example.ui.components.LiveRssFeedIcon(
+                                        contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.status_live),
+                                        tint = Color(0xFF00A86B),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_status_live),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = Color(0xFF00A86B),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 10.sp
+                                        )
+                                    )
+                                }
+                            }
                         }
 
                         // "Pasos >" Clickable text

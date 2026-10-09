@@ -150,7 +150,10 @@ fun ProximosTrenesScreen(
     val selectedLineFilter by metroScheduleViewModel.selectedLineFilter.collectAsState()
     val availableLines by metroScheduleViewModel.availableLines.collectAsState()
 
-    val selectedStation = metroViewModel.getStationInfo(selectedStationId)
+    val allNetworkStations by metroViewModel.allNetworkStations.collectAsState()
+    val selectedStation = remember(allNetworkStations, selectedStationId) {
+        allNetworkStations.find { it.id == selectedStationId }
+    }
 
     val scrollState = rememberScrollState()
     LaunchedEffect(selectedStationId) {
@@ -180,9 +183,11 @@ fun ProximosTrenesScreen(
         }
     }
 
-    // Auto-load scheduled departures immediately if live departures API returns empty or fails
-    LaunchedEffect(selectedStationId, isLoading, visibleDepartures.isEmpty(), error, isInlineTheoreticalLoaded, isLoadingInlineTheoretical) {
-        if (!isLoading && (visibleDepartures.isEmpty() || error != null) && !isInlineTheoreticalLoaded && !isLoadingInlineTheoretical) {
+    val hasCompletedInitialLiveFetch by metroViewModel.hasCompletedInitialLiveFetch.collectAsState()
+
+    // Auto-load scheduled departures only after live departures API has actually completed and returned empty or failed
+    LaunchedEffect(selectedStationId, isLoading, hasCompletedInitialLiveFetch, visibleDepartures.isEmpty(), error, isInlineTheoreticalLoaded, isLoadingInlineTheoretical) {
+        if (!isLoading && hasCompletedInitialLiveFetch && (visibleDepartures.isEmpty() || error != null) && !isInlineTheoreticalLoaded && !isLoadingInlineTheoretical) {
             val stId = selectedStation?.id ?: selectedStationId
             val stName = selectedStation?.name ?: "Estación"
             metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
@@ -276,29 +281,7 @@ fun ProximosTrenesScreen(
 
     val onScheduledDepartureClick: (MetroScheduledDeparture) -> Unit = remember(appLanguage) {
         { scheduledItem ->
-            val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
-            val currentMinOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
-            val diffMin = (scheduledItem.timeMinutes - currentMinOfDay).coerceAtLeast(0)
-            val cleanLine = scheduledItem.line.replace("L", "", ignoreCase = true).trim()
-            val lineHex = com.example.util.LineColorResolver.getMetroLineColorHex("L$cleanLine")
-            val realTimeDep = RealTimeDeparture(
-                lineId = "L$cleanLine",
-                destination = scheduledItem.destinationName,
-                minutesRemaining = diffMin,
-                secondsRemaining = diffMin * 60,
-                colorHex = lineHex,
-                estimatedTime = scheduledItem.timeFormatted,
-                status = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
-                track = null,
-                capacidad = null,
-                aforoBloqueado = null,
-                vehicleId = null,
-                trainServiceId = scheduledItem.trainServiceId,
-                originStationName = scheduledItem.originName,
-                originWebId = scheduledItem.originWebId,
-                destinationWebId = scheduledItem.destinationWebId,
-                id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}"
-            )
+            val realTimeDep = scheduledItem.toRealTimeDeparture(appLanguage, forQuickTrack = false)
             metroViewModel.selectDepartureDetails(realTimeDep)
         }
     }
@@ -312,28 +295,7 @@ fun ProximosTrenesScreen(
                 val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
                 android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                val cleanLine = scheduledItem.line.replace("L", "", ignoreCase = true).trim()
-                val lineHex = com.example.util.LineColorResolver.getMetroLineColorHex("L$cleanLine")
-                val realTimeDep = RealTimeDeparture(
-                    lineId = "L$cleanLine",
-                    destination = scheduledItem.destinationName,
-                    minutesRemaining = diffMin,
-                    secondsRemaining = diffMin * 60,
-                    colorHex = lineHex,
-                    estimatedTime = scheduledItem.timeFormatted,
-                    status = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
-                    track = null,
-                    capacidad = null,
-                    aforoBloqueado = null,
-                    vehicleId = null,
-                    trainServiceId = scheduledItem.trainServiceId,
-                    originStationName = scheduledItem.originName,
-                    originWebId = scheduledItem.originWebId,
-                    destinationWebId = scheduledItem.destinationWebId,
-                    targetArrivalEpochMs = System.currentTimeMillis() + (diffMin * 60_000L),
-                    id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}",
-                    isRealTime = false
-                )
+                val realTimeDep = scheduledItem.toRealTimeDeparture(appLanguage, forQuickTrack = true)
                 quickTrackDeparture = realTimeDep
                 showQuickTrackSheet = true
             }
@@ -860,6 +822,7 @@ fun ProximosTrenesScreen(
                             stretchState = pullUpStretchState,
                             availableLines = availableLines,
                             selectedLineFilter = selectedLineFilter,
+                            scrollState = scrollState,
                             onLineFilterSelected = { line ->
                                 metroScheduleViewModel.setLineFilter(line)
                             },
@@ -889,67 +852,11 @@ fun ProximosTrenesScreen(
             onDismiss = { metroScheduleViewModel.dismissScheduledDepartures() },
             onDepartureClick = { scheduledItem ->
                 metroScheduleViewModel.dismissScheduledDepartures()
-                val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
-                val currentMinOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
-                val diffMin = (scheduledItem.timeMinutes - currentMinOfDay).coerceAtLeast(0)
-                val cleanLine = scheduledItem.line.replace("L", "", ignoreCase = true).trim()
-                val lineHex = com.example.util.LineColorResolver.getMetroLineColorHex("L$cleanLine")
-                val realTimeDep = RealTimeDeparture(
-                    lineId = "L$cleanLine",
-                    destination = scheduledItem.destinationName,
-                    minutesRemaining = diffMin,
-                    secondsRemaining = diffMin * 60,
-                    colorHex = lineHex,
-                    estimatedTime = scheduledItem.timeFormatted,
-                    status = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
-                    track = null,
-                    capacidad = null,
-                    aforoBloqueado = null,
-                    vehicleId = null,
-                    trainServiceId = scheduledItem.trainServiceId,
-                    originStationName = scheduledItem.originName,
-                    originWebId = scheduledItem.originWebId,
-                    destinationWebId = scheduledItem.destinationWebId,
-                    targetArrivalEpochMs = System.currentTimeMillis() + (diffMin * 60_000L),
-                    id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}",
-                    isRealTime = false
-                )
-                metroViewModel.selectDepartureDetails(realTimeDep)
+                onScheduledDepartureClick(scheduledItem)
             },
             onDepartureLongClick = { scheduledItem ->
                 metroScheduleViewModel.dismissScheduledDepartures()
-                val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
-                val currentMinOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
-                val diffMin = (scheduledItem.timeMinutes - currentMinOfDay).coerceAtLeast(0)
-                if (diffMin > 60) {
-                    val msg = if (appLanguage == AppLanguage.CA) "Només es pot activar el seguiment a metros a menys d'1h" else "Solo se puede activar notificaciones a metros a menos de 1h"
-                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
-                } else {
-                    val cleanLine = scheduledItem.line.replace("L", "", ignoreCase = true).trim()
-                    val lineHex = com.example.util.LineColorResolver.getMetroLineColorHex("L$cleanLine")
-                    val realTimeDep = RealTimeDeparture(
-                        lineId = "L$cleanLine",
-                        destination = scheduledItem.destinationName,
-                        minutesRemaining = diffMin,
-                        secondsRemaining = diffMin * 60,
-                        colorHex = lineHex,
-                        estimatedTime = scheduledItem.timeFormatted,
-                        status = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
-                        track = null,
-                        capacidad = null,
-                        aforoBloqueado = null,
-                        vehicleId = null,
-                        trainServiceId = scheduledItem.trainServiceId,
-                        originStationName = scheduledItem.originName,
-                        originWebId = scheduledItem.originWebId,
-                        destinationWebId = scheduledItem.destinationWebId,
-                        targetArrivalEpochMs = System.currentTimeMillis() + (diffMin * 60_000L),
-                        id = "sched_${scheduledItem.trainServiceId}_${scheduledItem.timeMinutes}_${scheduledItem.line}",
-                        isRealTime = false
-                    )
-                    quickTrackDeparture = realTimeDep
-                    showQuickTrackSheet = true
-                }
+                onScheduledDepartureLongClick(scheduledItem)
             }
         )
     }
@@ -1032,6 +939,37 @@ fun ProximosTrenesScreen(
         }
     )
 }
+}
+
+private fun MetroScheduledDeparture.toRealTimeDeparture(
+    appLanguage: AppLanguage,
+    forQuickTrack: Boolean = false
+): RealTimeDeparture {
+    val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
+    val currentMinOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+    val diffMin = (this.timeMinutes - currentMinOfDay).coerceAtLeast(0)
+    val cleanLine = this.line.replace("L", "", ignoreCase = true).trim()
+    val lineHex = com.example.util.LineColorResolver.getMetroLineColorHex("L$cleanLine")
+    return RealTimeDeparture(
+        lineId = "L$cleanLine",
+        destination = this.destinationName,
+        minutesRemaining = diffMin,
+        secondsRemaining = diffMin * 60,
+        colorHex = lineHex,
+        estimatedTime = this.timeFormatted,
+        status = if (appLanguage == AppLanguage.CA) "Programat" else "Programado",
+        track = null,
+        capacidad = null,
+        aforoBloqueado = null,
+        vehicleId = null,
+        trainServiceId = this.trainServiceId,
+        originStationName = this.originName,
+        originWebId = this.originWebId,
+        destinationWebId = this.destinationWebId,
+        targetArrivalEpochMs = System.currentTimeMillis() + (diffMin * 60_000L),
+        id = "sched_${this.trainServiceId}_${this.timeMinutes}_${this.line}",
+        isRealTime = false
+    )
 }
 
 

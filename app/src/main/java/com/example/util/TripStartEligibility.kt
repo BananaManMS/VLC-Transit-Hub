@@ -11,7 +11,7 @@ object TripStartEligibility {
      * Evaluates if a trip can be started in active navigation mode right now.
      * Requires BOTH:
      * 1. Distance between user GPS location and trip origin is <= 300 meters.
-     * 2. Trip departure time is within <= 30 minutes from current time.
+     * 2. Trip departure time is within the allowed window (-10 to +40 minutes from current time).
      */
     fun canStartTrip(
         itinerary: PlannedItinerary,
@@ -22,7 +22,7 @@ object TripStartEligibility {
         val isDistanceOk = isOriginNearUser(itinerary, userLocation, originLocation)
         if (!isDistanceOk) return false
 
-        // Condition 2: Departure time <= 30 minutes
+        // Condition 2: Departure time within window (-10 to +40 minutes)
         val isTimeOk = isDepartureTimeWithinWindow(itinerary)
         return isTimeOk
     }
@@ -66,11 +66,11 @@ object TripStartEligibility {
     }
 
     /**
-     * Checks if trip departure time is within 30 minutes from now (range: -15 mins to +30 mins).
+     * Checks if trip departure time is within window from now (range: -10 mins to +40 mins).
      */
     fun isDepartureTimeWithinWindow(itinerary: PlannedItinerary): Boolean {
         val diffMinutes = getMinutesUntilDeparture(itinerary) ?: return true // Default pass if unparseable
-        return diffMinutes in -15..30
+        return diffMinutes in -10..40
     }
 
     /**

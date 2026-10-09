@@ -159,29 +159,20 @@ object MetrobusStationHighlightManager {
                     infoWindow = null
                     setOnClickListener { _, _, _ -> true }
 
+                    val t = ((currentZoom - 11.5) / (18.0 - 11.5)).coerceIn(0.0, 1.0).toFloat()
                     val strokeW = if (showArrows) {
-                        when {
-                            currentZoom < 14.0 -> 6.5f
-                            currentZoom < 15.5 -> 7.5f
-                            currentZoom < 17.0 -> 9.0f
-                            else -> 10.0f
-                        }
+                        4.5f + 5.5f * t
                     } else {
                         6.5f
                     }
                     outlinePaint.strokeWidth = strokeW
 
-                    if (showArrows && currentZoom >= 14.0) {
-                        val arrowPath = when {
-                            currentZoom < 15.5 -> createStyledChevronPath(14f, 8f, 5f)
-                            currentZoom < 17.0 -> createStyledChevronPath(17f, 10f, 6f)
-                            else -> createStyledChevronPath(20f, 12f, 7.5f)
-                        }
-                        val arrowStrokeWidth = when {
-                            currentZoom < 15.5 -> 2.2f
-                            currentZoom < 17.0 -> 2.6f
-                            else -> 3.0f
-                        }
+                    if (showArrows && currentZoom >= 11.5) {
+                        val length = 7.5f + 12.5f * t
+                        val halfWidth = 4.2f + 7.8f * t
+                        val indent = 2.8f + 4.7f * t
+                        val arrowStrokeWidth = 1.3f + 1.7f * t
+                        val arrowPath = createStyledChevronPath(length, halfWidth, indent)
 
                         val fillPaint = Paint().apply {
                             color = Color.WHITE

@@ -1,6 +1,0 @@
-{
-  "summary":  "Plan de implementación para la función de Seguimiento Rápido de Metrovalencia (Quick Train Pin). Permite monitorizar un tren en tiempo real o fijar una alerta de bajada en destino con una pulsación prolongada, sin configurar rutas ni transbordos, mediante notificaciones continuas silenciosas y soporte para pastillas activas en la barra de estado de Android 16+ (Rich Ongoing Notifications).",
-  "updatedAt":  "2026-10-04T00:48:06.240678583Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}

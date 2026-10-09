@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.model.MetroScheduledDeparture
 import com.example.data.model.MetroTrainTimeline
 import com.example.data.repository.MetroScheduleRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,17 +59,27 @@ class MetroScheduleViewModel(application: Application) : AndroidViewModel(applic
     private val _isLoadingTimeline = MutableStateFlow(false)
     val isLoadingTimeline = _isLoadingTimeline.asStateFlow()
 
+    private var pruneJob: Job? = null
+
     init {
         viewModelScope.launch {
             scheduleRepository.ensureLoaded()
         }
-        viewModelScope.launch {
-            while (isActive) {
-                delay(30_000L)
-                if (_isInlineTheoreticalLoaded.value || _isScheduledSheetVisible.value) {
-                    pruneDeparturesPastCurrentTime()
+    }
+
+    private fun checkPruneTicker() {
+        if (_isInlineTheoreticalLoaded.value || _isScheduledSheetVisible.value) {
+            if (pruneJob?.isActive != true) {
+                pruneJob = viewModelScope.launch {
+                    while (isActive) {
+                        delay(30_000L)
+                        pruneDeparturesPastCurrentTime()
+                    }
                 }
             }
+        } else {
+            pruneJob?.cancel()
+            pruneJob = null
         }
     }
 
@@ -173,10 +184,12 @@ class MetroScheduleViewModel(application: Application) : AndroidViewModel(applic
                     _availableLines.value = emptyList()
                 }
                 _isInlineTheoreticalLoaded.value = true
+                checkPruneTicker()
             } catch (e: Exception) {
                 cachedStationDepartures = emptyList()
                 _inlineTheoreticalDepartures.value = emptyList()
                 _isInlineTheoreticalLoaded.value = true
+                checkPruneTicker()
             } finally {
                 _isLoadingInlineTheoretical.value = false
             }
@@ -197,11 +210,13 @@ class MetroScheduleViewModel(application: Application) : AndroidViewModel(applic
         _isInlineTheoreticalLoaded.value = false
         _isLoadingInlineTheoretical.value = false
         _selectedLineFilter.value = null
+        checkPruneTicker()
     }
 
     fun showScheduledDepartures(stationFgvId: String, stationName: String) {
         _isScheduledSheetVisible.value = true
         _isLoadingScheduled.value = true
+        checkPruneTicker()
         viewModelScope.launch {
             try {
                 scheduleRepository.ensureLoaded()
@@ -228,6 +243,7 @@ class MetroScheduleViewModel(application: Application) : AndroidViewModel(applic
     fun dismissScheduledDepartures() {
         _isScheduledSheetVisible.value = false
         _scheduledDepartures.value = emptyList()
+        checkPruneTicker()
     }
 
     /**
@@ -257,7 +273,14 @@ class MetroScheduleViewModel(application: Application) : AndroidViewModel(applic
                         val h = parts.getOrNull(0)?.toIntOrNull()
                         val m = parts.getOrNull(1)?.toIntOrNull()
                         if (h != null && m != null) {
-                            h * 60 + m
+                            val cal = Calendar.getInstance(madridZone)
+                            val currentHour = cal.get(Calendar.HOUR_OF_DAY)
+                            val baseMin = h * 60 + m
+                            if (currentHour >= 12 && h < 6) {
+                                baseMin + 1440
+                            } else {
+                                baseMin
+                            }
                         } else {
                             val cal = Calendar.getInstance(madridZone)
                             (cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)) + (secondsRemaining / 60)

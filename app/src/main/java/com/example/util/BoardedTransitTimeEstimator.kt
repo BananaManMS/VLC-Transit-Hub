@@ -107,11 +107,12 @@ object BoardedTransitTimeEstimator {
             }
         } else if (nextTransitLeg.mode in listOf(TransitMode.SUBWAY, TransitMode.TRAM)) {
             val normalizedLine = TransitIdMapper.normalizeRouteShortName(nextTransitLeg.mode, nextTransitLeg.routeShortName)
-            val allowedLines = TransitIdMapper.getAlternativeTransitLines(
-                mode = nextTransitLeg.mode,
-                originalLine = normalizedLine,
-                fromName = nextTransitLeg.fromName,
-                toName = nextTransitLeg.toName
+            // Once boarded, lock strictly to the boarded line; never switch to alternative lines or train departures
+            val allowedLines = setOfNotNull(
+                normalizedLine.ifBlank { null },
+                nextTransitLeg.routeShortName?.ifBlank { null },
+                if (normalizedLine.startsWith("L", ignoreCase = true)) normalizedLine.drop(1) else null,
+                if (!normalizedLine.startsWith("L", ignoreCase = true) && normalizedLine.isNotBlank()) "L$normalizedLine" else null
             )
 
             val intermediateStops = nextTransitLeg.intermediateStops
@@ -135,9 +136,10 @@ object BoardedTransitTimeEstimator {
             // Expected remaining minutes until reaching penultimate stop
             val expectedMinsToPenult = (progressBasedMins - minsPenultToDest).coerceAtLeast(0)
 
-            // Dynamic Forward Radar: If approaching or past the penultimate stop (expectedMinsToPenult <= 2 or progress >= 0.70f),
-            // query the destination station ahead! Otherwise, query the penultimate stop.
-            val shouldQueryDestination = penultimateStop == null || expectedMinsToPenult <= 2 || legProgressFraction >= 0.70f
+            // Dynamic Forward Radar: Only switch away from penultimate stop if user has physically passed it
+            // or if the remaining expected minutes to penultimate stop is <= 0 (train already passed penultimate stop).
+            // Do NOT cut off early at 70%, 75% or 80%! Stay connected to penultimate stop until vehicle departs/passes it!
+            val shouldQueryDestination = penultimateStop == null || expectedMinsToPenult <= 0 || legProgressFraction >= 0.98f
 
             val checkStationId = if (!shouldQueryDestination && penultimateStop != null) {
                 TransitIdMapper.extractMetroStationId(penultimateStop.stopId, penultimateStop.name)?.toString()
@@ -172,10 +174,24 @@ object BoardedTransitTimeEstimator {
                     val finalEstimatedMins = (realisticMatch.minutes + addedMinsAfterStop).coerceAtLeast(1)
                     operatorLiveArrivalMinutes = finalEstimatedMins
                     isLive = realisticMatch.isRealTime
-                    val schedRemaining = SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.endTime)
-                        ?: SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.formattedEndTime)
+                    val scheduledTimeStr = nextTransitLeg.scheduledEndTime?.ifBlank { null }
+                        ?: nextTransitLeg.formattedEndTime.ifBlank { null }
+                    val schedRemaining = SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(scheduledTimeStr)
+                        ?: SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.endTime)
                     if (schedRemaining != null) {
-                        delayMinutes = (finalEstimatedMins - schedRemaining).coerceAtLeast(0)
+                        val rawDelay = finalEstimatedMins - schedRemaining
+                        val sanitizedDelay = if (rawDelay > 30 && (nextTransitLeg.mode == TransitMode.SUBWAY || nextTransitLeg.mode == TransitMode.TRAM)) {
+                            if (rawDelay in 110..135) {
+                                (rawDelay - 120).coerceAtLeast(0) // Strip UTC/CEST 120 min timezone artifact
+                            } else if (rawDelay in 50..75) {
+                                (rawDelay - 60).coerceAtLeast(0) // Strip UTC/CET 60 min timezone artifact
+                            } else {
+                                rawDelay.coerceIn(0, 30) // Cap realistic metro delay to 30 min
+                            }
+                        } else {
+                            rawDelay.coerceAtLeast(0)
+                        }
+                        delayMinutes = sanitizedDelay
                     }
                 }
             }
@@ -197,8 +213,8 @@ object BoardedTransitTimeEstimator {
                 }
                 val expectedMinsToPenult = (progressBasedMins - minsPenultToDest).coerceAtLeast(0)
 
-                // Dynamic Forward Radar for EMT Bus
-                val shouldQueryDestination = penultimateStop == null || expectedMinsToPenult <= 2 || legProgressFraction >= 0.70f
+                // Dynamic Forward Radar for EMT Bus - remain locked on penultimate stop until vehicle departs it
+                val shouldQueryDestination = penultimateStop == null || expectedMinsToPenult <= 0 || legProgressFraction >= 0.98f
 
                 val checkStopNum = if (!shouldQueryDestination && penultimateStop != null) {
                     TransitIdMapper.extractEmtStopNumber(penultimateStop.stopId, penultimateStop.name)
@@ -229,10 +245,20 @@ object BoardedTransitTimeEstimator {
                         val finalEstimatedMins = (realisticMatch.minutes + addedMinsAfterStop).coerceAtLeast(1)
                         operatorLiveArrivalMinutes = finalEstimatedMins
                         isLive = realisticMatch.isRealTime
-                        val schedRemaining = SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.endTime)
-                            ?: SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.formattedEndTime)
+                        val scheduledTimeStr = nextTransitLeg.scheduledEndTime?.ifBlank { null }
+                            ?: nextTransitLeg.formattedEndTime.ifBlank { null }
+                        val schedRemaining = SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(scheduledTimeStr)
+                            ?: SingleTransitLegReconciler.calculateTheoreticalMinutesRemaining(nextTransitLeg.endTime)
                         if (schedRemaining != null) {
-                            delayMinutes = (finalEstimatedMins - schedRemaining).coerceAtLeast(0)
+                            val rawDelay = finalEstimatedMins - schedRemaining
+                            val sanitizedDelay = if (rawDelay > 60) {
+                                if (rawDelay in 110..135) (rawDelay - 120).coerceAtLeast(0)
+                                else if (rawDelay in 50..75) (rawDelay - 60).coerceAtLeast(0)
+                                else rawDelay.coerceIn(0, 45)
+                            } else {
+                                rawDelay.coerceAtLeast(0)
+                            }
+                            delayMinutes = sanitizedDelay
                         }
                     }
                 }
@@ -241,8 +267,6 @@ object BoardedTransitTimeEstimator {
 
         val rawEstimatedMinutes = if (operatorLiveArrivalMinutes != null) {
             operatorLiveArrivalMinutes
-        } else if (legProgressFraction >= 0.70f || rawGpsRemainingMins <= 3) {
-            rawGpsRemainingMins
         } else {
             progressBasedMins
         }

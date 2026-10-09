@@ -134,11 +134,11 @@ object TripUIStateFormatter {
         val upcomingTransitLeg = if (currentLeg != null && (currentLeg.mode == TransitMode.WALK || currentLeg.mode == TransitMode.BICYCLE)) {
             // While walking or cycling to a stop/station, show departure time of the approaching transit leg
             allLegs.subList((currentLegIndex + 1).coerceAtMost(allLegs.size), allLegs.size)
-                .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE }
+                .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE && it.mode != TransitMode.VALENBISI }
         } else if (isBoarded && allLegs.isNotEmpty()) {
             // While boarded on a vehicle, show the upcoming transfer transit leg
             allLegs.subList((currentLegIndex + 1).coerceAtMost(allLegs.size), allLegs.size)
-                .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE }
+                .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE && it.mode != TransitMode.VALENBISI }
         } else {
             // User is waiting at the stop/platform for the current transit leg.
             // The main card already displays line, destination, and departure ETA prominently; avoid redundant pill.
@@ -246,7 +246,7 @@ object TripUIStateFormatter {
         if (isSalYa) {
             val nextTransitLeg = if (currentLeg.mode == TransitMode.WALK || currentLeg.mode == TransitMode.BICYCLE) {
                 allLegs.subList((currentLegIndex + 1).coerceAtMost(allLegs.size), allLegs.size)
-                    .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE }
+                    .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE && it.mode != TransitMode.VALENBISI }
             } else currentLeg
 
             val targetStation = currentLeg.toName
@@ -279,7 +279,7 @@ object TripUIStateFormatter {
             val leaveMins = realTimeStatus.leaveInMinutes
             val targetStation = currentLeg.toName
             val nextTransitLeg = allLegs.subList(1, allLegs.size)
-                .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE }
+                .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE && it.mode != TransitMode.VALENBISI }
 
             val h = if (isEs) "Sal en $leaveMins min a $targetStation" else "Ix en $leaveMins min a $targetStation"
             val s = nextTransitDepartureInfo ?: ""
@@ -322,7 +322,7 @@ object TripUIStateFormatter {
 
                 if (currentLegIndex == 0) {
                     val nextTransitLeg = allLegs.subList(1, allLegs.size)
-                        .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE }
+                        .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE && it.mode != TransitMode.VALENBISI }
 
                     if (nextTransitLeg != null) {
                         headline = if (isEs) "Camina a $targetStation" else "Camina a $targetStation"
@@ -343,13 +343,20 @@ object TripUIStateFormatter {
                     notifSubheadline = targetStation
                 } else {
                     val nextTransitLeg = allLegs.subList((currentLegIndex + 1).coerceAtMost(allLegs.size), allLegs.size)
-                        .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE }
+                        .firstOrNull { it.mode != TransitMode.WALK && it.mode != TransitMode.BICYCLE && it.mode != TransitMode.VALENBISI }
 
-                    headline = if (isEs) "Transbordo a $targetStation" else "Transbordament a $targetStation"
-                    subheadline = nextTransitDepartureInfo ?: ""
-                    notifHeadline = if (isEs) "Haz transbordo" else "Fes transbordament"
-                    notifSubheadline = nextTransitDepartureInfo
-                    lineBadge = nextTransitLeg?.routeShortName
+                    if (nextTransitLeg != null) {
+                        headline = if (isEs) "Transbordo a $targetStation" else "Transbordament a $targetStation"
+                        subheadline = nextTransitDepartureInfo ?: ""
+                        notifHeadline = if (isEs) "Haz transbordo" else "Fes transbordament"
+                        notifSubheadline = nextTransitDepartureInfo
+                        lineBadge = nextTransitLeg.routeShortName
+                    } else {
+                        headline = if (isEs) "Camina a $targetStation" else "Camina a $targetStation"
+                        subheadline = if (distText != null) distText else ""
+                        notifHeadline = if (isEs) "Camina a destino" else "Camina a destí"
+                        notifSubheadline = targetStation
+                    }
                 }
             }
 
@@ -599,18 +606,12 @@ object TripUIStateFormatter {
                 val s = destName
                 BoardedPromptResult(h, s, TripUrgencyLevel.CRITICAL, isDebarkNotice = true)
             }
-            remainingStops == 1 && isNearPenultimateOrTime -> {
+            remainingStops == 1 -> {
                 val nextStopWord = if (isEs) "Próxima parada" else "Pròxima parada"
                 val h = "$modeName $lineName · $nextStopWord"
                 val s = if (isEs) "Baja en $destName · $remainingMins min" else "Baixa en $destName · $remainingMins min"
-                val urgency = if (remainingMins <= 2) TripUrgencyLevel.BRISK else TripUrgencyLevel.RELAXED
+                val urgency = if (remainingMins <= 2 || isNearPenultimateOrTime) TripUrgencyLevel.BRISK else TripUrgencyLevel.RELAXED
                 BoardedPromptResult(h, s, urgency, isDebarkNotice = true)
-            }
-            remainingStops == 1 -> {
-                val inTransitWord = if (isEs) "En trayecto" else "En trajecte"
-                val h = "$modeName $lineName · $inTransitWord"
-                val s = if (isEs) "Baja en $destName · $remainingMins min" else "Baixa en $destName · $remainingMins min"
-                BoardedPromptResult(h, s, TripUrgencyLevel.RELAXED, isDebarkNotice = false)
             }
             else -> {
                 val stopWord = if (isEs) "paradas" else "parades"

@@ -747,4 +747,22 @@
     <string name="quick_track_scheduled_vs_live">Programat: %1$s · Estimat en viu: %2$s</string>
     <string name="quick_track_opposite_direction_warning">Aquest tren circula cap a %1$s. Per anar a %2$s has d\'agafar un tren en sentit contrari.</string>
     <string name="quick_track_direct_official_source">Horari i temps oficials (%1$d min de trajecte)</string>
+    <string name="quick_track_chip_next_stop">➔ Pròx.</string>
+
+    <!-- App Updates & GitHub OTA (Valencià) -->
+    <string name="update_check_title">Actualitzacions de l\'app</string>
+    <string name="update_check_subtitle">Versió instal·lada: v%1$s</string>
+    <string name="update_btn_check">Cercar actualitzacions</string>
+    <string name="update_status_checking">Cercant actualitzacions en GitHub...</string>
+    <string name="update_status_up_to_date">Tens instal·lada la versió més recent (v%1$s).</string>
+    <string name="update_status_available">Nova versió disponible: v%1$s</string>
+    <string name="update_btn_download_install">Descarregar i instal·lar</string>
+    <string name="update_btn_install">Instal·lar actualització</string>
+    <string name="update_downloading_progress">Descarregant actualització: %1$d%% (%2$s de %3$s)</string>
+    <string name="update_downloading_title">Descarregant actualització...</string>
+    <string name="update_ready_title">Actualització llesta</string>
+    <string name="update_ready_desc">L\'instal·lador s\'ha descarregat correctament. Prem en Instal·lar per a completar l\'actualització.</string>
+    <string name="update_release_notes_title">Novetats de la versió</string>
+    <string name="update_size_format">Grandària: %1$s</string>
+    <string name="update_permission_needed">Per a continuar, concedix permís per a instal·lar aplicacions des d\'esta font en els ajustos del teu dispositiu.</string>
 </resources>
