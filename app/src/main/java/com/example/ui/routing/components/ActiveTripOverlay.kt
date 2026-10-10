@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.SpaceGroteskFontFamily
 import com.example.data.database.ActiveTripEntity
 import com.example.data.model.routing.TransitMode
 import com.example.data.model.trip.UnifiedActiveTripSnapshot
@@ -136,6 +137,8 @@ fun ActiveTripOverlay(
             title = {
                 Text(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_end_dialog_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontFamily = SpaceGroteskFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )

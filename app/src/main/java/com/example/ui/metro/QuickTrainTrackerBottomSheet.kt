@@ -228,6 +228,19 @@ fun QuickTrainTrackerBottomSheet(
 
     val liveOriginMins = departure.liveMinutesRemaining
 
+    val isValencian = appLanguage == AppLanguage.CA
+    val sheetLocale = remember(isValencian) {
+        if (isValencian) Locale("ca") else Locale("es")
+    }
+    val sheetConfig = remember(sheetLocale, context) {
+        android.content.res.Configuration(context.resources.configuration).apply {
+            setLocale(sheetLocale)
+        }
+    }
+    val sheetContext = remember(sheetLocale, context) {
+        context.createConfigurationContext(sheetConfig)
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -237,12 +250,16 @@ fun QuickTrainTrackerBottomSheet(
             .statusBarsPadding()
             .testTag("quick_train_tracker_sheet")
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp, top = 2.dp)
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalConfiguration provides sheetConfig,
+            androidx.compose.ui.platform.LocalContext provides sheetContext
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp, top = 2.dp)
+            ) {
             // Header: Train Pill + Destination
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -266,7 +283,7 @@ fun QuickTrainTrackerBottomSheet(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = stringResource(R.string.quick_track_sheet_title),
+                        text = sheetContext.getString(R.string.quick_track_sheet_title),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -278,7 +295,7 @@ fun QuickTrainTrackerBottomSheet(
                 ) {
                     if (departure.isRealTime) {
                         Text(
-                            text = if (liveOriginMins <= 0) stringResource(R.string.quick_track_departing_now) else "$liveOriginMins min",
+                            text = if (liveOriginMins <= 0) sheetContext.getString(R.string.quick_track_departing_now) else "$liveOriginMins min",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (isDarkMode) Color.White else lineColor,
@@ -369,15 +386,15 @@ fun QuickTrainTrackerBottomSheet(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = stringResource(R.string.quick_track_pin_here_title, originStationName),
+                            text = sheetContext.getString(R.string.quick_track_pin_here_title, originStationName),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         val subText = if (departure.isRealTime) {
-                            stringResource(R.string.quick_track_pin_here_sub_live, liveOriginMins)
+                            sheetContext.getString(R.string.quick_track_pin_here_sub_live, liveOriginMins)
                         } else {
-                            stringResource(R.string.quick_track_pin_here_sub_sched, departure.estimatedTime ?: "")
+                            sheetContext.getString(R.string.quick_track_pin_here_sub_sched, departure.estimatedTime ?: "")
                         }
                         Text(
                             text = subText,
@@ -404,7 +421,7 @@ fun QuickTrainTrackerBottomSheet(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = stringResource(R.string.quick_track_debark_section_title),
+                        text = sheetContext.getString(R.string.quick_track_debark_section_title),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -468,7 +485,7 @@ fun QuickTrainTrackerBottomSheet(
                                 if (isFav) {
                                     Icon(
                                         imageVector = Icons.Default.Star,
-                                        contentDescription = "Favorita",
+                                        contentDescription = sheetContext.getString(R.string.favorite_badge_desc),
                                         tint = Color(0xFFFFC107),
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -493,9 +510,9 @@ fun QuickTrainTrackerBottomSheet(
                                     )
                                     val etaStr = stop.scheduledArrivalTime ?: ""
                                     val subtitleText = if (etaStr.isNotBlank()) {
-                                        stringResource(R.string.quick_track_stop_arrival_format, etaStr, stop.deltaMinutesFromOrigin)
+                                        sheetContext.getString(R.string.quick_track_stop_arrival_format, etaStr, stop.deltaMinutesFromOrigin)
                                     } else {
-                                        stringResource(R.string.quick_track_stop_duration_format, stop.deltaMinutesFromOrigin)
+                                        sheetContext.getString(R.string.quick_track_stop_duration_format, stop.deltaMinutesFromOrigin)
                                     }
                                     Text(
                                         text = subtitleText,
@@ -527,3 +544,5 @@ fun QuickTrainTrackerBottomSheet(
         }
     }
 }
+}
+

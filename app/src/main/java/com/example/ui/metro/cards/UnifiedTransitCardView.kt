@@ -23,6 +23,7 @@ import com.example.ui.dashboard.AppLanguage
 import com.example.ui.dashboard.TransitCardUiModel
 import com.example.ui.metro.CardCategory
 import com.example.ui.metro.formatCardNumber
+import com.example.ui.theme.SpaceGroteskFontFamily
 
 enum class CardDisplayFormat {
     HERO,     // Large card used in Onboarding & Detail Dialog
@@ -238,6 +239,7 @@ private fun HeroCardContent(
                 Text(
                     text = card.assignedName.ifBlank { card.title },
                     style = MaterialTheme.typography.titleMedium,
+                    fontFamily = SpaceGroteskFontFamily,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     maxLines = 1,
@@ -299,7 +301,8 @@ private fun ListCardContent(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = card.assignedName.ifBlank { card.title },
-                    fontSize = 15.sp,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontFamily = SpaceGroteskFontFamily,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White,
                     maxLines = 1,
@@ -417,7 +420,8 @@ private fun CompactCardContent(
         Column {
             Text(
                 text = card.assignedName.ifBlank { card.title },
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.titleSmall,
+                fontFamily = SpaceGroteskFontFamily,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
                 maxLines = 1,

@@ -64,6 +64,20 @@ class MainActivity : ComponentActivity() {
                 context.createConfigurationContext(localizedConfiguration)
             }
 
+            androidx.compose.runtime.SideEffect {
+                try {
+                    java.util.Locale.setDefault(locale)
+                    @Suppress("DEPRECATION")
+                    val res = this@MainActivity.resources
+                    val conf = res.configuration
+                    if (conf.locales.get(0)?.language != locale.language) {
+                        conf.setLocale(locale)
+                        @Suppress("DEPRECATION")
+                        res.updateConfiguration(conf, res.displayMetrics)
+                    }
+                } catch (_: Exception) {}
+            }
+
             val activityResultRegistryOwner = remember(context) {
                 (context as? androidx.activity.result.ActivityResultRegistryOwner)
                     ?: (this@MainActivity as androidx.activity.result.ActivityResultRegistryOwner)

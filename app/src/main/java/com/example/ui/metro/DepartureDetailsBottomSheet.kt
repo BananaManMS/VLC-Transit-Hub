@@ -343,6 +343,20 @@ fun DepartureDetailsBottomSheet(
             }
         }
 
+        val isValencian = appLanguage == AppLanguage.CA
+        val sheetLocale = remember(isValencian) {
+            if (isValencian) java.util.Locale("ca") else java.util.Locale("es")
+        }
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val sheetConfig = remember(sheetLocale, context) {
+            android.content.res.Configuration(context.resources.configuration).apply {
+                setLocale(sheetLocale)
+            }
+        }
+        val sheetContext = remember(sheetLocale, context) {
+            context.createConfigurationContext(sheetConfig)
+        }
+
         ModalBottomSheet(
             onDismissRequest = { onDismiss() },
             sheetState = sheetState,
@@ -352,14 +366,18 @@ fun DepartureDetailsBottomSheet(
                 .statusBarsPadding()
                 .testTag("departure_details_bottom_sheet")
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 28.dp, top = 4.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalConfiguration provides sheetConfig,
+                androidx.compose.ui.platform.LocalContext provides sheetContext
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 28.dp, top = 4.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                 // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -761,3 +779,5 @@ fun DepartureDetailsBottomSheet(
         }
     }
 }
+}
+

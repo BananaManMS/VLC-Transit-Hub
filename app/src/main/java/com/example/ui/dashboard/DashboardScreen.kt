@@ -105,6 +105,7 @@ fun DashboardScreen(
     var plannerInitialDestination by remember { mutableStateOf<PlannerLocation?>(null) }
     var pendingSelectedMetroStationId by remember { mutableStateOf<String?>(null) }
     var pendingSelectedCercaniasStationId by remember { mutableStateOf<String?>(null) }
+    var pendingSelectedBusStopId by remember { mutableStateOf<String?>(null) }
     var isPlannerVisible by remember { mutableStateOf(false) }
     var isNetworkPlansVisible by remember { mutableStateOf(false) }
     var isViewingPlannerItineraryOnMap by remember { mutableStateOf(false) }
@@ -409,6 +410,7 @@ fun DashboardScreen(
                                 },
                                 onDeleteCalendarItem = { viewModel.deleteItem(it) },
                                 dashboardViewModel = viewModel,
+                                busViewModel = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.bus.BusViewModel>(),
                                 onNavigateToTab = { targetTab, page ->
                                     previousTabForBack = DashboardTab.Inicio
                                     when (targetTab) {
@@ -574,9 +576,17 @@ fun DashboardScreen(
                             })
                         }
                     }
+                    val busVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.bus.BusViewModel>()
+                    LaunchedEffect(pendingSelectedBusStopId) {
+                        pendingSelectedBusStopId?.let { stopId ->
+                            busVm.selectBusStopById(stopId)
+                            pendingSelectedBusStopId = null
+                        }
+                    }
                     DashboardBusTab(
                         viewModel = viewModel,
                         metroViewModel = metroVm,
+                        busViewModel = busVm,
                         isDarkMode = isDarkMode,
                         initialPage = busInitialPage,
                         activeTripBottomPadding = dynamicBottomTripPadding,

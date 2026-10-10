@@ -385,7 +385,7 @@ fun MetroLineDepartureCard(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = nextDep.destination,
-                                        fontSize = 13.5.sp,
+                                        style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.5.sp),
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,

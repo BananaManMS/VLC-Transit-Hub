@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.dashboard.DashboardTab
+import com.example.ui.theme.SpaceGroteskFontFamily
 
 @Composable
 fun QuickTransportModesRow(
@@ -122,6 +123,7 @@ fun TransportModeButton(
             Text(
                 text = label,
                 fontSize = 11.sp,
+                fontFamily = SpaceGroteskFontFamily,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1

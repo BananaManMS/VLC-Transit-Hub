@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.ui.theme.SpaceGroteskFontFamily
 
 @Composable
 fun BusFilterChip(
@@ -49,6 +50,7 @@ fun BusFilterChip(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelLarge,
+                    fontFamily = SpaceGroteskFontFamily,
                     fontWeight = FontWeight.SemiBold
                 )
             }

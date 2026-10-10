@@ -52,7 +52,7 @@ fun CommuteSetupDialog(
     val defaultTitle = when {
         isHomeType -> androidx.compose.ui.res.stringResource(com.example.R.string.commute_home_title)
         isWork -> androidx.compose.ui.res.stringResource(com.example.R.string.commute_work_title)
-        else -> ""
+        else -> androidx.compose.ui.res.stringResource(com.example.R.string.commute_pinned_title)
     }
 
     var name by remember { mutableStateOf(currentName.ifBlank { defaultTitle }) }

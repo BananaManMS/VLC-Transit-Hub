@@ -43,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.example.ui.theme.SpaceGroteskFontFamily
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -313,6 +314,7 @@ fun MetrobusStopCard(
                         Text(
                             text = alias,
                             style = MaterialTheme.typography.titleMedium,
+                            fontFamily = SpaceGroteskFontFamily,
                             fontWeight = FontWeight.Bold,
                             color = cardTextColor,
                             modifier = Modifier.padding(top = 2.dp)
@@ -330,6 +332,8 @@ fun MetrobusStopCard(
                                 primaryColor = cardTextColor,
                                 secondaryColor = cardTextSecondaryColor
                             ),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = SpaceGroteskFontFamily,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }

@@ -8,6 +8,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import com.example.ui.theme.SpaceGroteskFontFamily
 
 private val PAREN_SPLIT_REGEX = Regex("(?=\\()|(?<=\\))")
 
@@ -58,6 +59,7 @@ fun buildFormattedStopName(
 
                 withStyle(
                     style = SpanStyle(
+                        fontFamily = SpaceGroteskFontFamily,
                         fontWeight = FontWeight.Normal,
                         color = secondaryColor.copy(alpha = 0.85f)
                     )
@@ -67,6 +69,7 @@ fun buildFormattedStopName(
             } else {
                 withStyle(
                     style = SpanStyle(
+                        fontFamily = SpaceGroteskFontFamily,
                         fontWeight = FontWeight.Bold,
                         color = primaryColor
                     )

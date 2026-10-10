@@ -41,10 +41,9 @@ import androidx.compose.ui.platform.LocalView
 import android.app.Activity
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -101,81 +100,115 @@ private val LightColorScheme = lightColorScheme(
 )
 
 // ============================================================================
-// 2. TIPOGRAFÍA UNIFICADA (Google Fonts)
+// 2. TIPOGRAFÍA UNIFICADA (Fuentes Locales TTF con Pesos Específicos)
 // ============================================================================
-private val fontProvider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs
-)
-
-// Space Grotesk para títulos y encabezados
+// Space Grotesk para títulos, encabezados y displays
 val SpaceGroteskFontFamily = FontFamily(
-    Font(googleFont = GoogleFont("Space Grotesk"), fontProvider = fontProvider, weight = FontWeight.Medium),
-    Font(googleFont = GoogleFont("Space Grotesk"), fontProvider = fontProvider, weight = FontWeight.Bold),
-    Font(googleFont = GoogleFont("Space Grotesk"), fontProvider = fontProvider, weight = FontWeight.ExtraBold)
+    Font(R.font.space_grotesk_w300, weight = FontWeight.Light),
+    Font(R.font.space_grotesk_w400, weight = FontWeight.Normal),
+    Font(R.font.space_grotesk_w500, weight = FontWeight.Medium),
+    Font(R.font.space_grotesk_w600, weight = FontWeight.SemiBold),
+    Font(R.font.space_grotesk_w700, weight = FontWeight.Bold),
+    Font(R.font.space_grotesk_w700, weight = FontWeight.ExtraBold)
 )
 
-// Plus Jakarta Sans para texto plano, cuerpo y etiquetas
+// Plus Jakarta Sans para cuerpo de texto y etiquetas
 val PlusJakartaSansFontFamily = FontFamily(
-    Font(googleFont = GoogleFont("Plus Jakarta Sans"), fontProvider = fontProvider, weight = FontWeight.Medium),
-    Font(googleFont = GoogleFont("Plus Jakarta Sans"), fontProvider = fontProvider, weight = FontWeight.Bold),
-    Font(googleFont = GoogleFont("Plus Jakarta Sans"), fontProvider = fontProvider, weight = FontWeight.ExtraBold)
+    Font(R.font.plus_jakarta_sans_w400, weight = FontWeight.Normal),
+    Font(R.font.plus_jakarta_sans_w500, weight = FontWeight.Medium),
+    Font(R.font.plus_jakarta_sans_w600, weight = FontWeight.SemiBold),
+    Font(R.font.plus_jakarta_sans_w700, weight = FontWeight.Bold),
+    Font(R.font.plus_jakarta_sans_w800, weight = FontWeight.ExtraBold)
 )
 
 val AppTypography = Typography(
+    // Large -> Bold / ExtraBold con máxima presencia visual
     displayLarge = TextStyle(
         fontFamily = SpaceGroteskFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 44.sp,
         letterSpacing = (-1.5).sp
     ),
+    displayMedium = TextStyle(
+        fontFamily = SpaceGroteskFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 36.sp,
+        letterSpacing = (-1.0).sp
+    ),
+    displaySmall = TextStyle(
+        fontFamily = SpaceGroteskFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 28.sp,
+        letterSpacing = (-0.5).sp
+    ),
+    headlineLarge = TextStyle(
+        fontFamily = SpaceGroteskFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 32.sp,
+        letterSpacing = (-0.5).sp
+    ),
+    headlineMedium = TextStyle(
+        fontFamily = SpaceGroteskFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 26.sp,
+        letterSpacing = (-0.5).sp
+    ),
+    headlineSmall = TextStyle(
+        fontFamily = SpaceGroteskFontFamily,
+        fontWeight = FontWeight.Medium,
+        fontSize = 22.sp,
+        letterSpacing = (-0.25).sp
+    ),
+    // Titles: Large -> Bold, Medium -> Medium, Small -> Normal
     titleLarge = TextStyle(
         fontFamily = SpaceGroteskFontFamily,
-        fontWeight = FontWeight.ExtraBold,
+        fontWeight = FontWeight.Bold,
         fontSize = 20.sp,
         letterSpacing = (-0.5).sp
     ),
     titleMedium = TextStyle(
         fontFamily = SpaceGroteskFontFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = 16.sp
+        fontWeight = FontWeight.Medium,
+        fontSize = 16.sp,
+        letterSpacing = (-0.15).sp
     ),
     titleSmall = TextStyle(
         fontFamily = SpaceGroteskFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.Normal,
         fontSize = 14.sp
     ),
+    // Cuerpo de texto (Plus Jakarta Sans)
     bodyLarge = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.Normal,
         fontSize = 15.sp
     ),
     bodyMedium = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.Normal,
         fontSize = 13.sp
     ),
     bodySmall = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.Normal,
         fontSize = 11.sp
     ),
+    // Etiquetas (Plus Jakarta Sans)
     labelLarge = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp
     ),
     labelMedium = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.Medium,
         fontSize = 12.sp
     ),
     labelSmall = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.Medium,
         fontSize = 10.sp,
-        letterSpacing = 0.8.sp
+        letterSpacing = 0.5.sp
     )
 )
 
@@ -261,6 +294,7 @@ fun ScreenHeader(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
+                    fontFamily = SpaceGroteskFontFamily,
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 if (!subtitle.isNullOrBlank()) {
@@ -313,6 +347,7 @@ fun UnifiedTabRow(
                     Text(
                         text = capitalizedTitle,
                         style = MaterialTheme.typography.titleSmall,
+                        fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
                         color = if (selectedTabIndex == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import com.example.data.database.AppDatabase
 import com.example.data.database.CalendarItemEntity
 import com.example.data.repository.DashboardRepository
+import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,6 +21,70 @@ class DashboardCalendarManager(
     private val repository: DashboardRepository,
     private val scope: CoroutineScope
 ) {
+    private val dismissedPrefs = application.getSharedPreferences("calendar_dismissed_events_cache", Context.MODE_PRIVATE)
+
+    private fun markEventAsDismissed(item: CalendarItemEntity) {
+        val now = System.currentTimeMillis()
+        val defaultDuration = 3600000L * 24 // 24 hours minimum retention
+        val expire = maxOf(
+            item.endMillis ?: 0L,
+            (item.startMillis ?: 0L) + 3600000L,
+            now + defaultDuration
+        )
+        val editor = dismissedPrefs.edit()
+        item.calendarEventId?.let { eventId ->
+            editor.putLong("event_$eventId", expire)
+            item.startMillis?.let { start ->
+                editor.putLong("instance_${eventId}_$start", expire)
+            }
+        }
+        if (item.title.isNotBlank()) {
+            val sig = "sig_${item.title.trim().lowercase().hashCode()}_${item.startMillis ?: 0L}"
+            editor.putLong(sig, expire)
+        }
+        editor.apply()
+    }
+
+    private fun cleanExpiredDismissedEvents(currentNow: Long) {
+        try {
+            val all = dismissedPrefs.all
+            val toRemove = mutableListOf<String>()
+            all.forEach { (key, value) ->
+                val expireTime = (value as? Long) ?: (value as? Number)?.toLong() ?: 0L
+                if (expireTime < currentNow) {
+                    toRemove.add(key)
+                }
+            }
+            if (toRemove.isNotEmpty()) {
+                val editor = dismissedPrefs.edit()
+                toRemove.forEach { editor.remove(it) }
+                editor.apply()
+            }
+        } catch (e: Exception) {
+            Log.e("DashboardCalendarManager", "Error cleaning expired dismissed events", e)
+        }
+    }
+
+    private fun isEventDismissed(calendarEventId: Long?, startMillis: Long?, title: String, currentNow: Long): Boolean {
+        if (calendarEventId != null) {
+            val eventKey = "event_$calendarEventId"
+            val expire = dismissedPrefs.getLong(eventKey, 0L)
+            if (expire >= currentNow) return true
+
+            if (startMillis != null) {
+                val instanceKey = "instance_${calendarEventId}_$startMillis"
+                val instanceExpire = dismissedPrefs.getLong(instanceKey, 0L)
+                if (instanceExpire >= currentNow) return true
+            }
+        }
+        if (title.isNotBlank()) {
+            val sig = "sig_${title.trim().lowercase().hashCode()}_${startMillis ?: 0L}"
+            val sigExpire = dismissedPrefs.getLong(sig, 0L)
+            if (sigExpire >= currentNow) return true
+        }
+        return false
+    }
+
     fun addEvent(
         title: String,
         description: String,
@@ -72,6 +137,7 @@ class DashboardCalendarManager(
 
     fun deleteItem(item: CalendarItemEntity) {
         scope.launch(Dispatchers.IO) {
+            markEventAsDismissed(item)
             repository.deleteCalendarItem(item)
         }
     }
@@ -94,6 +160,7 @@ class DashboardCalendarManager(
             try {
                 val currentNow = System.currentTimeMillis()
                 database.calendarDao().deletePastEvents(currentNow)
+                cleanExpiredDismissedEvents(currentNow)
 
                 val sevenDaysLater = currentNow + (7 * 86400000L)
                 val uriBuilder = CalendarContract.Instances.CONTENT_URI.buildUpon()
@@ -134,9 +201,11 @@ class DashboardCalendarManager(
                         val end = if (endIdx >= 0) c.getLong(endIdx) else null
                         val allDay = if (allDayIdx >= 0) c.getInt(allDayIdx) == 1 else false
 
-                        // Only add future or active events
+                        // Check if finished or dismissed
                         val isFinished = (end != null && end < currentNow) || (end == null && start != null && start < currentNow - 1800000L)
-                        if (!isFinished) {
+                        val isDismissed = isEventDismissed(eventId, start, title, currentNow)
+
+                        if (!isFinished && !isDismissed) {
                             syncedItems.add(
                                 CalendarItemEntity(
                                     title = title,
@@ -154,7 +223,15 @@ class DashboardCalendarManager(
                 }
 
                 val existing = database.calendarDao().getAllItemsList()
-                val currentSyncedEvents = existing.filter { it.calendarEventId != null }
+
+                // Purge any existing database item that has been dismissed by user
+                existing.forEach { item ->
+                    if (isEventDismissed(item.calendarEventId, item.startMillis, item.title, currentNow)) {
+                        database.calendarDao().deleteItem(item)
+                    }
+                }
+
+                val currentSyncedEvents = database.calendarDao().getAllItemsList().filter { it.calendarEventId != null }
                 val newSyncedEventIds = syncedItems.mapNotNull { it.calendarEventId }.toSet()
 
                 // Remove previous synced events that no longer exist or have passed

@@ -65,29 +65,10 @@ fun OnboardingScreen(
     val appLanguage by viewModel.appLanguage.collectAsState()
     val context = LocalContext.current
 
-    val prefs = remember { context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE) }
-    var preferredModes by remember {
-        val saved = prefs.getString("favorite_transit_modes", "METRO,EMT,CERCANIAS,VALENBISI,METROBUS") ?: ""
-        mutableStateOf(saved.split(",").filter { it.isNotBlank() }.toSet())
-    }
+    val preferredModes by viewModel.favoriteTransitModes.collectAsState()
 
     fun toggleMode(mode: String) {
-        val updated = if (preferredModes.contains(mode)) preferredModes - mode else preferredModes + mode
-        preferredModes = updated
-        prefs.edit().putString("favorite_transit_modes", updated.joinToString(",")).apply()
-        try {
-            val jsonObj = org.json.JSONObject().apply {
-                put("isFavorites", false)
-                put("showBus", updated.contains("EMT"))
-                put("showMetrobus", updated.contains("METROBUS"))
-                put("showMetro", updated.contains("METRO"))
-                put("showCercanias", updated.contains("CERCANIAS"))
-                put("showValenbisi", updated.contains("VALENBISI"))
-            }
-            prefs.edit().putString("map_filter_preference", jsonObj.toString()).apply()
-        } catch (e: Exception) {
-            // ignore
-        }
+        viewModel.togglePreferredTransitMode(mode)
     }
 
     var showAddCardDialog by remember { mutableStateOf(false) }
@@ -111,9 +92,9 @@ fun OnboardingScreen(
 
     val stepTitles = remember(appLanguage) {
         if (appLanguage == AppLanguage.CA) {
-            listOf("Benvinguda", "Mitjans i parades", "Targetes SUMA", "Ajustos", "Resum")
+            listOf("Benvinguda", "Mitjans i parades", "Targetes", "Ajustos", "Resum")
         } else {
-            listOf("Bienvenida", "Medios y paradas", "Tarjetas SUMA", "Ajustes", "Resumen")
+            listOf("Bienvenida", "Medios y paradas", "Tarjetas", "Ajustes", "Resumen")
         }
     }
 
@@ -374,7 +355,9 @@ fun OnboardingScreen(
                                 color = Color(0xFFEF4444),
                                 isSelected = preferredModes.contains("METRO"),
                                 onClick = { toggleMode("METRO") },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("onboarding_mode_metro")
                             )
                             TransitModeTile(
                                 icon = Icons.Default.DirectionsBus,
@@ -382,7 +365,9 @@ fun OnboardingScreen(
                                 color = Color(0xFF0284C7),
                                 isSelected = preferredModes.contains("EMT"),
                                 onClick = { toggleMode("EMT") },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("onboarding_mode_emt")
                             )
                             TransitModeTile(
                                 icon = Icons.Default.DirectionsRailway,
@@ -390,7 +375,9 @@ fun OnboardingScreen(
                                 color = Color(0xFF702B7B),
                                 isSelected = preferredModes.contains("CERCANIAS"),
                                 onClick = { toggleMode("CERCANIAS") },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("onboarding_mode_cercanias")
                             )
                         }
 
@@ -406,7 +393,9 @@ fun OnboardingScreen(
                                 color = Color(0xFF10B981),
                                 isSelected = preferredModes.contains("VALENBISI"),
                                 onClick = { toggleMode("VALENBISI") },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("onboarding_mode_valenbisi")
                             )
                             TransitModeTile(
                                 icon = Icons.Default.AirportShuttle,
@@ -414,7 +403,9 @@ fun OnboardingScreen(
                                 color = Color(0xFFF59E0B),
                                 isSelected = preferredModes.contains("METROBUS"),
                                 onClick = { toggleMode("METROBUS") },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("onboarding_mode_metrobus")
                             )
                         }
 
@@ -464,7 +455,7 @@ fun OnboardingScreen(
                         Spacer(modifier = Modifier.height(18.dp))
 
                         Text(
-                            text = if (appLanguage == AppLanguage.CA) "Targetes de transport SUMA" else "Tarjetas de transporte SUMA",
+                            text = if (appLanguage == AppLanguage.CA) "Targetes de transport" else "Tarjetas de transporte",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
@@ -848,7 +839,7 @@ fun OnboardingScreen(
                                     )
                                     SummaryRowItem(
                                         icon = Icons.Default.CreditCard,
-                                        title = if (appLanguage == AppLanguage.CA) "Targetes SUMA" else "Tarjetas SUMA",
+                                        title = if (appLanguage == AppLanguage.CA) "Targetes" else "Tarjetas",
                                         value = "${transitCards.size} " + if (appLanguage == AppLanguage.CA) "registrades" else "registradas"
                                     )
                                 }

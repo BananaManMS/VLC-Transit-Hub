@@ -17,6 +17,7 @@ import com.example.data.network.NetworkModule
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 class BusViewModel(application: Application) : AndroidViewModel(application) {
@@ -392,6 +393,31 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
             ica = "Parada " + stop.id_parada
         )
         selectBusStop(emtStop)
+    }
+
+    fun selectBusStopById(stopId: String) {
+        val stop = _busStopsList.value.find { it.opId == stopId }
+        if (stop != null) {
+            selectBusStop(stop)
+        } else {
+            viewModelScope.launch(Dispatchers.IO) {
+                val entity = database.geoportalStopDao().getStopById(stopId)
+                if (entity != null) {
+                    val lines = BusMapper.getLinesForStop(entity)
+                    val emtStop = EmtBusStop(
+                        t = entity.lat.toString(),
+                        n = entity.lon.toString(),
+                        me = entity.denominacion,
+                        utes = lines,
+                        opId = entity.id_parada,
+                        ica = "Parada " + entity.id_parada
+                    )
+                    withContext(Dispatchers.Main) {
+                        selectBusStop(emtStop)
+                    }
+                }
+            }
+        }
     }
 
     private fun startBusCountdownTicker() {

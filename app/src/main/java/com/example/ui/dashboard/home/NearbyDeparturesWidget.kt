@@ -16,9 +16,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.database.CercaniasStationEntity
@@ -111,16 +115,8 @@ fun NearbyDeparturesWidget(
                 // 1. METROVALENCIA STATION (MAX 1)
                 if (nearestMetroStation != null) {
                     hasPreviousItem = true
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onMetroStationClick(nearestMetroStation.id) }
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    NearbyTransitItemRow(
+                        iconBox = {
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
@@ -134,63 +130,22 @@ fun NearbyDeparturesWidget(
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = nearestMetroStation.name,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (isMetroFav) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.Star,
-                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.favorite_badge_desc),
-                                            tint = Color(0xFFF59E0B),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = if (nearestMetroDistance != null) {
-                                        "${LocationUtils.formatDistance(nearestMetroDistance)} · Metrovalencia"
-                                    } else "Metrovalencia",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        val maxMetroLines = 3
-                        val visibleMetroLines = nearestMetroStation.lines.take(maxMetroLines)
-                        val remainingMetroLines = nearestMetroStation.lines.size - maxMetroLines
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            visibleMetroLines.forEach { line ->
-                                MetroLineBadge(lineId = line, size = 22.dp)
-                            }
-                            if (remainingMetroLines > 0) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant
-                                ) {
-                                    Text(
-                                        text = "...",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
+                        },
+                        name = nearestMetroStation.name,
+                        isFav = isMetroFav,
+                        baseSubtitle = if (nearestMetroDistance != null) {
+                            "${LocationUtils.formatDistance(nearestMetroDistance)} · Metrovalencia"
+                        } else "Metrovalencia",
+                        lines = nearestMetroStation.lines,
+                        appLanguage = appLanguage,
+                        badgeRenderer = { line ->
+                            MetroLineBadge(lineId = line, size = 22.dp)
+                        },
+                        calculateBadgeWidthPx = { _, _, density ->
+                            with(density) { 22.dp.toPx() }
+                        },
+                        onClick = { onMetroStationClick(nearestMetroStation.id) }
+                    )
                 }
 
                 // 2. RENFE CERCANÍAS STATION (MAX 1)
@@ -202,17 +157,9 @@ fun NearbyDeparturesWidget(
                         )
                     }
                     hasPreviousItem = true
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onCercaniasStationClick(nearestCercaniasStation.stop_id) }
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    val cercaniasBrand = androidx.compose.ui.res.stringResource(com.example.R.string.header_cercanias_title)
+                    NearbyTransitItemRow(
+                        iconBox = {
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
@@ -220,100 +167,57 @@ fun NearbyDeparturesWidget(
                                     .background(Color(0xFF702B7B).copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                val cercaniasBrand = androidx.compose.ui.res.stringResource(com.example.R.string.header_cercanias_title)
                                 Image(
                                     painter = painterResource(id = com.example.R.drawable.logo_cercanias),
                                     contentDescription = cercaniasBrand,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = nearestCercaniasStation.nombre,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (isCercaniasFav) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.Star,
-                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.favorite_badge_desc),
-                                            tint = Color(0xFFF59E0B),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-                                val cercaniasBrand = androidx.compose.ui.res.stringResource(com.example.R.string.header_cercanias_title)
-                                Text(
-                                    text = if (nearestCercaniasDistance != null) {
-                                        "${LocationUtils.formatDistance(nearestCercaniasDistance)} · $cercaniasBrand"
-                                    } else cercaniasBrand,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        name = nearestCercaniasStation.nombre,
+                        isFav = isCercaniasFav,
+                        baseSubtitle = if (nearestCercaniasDistance != null) {
+                            "${LocationUtils.formatDistance(nearestCercaniasDistance)} · $cercaniasBrand"
+                        } else cercaniasBrand,
+                        lines = nearestCercaniasStation.lineas,
+                        appLanguage = appLanguage,
+                        badgeRenderer = { line ->
+                            val logoRes = com.example.ui.metro.TransitLogoUtils.getCercaniasLineLogoRes(line)
+                            if (logoRes != null) {
+                                Image(
+                                    painter = painterResource(id = logoRes),
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.line_format_desc, line),
+                                    modifier = Modifier.size(22.dp)
                                 )
-                            }
-                        }
-
-                        val cercaniasLines = nearestCercaniasStation.lineas
-                        if (cercaniasLines.isNotEmpty()) {
-                            val maxCercaniasLines = 3
-                            val visibleCercaniasLines = cercaniasLines.take(maxCercaniasLines)
-                            val remainingCercaniasLines = cercaniasLines.size - maxCercaniasLines
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                visibleCercaniasLines.forEach { line ->
-                                    val logoRes = com.example.ui.metro.TransitLogoUtils.getCercaniasLineLogoRes(line)
-                                    if (logoRes != null) {
-                                        Image(
-                                            painter = painterResource(id = logoRes),
-                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.line_format_desc, line),
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    } else {
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = Color(0xFF702B7B)
-                                        ) {
-                                            Text(
-                                                text = line,
-                                                color = Color.White,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                if (remainingCercaniasLines > 0) {
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = Color(0xFF702B7B).copy(alpha = 0.15f)
-                                    ) {
-                                        Text(
-                                            text = "...",
-                                            color = Color(0xFF702B7B),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                        )
-                                    }
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFF702B7B)
+                                ) {
+                                    Text(
+                                        text = line,
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
                                 }
                             }
-                        } else {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color(0xFF702B7B)
-                            )
-                        }
-                    }
+                        },
+                        calculateBadgeWidthPx = { line, textMeasurer, density ->
+                            val logoRes = com.example.ui.metro.TransitLogoUtils.getCercaniasLineLogoRes(line)
+                            if (logoRes != null) {
+                                with(density) { 22.dp.toPx() }
+                            } else {
+                                val tw = textMeasurer.measure(
+                                    text = line,
+                                    style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                ).size.width
+                                tw + with(density) { 12.dp.toPx() }
+                            }
+                        },
+                        onClick = { onCercaniasStationClick(nearestCercaniasStation.stop_id) }
+                    )
                 }
 
                 // 3 & 4. EMT BUS STOPS (MAX 2)
@@ -331,16 +235,8 @@ fun NearbyDeparturesWidget(
                     }
                     hasPreviousItem = true
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onBusStopClick(busStop) }
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    NearbyTransitItemRow(
+                        iconBox = {
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
@@ -354,74 +250,35 @@ fun NearbyDeparturesWidget(
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = displayName,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (isBusFav) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.Star,
-                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.favorite_badge_desc),
-                                            tint = Color(0xFFF59E0B),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
+                        },
+                        name = displayName,
+                        isFav = isBusFav,
+                        baseSubtitle = "${LocationUtils.formatDistance(dist)} · EMT Parada #${busStop.id_parada}",
+                        lines = lines,
+                        appLanguage = appLanguage,
+                        badgeRenderer = { line ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFE53935)
+                            ) {
                                 Text(
-                                    text = "${LocationUtils.formatDistance(dist)} · EMT Parada #${busStop.id_parada}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = line,
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
-                        }
-
-                        // Line Chips for Bus (EMT Red)
-                        if (lines.isNotEmpty()) {
-                            val maxBusLines = 3
-                            val visibleBusLines = lines.take(maxBusLines)
-                            val remainingBusLines = lines.size - maxBusLines
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                visibleBusLines.forEach { line ->
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = Color(0xFFE53935)
-                                    ) {
-                                        Text(
-                                            text = line,
-                                            color = Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                                if (remainingBusLines > 0) {
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = Color(0xFFE53935).copy(alpha = 0.15f)
-                                    ) {
-                                        Text(
-                                            text = "...",
-                                            color = Color(0xFFE53935),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                        },
+                        calculateBadgeWidthPx = { line, textMeasurer, density ->
+                            val tw = textMeasurer.measure(
+                                text = line,
+                                style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            ).size.width
+                            tw + with(density) { 12.dp.toPx() }
+                        },
+                        onClick = { onBusStopClick(busStop) }
+                    )
                 }
 
                 // 5 & 6. METROBÚS STOPS (MAX 2)
@@ -439,16 +296,8 @@ fun NearbyDeparturesWidget(
                     }
                     hasPreviousItem = true
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onMetrobusStopClick?.invoke(metrobusStop) }
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    NearbyTransitItemRow(
+                        iconBox = {
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
@@ -462,74 +311,35 @@ fun NearbyDeparturesWidget(
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = displayName,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (isMetrobusFav) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.Star,
-                                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.favorite_badge_desc),
-                                            tint = Color(0xFFF59E0B),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
+                        },
+                        name = displayName,
+                        isFav = isMetrobusFav,
+                        baseSubtitle = "${LocationUtils.formatDistance(dist)} · Metrobús Parada #${metrobusStop.id_parada}",
+                        lines = lines,
+                        appLanguage = appLanguage,
+                        badgeRenderer = { line ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = com.example.util.MetrobusLineColorResolver.BRAND_COLOR
+                            ) {
                                 Text(
-                                    text = "${LocationUtils.formatDistance(dist)} · Metrobús Parada #${metrobusStop.id_parada}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = line,
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
-                        }
-
-                        // Line Chips for Metrobus (Amber #F59E0B)
-                        if (lines.isNotEmpty()) {
-                            val maxMetrobusLines = 3
-                            val visibleMetrobusLines = lines.take(maxMetrobusLines)
-                            val remainingMetrobusLines = lines.size - maxMetrobusLines
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                visibleMetrobusLines.forEach { line ->
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = com.example.util.MetrobusLineColorResolver.BRAND_COLOR
-                                    ) {
-                                        Text(
-                                            text = line,
-                                            color = Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                                if (remainingMetrobusLines > 0) {
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = com.example.util.MetrobusLineColorResolver.BRAND_COLOR.copy(alpha = 0.15f)
-                                    ) {
-                                        Text(
-                                            text = "...",
-                                            color = com.example.util.MetrobusLineColorResolver.BRAND_COLOR,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                        },
+                        calculateBadgeWidthPx = { line, textMeasurer, density ->
+                            val tw = textMeasurer.measure(
+                                text = line,
+                                style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            ).size.width
+                            tw + with(density) { 12.dp.toPx() }
+                        },
+                        onClick = { onMetrobusStopClick?.invoke(metrobusStop) }
+                    )
                 }
 
                 // Empty state if nothing is within 1 km
@@ -566,3 +376,108 @@ fun NearbyDeparturesWidget(
         }
     }
 }
+
+@Composable
+private fun NearbyTransitItemRow(
+    iconBox: @Composable () -> Unit,
+    name: String,
+    isFav: Boolean,
+    baseSubtitle: String,
+    lines: List<String>,
+    appLanguage: AppLanguage,
+    badgeRenderer: @Composable (line: String) -> Unit,
+    calculateBadgeWidthPx: (line: String, textMeasurer: androidx.compose.ui.text.TextMeasurer, density: Density) -> Float,
+    onClick: () -> Unit
+) {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 4.dp)
+    ) {
+        val totalWidthPx = with(density) { maxWidth.toPx() }
+        // 36dp logo + 10dp gap + (20dp if fav) + 12dp safety gap between name and badges
+        val fixedLeftWidthDp = 36.dp + 10.dp + (if (isFav) 20.dp else 0.dp) + 12.dp
+        val fixedLeftWidthPx = with(density) { fixedLeftWidthDp.toPx() }
+
+        val nameTextStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+        val nameWidthPx = textMeasurer.measure(text = name, style = nameTextStyle).size.width
+
+        val spacingPx = if (lines.size > 1) with(density) { 4.dp.toPx() } * (lines.size - 1) else 0f
+        val badgesWidthPx = if (lines.isNotEmpty()) {
+            lines.sumOf { calculateBadgeWidthPx(it, textMeasurer, density).toDouble() }.toFloat() + spacingPx
+        } else 0f
+
+        val availableForContentPx = totalWidthPx - fixedLeftWidthPx
+        val canFitAllLines = lines.isNotEmpty() && (nameWidthPx + badgesWidthPx <= availableForContentPx)
+
+        val finalSubtitle = if (!canFitAllLines && lines.isNotEmpty()) {
+            val linesCountText = if (appLanguage == AppLanguage.CA) {
+                if (lines.size == 1) "1 línia" else "${lines.size} línies"
+            } else {
+                if (lines.size == 1) "1 línea" else "${lines.size} líneas"
+            }
+            if (baseSubtitle.isNotEmpty()) "$baseSubtitle · $linesCountText" else linesCountText
+        } else {
+            baseSubtitle
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                iconBox()
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = name,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (isFav) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.favorite_badge_desc),
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = finalSubtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            if (canFitAllLines) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    lines.forEach { line ->
+                        badgeRenderer(line)
+                    }
+                }
+            }
+        }
+    }
+}
+

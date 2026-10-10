@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.SpaceGroteskFontFamily
 import com.example.ui.theme.appCardBorder
 
 data class TransitModeOption(
@@ -107,6 +108,7 @@ fun PreferredTransitModesCard(
                     Text(
                         text = if (isCa) "Mitjans de transport actius" else "Medios de transporte activos",
                         style = MaterialTheme.typography.titleMedium,
+                        fontFamily = SpaceGroteskFontFamily,
                         fontWeight = FontWeight.Bold,
                         color = textColor
                     )

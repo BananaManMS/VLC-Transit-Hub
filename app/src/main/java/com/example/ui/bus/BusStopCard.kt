@@ -40,6 +40,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import com.example.ui.theme.SpaceGroteskFontFamily
 import com.example.ui.theme.appCardBorder
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -97,6 +98,7 @@ fun BusStopCard(
                         Text(
                             text = alias,
                             style = MaterialTheme.typography.titleMedium,
+                            fontFamily = SpaceGroteskFontFamily,
                             fontWeight = FontWeight.Bold,
                             color = cardTextColor,
                             modifier = Modifier.padding(top = 2.dp)
@@ -114,6 +116,8 @@ fun BusStopCard(
                                 primaryColor = cardTextColor,
                                 secondaryColor = cardTextSecondaryColor
                             ),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = SpaceGroteskFontFamily,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }

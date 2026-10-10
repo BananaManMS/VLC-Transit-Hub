@@ -7,13 +7,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.example.ui.bus.BusViewModel
 import com.example.ui.bus.EmtBusScreen
 import com.example.ui.metro.MetroViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun DashboardBusTab(
     viewModel: DashboardViewModel,
     metroViewModel: MetroViewModel,
+    busViewModel: BusViewModel = viewModel(),
     isDarkMode: Boolean,
     activeTripBottomPadding: Dp,
     initialPage: Int = 0,
@@ -21,6 +24,7 @@ fun DashboardBusTab(
 ) {
     EmtBusScreen(
         viewModel = viewModel,
+        busViewModel = busViewModel,
         metroViewModel = metroViewModel,
         initialPage = initialPage,
         modifier = modifier

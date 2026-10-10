@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.SpaceGroteskFontFamily
 
 @Composable
 fun CercaniasDepartureDetails(
@@ -129,7 +130,8 @@ fun CercaniasDepartureDetails(
 
             Text(
                 text = androidx.compose.ui.res.stringResource(com.example.R.string.dir_prefix, destinationText),
-                fontSize = 20.sp,
+                style = MaterialTheme.typography.titleLarge,
+                fontFamily = SpaceGroteskFontFamily,
                 fontWeight = FontWeight.Bold,
                 color = textColor,
                 maxLines = 1,

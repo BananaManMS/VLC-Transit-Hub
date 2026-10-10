@@ -51,6 +51,7 @@ import com.example.ui.metro.MetroViewModel
 import com.example.ui.metro.MetroStationSelectionDialog
 import com.example.ui.metro.computeMetroSearchScore
 import com.example.ui.theme.ScreenHeader
+import com.example.ui.theme.SpaceGroteskFontFamily
 import com.example.ui.theme.UnifiedAppCard
 import com.example.ui.theme.appCardBorder
 import kotlinx.coroutines.launch
@@ -212,6 +213,7 @@ fun AjustesScreen(
                             Text(
                                 text = texts.settingLanguageTitle,
                                 style = MaterialTheme.typography.titleMedium,
+                                fontFamily = SpaceGroteskFontFamily,
                                 color = textColor
                             )
                         },
@@ -280,6 +282,7 @@ fun AjustesScreen(
                                     Text(
                                         text = texts.settingGpsPermissionTitle,
                                         style = MaterialTheme.typography.titleMedium,
+                                        fontFamily = SpaceGroteskFontFamily,
                                         color = textColor
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
@@ -366,6 +369,7 @@ fun AjustesScreen(
                             Text(
                                 text = texts.settingThemeTitle,
                                 style = MaterialTheme.typography.titleMedium,
+                                fontFamily = SpaceGroteskFontFamily,
                                 color = textColor
                             )
                         },
@@ -415,6 +419,7 @@ fun AjustesScreen(
                                 Text(
                                     text = texts.settingMetroStationsTitle,
                                     style = MaterialTheme.typography.titleMedium,
+                                    fontFamily = SpaceGroteskFontFamily,
                                     color = textColor
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
@@ -462,6 +467,7 @@ fun AjustesScreen(
                                 Text(
                                     text = texts.settingCercaniasStationsTitle,
                                     style = MaterialTheme.typography.titleMedium,
+                                    fontFamily = SpaceGroteskFontFamily,
                                     color = textColor
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
@@ -518,6 +524,8 @@ fun AjustesScreen(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = texts.settingGoogleCalendarTitle,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontFamily = SpaceGroteskFontFamily,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 15.sp,
                                             color = textColor
@@ -599,6 +607,7 @@ fun AjustesScreen(
                                 Text(
                                     text = androidx.compose.ui.res.stringResource(com.example.R.string.setting_onboarding_title),
                                     style = MaterialTheme.typography.titleMedium,
+                                    fontFamily = SpaceGroteskFontFamily,
                                     color = textColor
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
@@ -654,6 +663,7 @@ fun AjustesScreen(
                                 Text(
                                     text = texts.settingAboutTitle,
                                     style = MaterialTheme.typography.titleMedium,
+                                    fontFamily = SpaceGroteskFontFamily,
                                     color = textColor
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))

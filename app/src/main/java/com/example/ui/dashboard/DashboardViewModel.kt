@@ -888,6 +888,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         _appLanguage.value = language
         viewModelScope.launch {
             repository.savePreference("app_language", language.name)
+            try {
+                getApplication<android.app.Application>()
+                    .getSharedPreferences("app_preferences", android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("app_language", language.name)
+                    .apply()
+            } catch (_: Exception) {}
         }
     }
 
@@ -906,12 +913,15 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             if (loc != null) {
                 val favBus = favoriteBusStopsSet.value.toList()
                 val favMb = try { repository.getPreferenceSync("favorite_metrobus_stops", "").split(",").filter { it.isNotBlank() } } catch (_: Exception) { emptyList() }
+                val modes = favoriteTransitModes.value
+                val showEmt = modes.isEmpty() || modes.contains("EMT")
+                val showMetrobus = modes.isEmpty() || modes.contains("METROBUS")
                 computeNearbyStops(
                     userCoords = loc,
                     favoriteBusStops = favBus,
                     favoriteMetrobusStops = favMb,
-                    showEmtNearby = true,
-                    showMetrobusNearby = true
+                    showEmtNearby = showEmt,
+                    showMetrobusNearby = showMetrobus
                 )
             }
         }

@@ -31,6 +31,7 @@ import com.example.BuildConfig
 import com.example.R
 import com.example.data.model.AppUpdateInfo
 import com.example.data.model.UpdateDownloadState
+import com.example.ui.theme.SpaceGroteskFontFamily
 import com.example.ui.theme.UnifiedAppCard
 import com.example.util.AppUpdateManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -192,6 +193,7 @@ fun AppUpdateSettingCard(
                 Text(
                     text = stringResource(R.string.update_check_title),
                     style = MaterialTheme.typography.titleMedium,
+                    fontFamily = SpaceGroteskFontFamily,
                     color = textColor
                 )
                 Spacer(modifier = Modifier.height(2.dp))

@@ -116,6 +116,7 @@ fun CercaniasDepartureCard(
                 Text(
                     text = destinationText,
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
                     color = textColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
