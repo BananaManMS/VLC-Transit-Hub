@@ -46,8 +46,8 @@ android {
     applicationId = "com.aistudio.vlctransithub.wkmzqy"
     minSdk = 24
     targetSdk = 36
-    versionCode = 27
-    versionName = "2.1.1"
+    versionCode = 28
+    versionName = "2.1.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     buildConfigField("String", "CARTO_API_KEY", "\"${getSecret("CARTO_API_KEY")}\"")
