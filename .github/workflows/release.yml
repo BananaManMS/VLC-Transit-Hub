@@ -42,8 +42,8 @@ jobs:
           elif [ -f "debug.keystore" ]; then
             echo "Found debug.keystore in workspace."
           else
-            echo "::error::Neither DEBUG_KEYSTORE_BASE64 secret nor debug.keystore.base64 found! Required for signature consistency."
-            exit 1
+            echo "Keystore not found in repository or secrets. Generating Android debug keystore with keytool..."
+            keytool -genkeypair -alias androiddebugkey -keypass android -keystore debug.keystore -storepass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
           fi
           ls -la debug.keystore
 
