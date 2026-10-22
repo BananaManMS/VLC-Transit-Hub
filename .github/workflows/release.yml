@@ -47,12 +47,49 @@ jobs:
           fi
           ls -la debug.keystore
 
+      - name: Inject Secrets and API Keys
+        run: |
+          CARTO_VAL="${{ secrets.CARTO_API_KEY || secrets.CARTO_KEY }}"
+          METRO_VAL="${{ secrets.METROVALENCIA_API_SECRET || secrets.METROVALENCIA_SECRET }}"
+          MAPS_VAL="${{ secrets.GOOGLE_MAPS_API_KEY || secrets.MAPS_API_KEY || secrets.GOOGLE_MAPS_KEY }}"
+
+          echo "Injecting API Keys into local.properties, .env, and secrets.properties..."
+          cat <<EOF > local.properties
+          CARTO_API_KEY=$CARTO_VAL
+          METROVALENCIA_API_SECRET=$METRO_VAL
+          GOOGLE_MAPS_API_KEY=$MAPS_VAL
+          sdk.dir=$ANDROID_HOME
+          EOF
+
+          cat <<EOF > .env
+          CARTO_API_KEY=$CARTO_VAL
+          METROVALENCIA_API_SECRET=$METRO_VAL
+          GOOGLE_MAPS_API_KEY=$MAPS_VAL
+          EOF
+
+          cat <<EOF > secrets.properties
+          CARTO_API_KEY=$CARTO_VAL
+          METROVALENCIA_API_SECRET=$METRO_VAL
+          GOOGLE_MAPS_API_KEY=$MAPS_VAL
+          EOF
+
+          [ -n "$CARTO_VAL" ] && echo "CARTO_API_KEY: Configured" || echo "CARTO_API_KEY: Not set"
+          [ -n "$METRO_VAL" ] && echo "METROVALENCIA_API_SECRET: Configured" || echo "METROVALENCIA_API_SECRET: Not set"
+          [ -n "$MAPS_VAL" ] && echo "GOOGLE_MAPS_API_KEY: Configured" || echo "GOOGLE_MAPS_API_KEY: Not set"
+
       - name: Build APK with Gradle
-        run: gradle assembleDebug --no-daemon
+        run: |
+          CARTO_VAL="${{ secrets.CARTO_API_KEY || secrets.CARTO_KEY }}"
+          METRO_VAL="${{ secrets.METROVALENCIA_API_SECRET || secrets.METROVALENCIA_SECRET }}"
+          MAPS_VAL="${{ secrets.GOOGLE_MAPS_API_KEY || secrets.MAPS_API_KEY || secrets.GOOGLE_MAPS_KEY }}"
+          gradle assembleDebug --no-daemon \
+            -P CARTO_API_KEY="$CARTO_VAL" \
+            -P METROVALENCIA_API_SECRET="$METRO_VAL" \
+            -P GOOGLE_MAPS_API_KEY="$MAPS_VAL"
         env:
-          CARTO_API_KEY: ${{ secrets.CARTO_API_KEY }}
-          METROVALENCIA_API_SECRET: ${{ secrets.METROVALENCIA_API_SECRET }}
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          CARTO_API_KEY: ${{ secrets.CARTO_API_KEY || secrets.CARTO_KEY }}
+          METROVALENCIA_API_SECRET: ${{ secrets.METROVALENCIA_API_SECRET || secrets.METROVALENCIA_SECRET }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || secrets.MAPS_API_KEY || secrets.GOOGLE_MAPS_KEY }}
 
       - name: Prepare APK Artifacts
         id: prepare_apk

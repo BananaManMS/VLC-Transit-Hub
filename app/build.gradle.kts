@@ -10,6 +10,35 @@ plugins {
 }
 
 android {
+  val getSecret: (String) -> String = { key ->
+    providers.environmentVariable(key).orNull?.takeIf { it.isNotBlank() }
+      ?: providers.gradleProperty(key).orNull?.takeIf { it.isNotBlank() }
+      ?: System.getenv(key)?.takeIf { it.isNotBlank() }
+      ?: (findProperty(key) as? String)?.takeIf { it.isNotBlank() }
+      ?: run {
+        val f = rootProject.file("local.properties")
+        if (f.exists()) {
+          f.readLines().firstOrNull { it.trim().startsWith("$key=") }
+            ?.substringAfter("=")?.trim()?.removeSurrounding("\"")?.removeSurrounding("'")?.takeIf { it.isNotBlank() }
+        } else null
+      }
+      ?: run {
+        val f = rootProject.file("secrets.properties")
+        if (f.exists()) {
+          f.readLines().firstOrNull { it.trim().startsWith("$key=") }
+            ?.substringAfter("=")?.trim()?.removeSurrounding("\"")?.removeSurrounding("'")?.takeIf { it.isNotBlank() }
+        } else null
+      }
+      ?: run {
+        val f = rootProject.file(".env")
+        if (f.exists()) {
+          f.readLines().firstOrNull { it.trim().startsWith("$key=") }
+            ?.substringAfter("=")?.trim()?.removeSurrounding("\"")?.removeSurrounding("'")?.takeIf { it.isNotBlank() }
+        } else null
+      }
+      ?: ""
+  }
+
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
@@ -21,9 +50,10 @@ android {
     versionName = "2.1.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    buildConfigField("String", "CARTO_API_KEY", "\"${System.getenv("CARTO_API_KEY") ?: ""}\"")
-    buildConfigField("String", "METROVALENCIA_API_SECRET", "\"${System.getenv("METROVALENCIA_API_SECRET") ?: ""}\"")
-    buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${System.getenv("GOOGLE_MAPS_API_KEY") ?: ""}\"")
+    buildConfigField("String", "CARTO_API_KEY", "\"${getSecret("CARTO_API_KEY")}\"")
+    buildConfigField("String", "METROVALENCIA_API_SECRET", "\"${getSecret("METROVALENCIA_API_SECRET")}\"")
+    buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${getSecret("GOOGLE_MAPS_API_KEY")}\"")
+    manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = getSecret("GOOGLE_MAPS_API_KEY")
   }
 
   signingConfigs {
