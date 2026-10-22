@@ -1,0 +1,688 @@
+package com.example.ui.map.components
+
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.view.MotionEvent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import java.util.concurrent.atomic.AtomicBoolean
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.example.data.database.GeoportalStopEntity
+import com.example.data.model.MetroStation
+import com.example.ui.dashboard.AppLanguage
+import com.example.ui.map.RecentSearch
+import com.example.ui.map.MapConfig
+import com.example.ui.map.MapFilter
+import com.example.ui.map.SelectedMapItem
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.CustomZoomButtonsController
+import org.osmdroid.views.MapView
+
+private val darkContrastFilter = ColorMatrixColorFilter(
+    ColorMatrix(
+        floatArrayOf(
+            1.4f, 0f, 0f, 0f, 10f,
+            0f, 1.4f, 0f, 0f, 10f,
+            0f, 0f, 1.4f, 0f, 10f,
+            0f, 0f, 0f, 1f, 0f
+        )
+    )
+)
+
+@Composable
+fun OsmdroidMapView(
+    modifier: Modifier = Modifier,
+    isDarkMode: Boolean = false,
+    isSatelliteMode: Boolean = false,
+    cameraTarget: GeoPoint = MapConfig.VALENCIA_CENTER,
+    cameraZoom: Double = MapConfig.DEFAULT_ZOOM,
+    cameraAnimTrigger: Int = 0,
+    zoomInTrigger: Int = 0,
+    zoomOutTrigger: Int = 0,
+    userLocation: GeoPoint? = null,
+    destinationLocation: GeoPoint? = null,
+    destinationTitle: String? = null,
+    busStops: List<GeoportalStopEntity> = emptyList(),
+    metrobusStops: List<com.example.data.database.MetrobusStopEntity> = emptyList(),
+    metroStations: List<MetroStation> = emptyList(),
+    cercaniasStations: List<com.example.data.database.CercaniasStationEntity> = emptyList(),
+    liveCercaniasVehicles: List<com.example.ui.cercanias.LiveVehicleInfo> = emptyList(),
+    valenbisiStations: List<com.example.ui.map.components.ValenbisiStation> = emptyList(),
+    customFavorites: List<RecentSearch> = emptyList(),
+    homeLocation: RecentSearch? = null,
+    workLocation: RecentSearch? = null,
+    mapFilter: MapFilter = MapFilter.DEFAULT,
+    busStopAliases: Map<String, String> = emptyMap(),
+    appLanguage: AppLanguage = AppLanguage.CA,
+    selectedItinerary: com.example.data.model.routing.PlannedItinerary? = null,
+    selectedMapItem: SelectedMapItem? = null,
+    selectedBusLineFilters: Set<String> = emptySet(),
+    selectedMetrobusShapes: Map<String, List<GeoPoint>> = emptyMap(),
+    selectedDirectionFilter: String? = null,
+    bottomPanelOffsetPx: Float = 0f,
+    onSelectItem: (SelectedMapItem) -> Unit,
+    onMapClick: () -> Unit,
+    onMapTouch: (() -> Unit)? = null,
+    onMapPan: (() -> Unit)? = null,
+    onCameraPositionChanged: ((GeoPoint, Double) -> Unit)? = null,
+    onZoomLevelChanged: ((Double) -> Unit)? = null,
+    onShowDisambiguationMenu: ((List<SelectedMapItem>) -> Unit)? = null,
+    onMapLongClick: ((GeoPoint) -> Unit)? = null,
+    isCellTowerLocation: Boolean = false,
+    isFollowingUser: Boolean = false
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentOnMapTouch by rememberUpdatedState(onMapTouch)
+    val currentOnMapPan by rememberUpdatedState(onMapPan)
+    val currentOnZoomLevelChanged by rememberUpdatedState(onZoomLevelChanged)
+    val currentOnCameraPositionChanged by rememberUpdatedState(onCameraPositionChanged)
+    val currentOnMapLongClick by rememberUpdatedState(onMapLongClick)
+    val currentSelectedItinerary by rememberUpdatedState(selectedItinerary)
+
+    // Initialize MapConfig User Agent & Preferences
+    remember {
+        MapConfig.initialize(context)
+        true
+    }
+
+    val mapView = remember {
+        MapView(context).apply {
+            // Re-enabled hardware GPU rendering for modern devices (Pixel 7, etc.) to run at fluid 60-90 FPS.
+            // Hardware acceleration is fully stable on modern Android APIs.
+
+            val initialTileSource = if (isDarkMode) MapConfig.CARTO_DARK_SOURCE else MapConfig.CARTO_LIGHT_SOURCE
+            setTileSource(initialTileSource)
+            setMultiTouchControls(true)
+            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+            minZoomLevel = MapConfig.MIN_ZOOM
+            maxZoomLevel = MapConfig.MAX_ZOOM
+            
+            // Lock map scrollable area within the boundaries of Comunitat Valenciana
+            setScrollableAreaLimitDouble(MapConfig.VALENCIA_BOUNDS)
+
+            isHorizontalMapRepetitionEnabled = false
+            isVerticalMapRepetitionEnabled = false
+            isTilesScaledToDpi = true
+
+            // Match background color of the map container with the tile source to eliminate bright grey gaps during loads
+            setBackgroundColor(if (isDarkMode) android.graphics.Color.parseColor("#0F172A") else android.graphics.Color.parseColor("#F1F5F9"))
+
+            // Optimize tileProvider and tileCache for adjacent tile preloading and memory retention
+            tileProvider.apply {
+                tileCache.apply {
+                    ensureCapacity(200)
+                    setAutoEnsureCapacity(true)
+                    protectedTileComputers.apply {
+                        clear()
+                        // Pre-load and retain 2 rings of adjacent surrounding tiles (sufficient for smooth pan without RAM pressure)
+                        add(org.osmdroid.util.MapTileAreaBorderComputer(2))
+                        // Retain multi-level zoom tiles for instant pinch transitions
+                        add(org.osmdroid.util.MapTileAreaZoomComputer(-1))
+                        add(org.osmdroid.util.MapTileAreaZoomComputer(1))
+                    }
+                }
+            }
+
+            // Optimize tile overlay rendering to eliminate visible square grid lines & enable background fetching
+            overlayManager.tilesOverlay.apply {
+                setLoadingBackgroundColor(if (isDarkMode) android.graphics.Color.parseColor("#121826") else android.graphics.Color.parseColor("#E2E8F0"))
+                setLoadingLineColor(android.graphics.Color.TRANSPARENT)
+                setUseDataConnection(true)
+                isHorizontalWrapEnabled = false
+                isVerticalWrapEnabled = false
+                if (isDarkMode) {
+                    setColorFilter(darkContrastFilter)
+                }
+            }
+
+            val routePoints = selectedItinerary?.legs?.flatMap { leg ->
+                val pts = mutableListOf<GeoPoint>()
+                if (leg.fromLat != 0.0 && leg.fromLon != 0.0) pts.add(GeoPoint(leg.fromLat, leg.fromLon))
+                pts.addAll(leg.geometry)
+                if (leg.toLat != 0.0 && leg.toLon != 0.0) pts.add(GeoPoint(leg.toLat, leg.toLon))
+                pts
+            }?.filter { it.latitude in 38.0..41.0 && it.longitude in -2.0..1.0 }
+
+            if (!routePoints.isNullOrEmpty()) {
+                val minLat = routePoints.minOf { it.latitude }
+                val maxLat = routePoints.maxOf { it.latitude }
+                val minLon = routePoints.minOf { it.longitude }
+                val maxLon = routePoints.maxOf { it.longitude }
+                val centerLat = (minLat + maxLat) / 2.0
+                val centerLon = (minLon + maxLon) / 2.0
+                controller.setCenter(GeoPoint(centerLat, centerLon))
+                val maxSpan = maxOf(maxLat - minLat, maxLon - minLon)
+                val estimatedZoom = when {
+                    maxSpan > 0.35 -> 10.5
+                    maxSpan > 0.18 -> 11.5
+                    maxSpan > 0.09 -> 12.5
+                    maxSpan > 0.045 -> 13.5
+                    maxSpan > 0.02 -> 14.5
+                    else -> 15.0
+                }
+                controller.setZoom(estimatedZoom)
+            } else {
+                controller.setZoom(cameraZoom)
+                controller.setCenter(cameraTarget)
+            }
+
+            setOnTouchListener(
+                MapGestureTouchHandler.createTouchListener(
+                    mapView = this,
+                    getMapCenterOffsetY = { mapCenterOffsetY },
+                    onMapTouch = { currentOnMapTouch?.invoke() },
+                    onMapPan = { currentOnMapPan?.invoke() },
+                    onZoomLevelChanged = { currentOnZoomLevelChanged?.invoke(it) },
+                    onCameraPositionChanged = { center, zoom -> currentOnCameraPositionChanged?.invoke(center, zoom) },
+                    onMapLongClick = { currentOnMapLongClick?.invoke(it) },
+                    isItinerarySelected = { currentSelectedItinerary != null }
+                )
+            )
+        }
+    }
+
+    val handler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    val coroutineScope = rememberCoroutineScope()
+
+    val cercaniasTrainOverlayManager = remember(mapView) {
+        com.example.ui.map.CercaniasTrainOverlayManager(
+            context = context,
+            mapView = mapView,
+            onTrainSelected = { vehicle ->
+                onSelectItem(SelectedMapItem.LiveTrain(vehicle))
+            }
+        )
+    }
+    val cercaniasTrainOverlayManagerRef by rememberUpdatedState(cercaniasTrainOverlayManager)
+
+    // Lifecycle handling for mapView and sensors
+    DisposableEffect(lifecycleOwner, mapView) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    try {
+                        mapView.onResume()
+                    } catch (_: Exception) {}
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    try {
+                        mapView.onPause()
+                        stopLiveLocationUpdates()
+                        LiveTrainMarkerManager.clearLiveTrain(mapView)
+                        cercaniasTrainOverlayManagerRef?.clear()
+                    } catch (_: Exception) {}
+                }
+                Lifecycle.Event.ON_DESTROY -> {
+                    try {
+                        mapView.onDetach()
+                        MapMarkersManager.clearReferences(mapView)
+                    } catch (_: Exception) {}
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            try {
+                mapView.onPause()
+            } catch (_: Exception) {}
+            stopLiveLocationUpdates()
+            handler.removeCallbacksAndMessages(null)
+            LiveTrainMarkerManager.clearLiveTrain(mapView)
+            MapMarkersManager.clearReferences(mapView)
+            MetroStationFootprintsOverlayManager.clearFromMap(mapView)
+            cercaniasTrainOverlayManagerRef?.clear()
+        }
+    }
+
+    val darkOverlay = remember {
+        org.osmdroid.views.overlay.Polygon().apply {
+            points = listOf(
+                GeoPoint(90.0, -180.0),
+                GeoPoint(90.0, 180.0),
+                GeoPoint(-90.0, 180.0),
+                GeoPoint(-90.0, -180.0),
+                GeoPoint(90.0, -180.0)
+            )
+            fillPaint.color = android.graphics.Color.parseColor("#B3000000") // 70% black
+            outlinePaint.color = android.graphics.Color.TRANSPARENT
+            isEnabled = true
+        }
+    }
+
+    // Dynamic tile source switching based on dark mode theme and satellite mode
+    LaunchedEffect(isDarkMode, isSatelliteMode) {
+        if (isSatelliteMode) {
+            mapView.setBackgroundColor(android.graphics.Color.parseColor("#0B131F"))
+            mapView.setTileSource(MapConfig.ESRI_SATELLITE_SOURCE)
+            mapView.overlayManager.tilesOverlay.apply {
+                setLoadingBackgroundColor(android.graphics.Color.parseColor("#0B131F"))
+                setColorFilter(null)
+            }
+            mapView.overlays.remove(darkOverlay)
+        } else {
+            mapView.setBackgroundColor(if (isDarkMode) android.graphics.Color.parseColor("#0F172A") else android.graphics.Color.parseColor("#F1F5F9"))
+            mapView.setTileSource(if (isDarkMode) MapConfig.CARTO_DARK_SOURCE else MapConfig.CARTO_LIGHT_SOURCE)
+            mapView.overlayManager.tilesOverlay.apply {
+                setLoadingBackgroundColor(
+                    if (isDarkMode) android.graphics.Color.parseColor("#121826") else android.graphics.Color.parseColor("#E2E8F0")
+                )
+                setColorFilter(null)
+            }
+            if (isDarkMode) {
+                if (!mapView.overlays.contains(darkOverlay)) {
+                    darkOverlay.fillPaint.color = android.graphics.Color.parseColor("#E6000000")
+                    mapView.overlays.add(0, darkOverlay)
+                    mapView.invalidate()
+                }
+            } else {
+                mapView.overlays.remove(darkOverlay)
+            }
+        }
+        mapView.invalidate()
+    }
+
+    val isSettingOffsetRef = remember { AtomicBoolean(false) }
+    val targetOffsetY = if (bottomPanelOffsetPx > 0f) {
+        -(bottomPanelOffsetPx / 2f).toInt()
+    } else {
+        0
+    }
+
+    fun getFocalCenterGeoPoint(): GeoPoint {
+        val proj = mapView.projection
+        if (proj != null) {
+            val cur = proj.currentCenter
+            if (cur != null) return GeoPoint(cur.latitude, cur.longitude)
+        }
+        val center = mapView.mapCenter
+        return if (center != null) GeoPoint(center.latitude, center.longitude) else MapConfig.VALENCIA_CENTER
+    }
+
+    // Animate camera when target changes programmatically (only when no itinerary is active or after initial itinerary framing settles)
+    var hasHandledInitialItineraryFraming by remember(selectedItinerary?.id) { mutableStateOf(false) }
+
+    LaunchedEffect(selectedItinerary?.id) {
+        if (selectedItinerary != null) {
+            kotlinx.coroutines.delay(600L)
+            hasHandledInitialItineraryFraming = true
+        } else {
+            hasHandledInitialItineraryFraming = false
+        }
+    }
+
+    var isInitialUserCenteringDone by remember { mutableStateOf(false) }
+
+    LaunchedEffect(cameraAnimTrigger) {
+        if (cameraAnimTrigger > 0) {
+            if (selectedItinerary == null) {
+                if (!isInitialUserCenteringDone && isFollowingUser) {
+                    mapView.controller.setZoom(cameraZoom)
+                    mapView.controller.setCenter(cameraTarget)
+                    isInitialUserCenteringDone = true
+                } else {
+                    mapView.controller.animateTo(cameraTarget, cameraZoom, 500L)
+                }
+            } else if (hasHandledInitialItineraryFraming && isFollowingUser) {
+                mapView.controller.animateTo(cameraTarget, cameraZoom, 500L)
+            }
+        }
+    }
+
+    // Direct zoom in action
+    LaunchedEffect(zoomInTrigger) {
+        if (zoomInTrigger > 0) {
+            val fx = mapView.width / 2
+            val fy = if (mapView.height > 0) mapView.height / 2 + targetOffsetY else mapView.height / 2
+            mapView.controller.zoomInFixing(fx, fy)
+            onZoomLevelChanged?.invoke(mapView.zoomLevelDouble)
+        }
+    }
+
+    // Direct zoom out action
+    LaunchedEffect(zoomOutTrigger) {
+        if (zoomOutTrigger > 0) {
+            val fx = mapView.width / 2
+            val fy = if (mapView.height > 0) mapView.height / 2 + targetOffsetY else mapView.height / 2
+            mapView.controller.zoomOutFixing(fx, fy)
+            onZoomLevelChanged?.invoke(mapView.zoomLevelDouble)
+        }
+    }
+
+    SideEffect {
+        if (mapView.mapCenterOffsetY != targetOffsetY) {
+            isSettingOffsetRef.set(true)
+            try {
+                android.util.Log.d("MapOffsetCheck", "Applying setMapCenterOffset(0, $targetOffsetY) [previous: ${mapView.mapCenterOffsetY}]")
+                mapView.setMapCenterOffset(0, targetOffsetY)
+                mapView.invalidate()
+            } finally {
+                isSettingOffsetRef.set(false)
+            }
+        }
+    }
+
+    val currentBusStops by rememberUpdatedState(busStops)
+    val currentMetrobusStops by rememberUpdatedState(metrobusStops)
+    val currentMetroStations by rememberUpdatedState(metroStations)
+    val currentCercaniasStations by rememberUpdatedState(cercaniasStations)
+    val currentValenbisiStations by rememberUpdatedState(valenbisiStations)
+    val currentCustomFavorites by rememberUpdatedState(customFavorites)
+    val currentHomeLocation by rememberUpdatedState(homeLocation)
+    val currentWorkLocation by rememberUpdatedState(workLocation)
+    val currentMapFilter by rememberUpdatedState(mapFilter)
+    val currentUserLocation by rememberUpdatedState(userLocation)
+    val currentIsCellTowerLocation by rememberUpdatedState(isCellTowerLocation)
+    val currentDestinationLocation by rememberUpdatedState(destinationLocation)
+    val currentDestinationTitle by rememberUpdatedState(destinationTitle)
+    val currentIsDarkMode by rememberUpdatedState(isDarkMode)
+    val currentBusStopAliases by rememberUpdatedState(busStopAliases)
+    val currentSelectedMapItem by rememberUpdatedState(selectedMapItem)
+    val currentOnSelectItem by rememberUpdatedState(onSelectItem)
+    val currentOnMapClick by rememberUpdatedState(onMapClick)
+    val currentOnShowDisambiguationMenu by rememberUpdatedState(onShowDisambiguationMenu)
+    val currentSelectedBusLineFilters by rememberUpdatedState(selectedBusLineFilters)
+    val currentSelectedMetrobusShapes by rememberUpdatedState(selectedMetrobusShapes)
+    val currentSelectedDirectionFilter by rememberUpdatedState(selectedDirectionFilter)
+
+    val isMetroLoaded by MetroMapOverlayLoader.isLoadedState.collectAsState()
+    val isCercaniasLoaded by CercaniasMapOverlayLoader.isLoadedState.collectAsState()
+    val isEmtLoaded by EmtMapOverlayLoader.isLoadedState.collectAsState()
+
+    // Trigger background lazy loading of Metro & Cercanías GeoJSON as soon as the layer is needed
+    LaunchedEffect(mapFilter) {
+        if (mapFilter.isFavorites || mapFilter.showMetro) {
+            MetroMapOverlayLoader.ensureLoaded(context)
+        }
+        if (mapFilter.isFavorites || mapFilter.showCercanias) {
+            CercaniasMapOverlayLoader.ensureLoaded(context)
+        }
+    }
+
+    // Trigger background lazy loading of EMT GTFS routes and shapes
+    LaunchedEffect(mapFilter, selectedMapItem) {
+        if (mapFilter.isFavorites || mapFilter.showBus || selectedMapItem is SelectedMapItem.BusStop) {
+            com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(context)
+            EmtMapOverlayLoader.ensureLoaded(context)
+        }
+    }
+
+    val isCercaniasOnlyFilter = mapFilter.showCercanias && !mapFilter.showBus && !mapFilter.showMetrobus && !mapFilter.showMetro && !mapFilter.showValenbisi && !mapFilter.isFavorites
+
+    val selectedStation = selectedMapItem as? SelectedMapItem.Cercanias
+    val selectedLines = selectedStation?.station?.lines
+
+    val trainsToRender = remember(liveCercaniasVehicles, isCercaniasOnlyFilter, selectedStation) {
+        if (isCercaniasOnlyFilter) {
+            liveCercaniasVehicles
+        } else if (selectedStation != null) {
+            liveCercaniasVehicles.filter { vehicle ->
+                com.example.ui.cercanias.CercaniasRouteUtils.getStationScheduledTime(
+                    tripId = vehicle.tripId,
+                    stationId = selectedStation.station.stop_id,
+                    stationName = selectedStation.station.nombre
+                ) != null
+            }
+        } else {
+            emptyList()
+        }
+    }
+
+    val currentTrainsToRenderState = rememberUpdatedState(trainsToRender)
+    val currentIsCercaniasOnlyFilterState = rememberUpdatedState(isCercaniasOnlyFilter)
+    val currentSelectedLinesState = rememberUpdatedState(selectedLines)
+
+    LaunchedEffect(trainsToRender, isCercaniasOnlyFilter, selectedLines) {
+        cercaniasTrainOverlayManager.updateLiveTrains(
+            trains = trainsToRender,
+            isCercaniasOnlyFilter = isCercaniasOnlyFilter,
+            selectedLines = selectedLines
+        )
+    }
+
+    // Update Markers on state change or when transit line overlays finish lazy loading
+    LaunchedEffect(
+        busStops, metrobusStops, metroStations, cercaniasStations, valenbisiStations,
+        customFavorites, homeLocation, workLocation, mapFilter, userLocation, isCellTowerLocation,
+        destinationLocation, destinationTitle, isDarkMode, busStopAliases,
+        appLanguage, selectedItinerary, onShowDisambiguationMenu, onMapLongClick,
+        isMetroLoaded, isCercaniasLoaded, isEmtLoaded, selectedMapItem, selectedBusLineFilters, selectedMetrobusShapes
+    ) {
+        MapMarkersManager.updateMarkers(
+            context = context,
+            mapView = mapView,
+            cameraZoom = cameraZoom,
+            busStops = busStops,
+            metrobusStops = metrobusStops,
+            metroStations = metroStations,
+            cercaniasStations = cercaniasStations,
+            valenbisiStations = valenbisiStations,
+            customFavorites = customFavorites,
+            homeLocation = homeLocation,
+            workLocation = workLocation,
+            mapFilter = mapFilter,
+            userLocation = userLocation,
+            destinationLocation = destinationLocation,
+            destinationTitle = destinationTitle,
+            isDarkMode = isDarkMode,
+            busStopAliases = busStopAliases,
+            appLanguage = appLanguage,
+            selectedItinerary = selectedItinerary,
+            selectedMapItem = selectedMapItem,
+            selectedBusLineFilters = selectedBusLineFilters,
+            selectedMetrobusShapes = selectedMetrobusShapes,
+            selectedDirectionFilter = selectedDirectionFilter,
+            onSelectItem = onSelectItem,
+            onMapClick = onMapClick,
+            onShowDisambiguationMenu = onShowDisambiguationMenu,
+            onMapLongClick = onMapLongClick,
+            isCellTowerLocation = isCellTowerLocation
+        )
+    }
+
+    // Attach MapListener with 120ms debounce for smooth pan and zoom
+    DisposableEffect(mapView) {
+        var pendingUpdateRunnable: Runnable? = null
+
+        val debouncedUpdate = {
+            pendingUpdateRunnable?.let { handler.removeCallbacks(it) }
+            val runnable = Runnable {
+                MapMarkersManager.updateMarkers(
+                    context = context,
+                    mapView = mapView,
+                    cameraZoom = cameraZoom,
+                    busStops = currentBusStops,
+                    metrobusStops = currentMetrobusStops,
+                    metroStations = currentMetroStations,
+                    cercaniasStations = currentCercaniasStations,
+                    valenbisiStations = currentValenbisiStations,
+                    customFavorites = currentCustomFavorites,
+                    homeLocation = currentHomeLocation,
+                    workLocation = currentWorkLocation,
+                    mapFilter = currentMapFilter,
+                    userLocation = currentUserLocation,
+                    destinationLocation = currentDestinationLocation,
+                    destinationTitle = currentDestinationTitle,
+                    isDarkMode = currentIsDarkMode,
+                    busStopAliases = currentBusStopAliases,
+                    appLanguage = appLanguage,
+                    selectedItinerary = currentSelectedItinerary,
+                    selectedMapItem = currentSelectedMapItem,
+                    selectedBusLineFilters = currentSelectedBusLineFilters,
+                    selectedMetrobusShapes = currentSelectedMetrobusShapes,
+                    selectedDirectionFilter = currentSelectedDirectionFilter,
+                    onSelectItem = currentOnSelectItem,
+                    onMapClick = currentOnMapClick,
+                    onShowDisambiguationMenu = currentOnShowDisambiguationMenu,
+                    onMapLongClick = currentOnMapLongClick,
+                    isCellTowerLocation = currentIsCellTowerLocation
+                )
+                // Redraw live trains on zoom or pan so they do not get cleared by composeOverlays
+                cercaniasTrainOverlayManager.updateLiveTrains(
+                    trains = currentTrainsToRenderState.value,
+                    isCercaniasOnlyFilter = currentIsCercaniasOnlyFilterState.value,
+                    selectedLines = currentSelectedLinesState.value
+                )
+            }
+            pendingUpdateRunnable = runnable
+            handler.postDelayed(runnable, 120L)
+        }
+
+        var lastCameraUpdateTime = 0L
+        val listener = object : MapListener {
+            override fun onScroll(event: ScrollEvent?): Boolean {
+                if (isSettingOffsetRef.get()) {
+                    android.util.Log.d("MapOffsetCheck", "Filtered onScroll event during setMapCenterOffset: $event")
+                    return false
+                }
+                debouncedUpdate()
+                val now = System.currentTimeMillis()
+                // Throttle camera reporting to Compose to 160ms to avoid re-evaluating compose trees on every single pixel motion
+                if (now - lastCameraUpdateTime >= 160L) {
+                    lastCameraUpdateTime = now
+                    val center = getFocalCenterGeoPoint()
+                    currentOnCameraPositionChanged?.invoke(center, mapView.zoomLevelDouble)
+                }
+                return false
+            }
+
+            override fun onZoom(event: ZoomEvent?): Boolean {
+                val zoom = mapView.zoomLevelDouble
+                val shouldBeHighRes = zoom >= 12.0
+                MetroMapOverlayLoader.setUseHighRes(shouldBeHighRes)
+                val newCategory = MetroMapOverlayLoader.getZoomCategoryForLevel(zoom)
+                MetroMapOverlayLoader.setZoomCategory(newCategory)
+                
+                // Debounced update ensures markers & line overlays update smoothly on zoom
+                debouncedUpdate()
+                
+                currentOnZoomLevelChanged?.invoke(zoom)
+                val now = System.currentTimeMillis()
+                if (now - lastCameraUpdateTime >= 160L) {
+                    lastCameraUpdateTime = now
+                    val center = getFocalCenterGeoPoint()
+                    currentOnCameraPositionChanged?.invoke(center, zoom)
+                }
+                return false
+            }
+        }
+        mapView.addMapListener(listener)
+
+        val firstLayoutListener = MapView.OnFirstLayoutListener { _, _, _, _, _ ->
+            debouncedUpdate()
+        }
+        mapView.addOnFirstLayoutListener(firstLayoutListener)
+
+        if (mapView.isLaidOut) {
+            debouncedUpdate()
+        } else {
+            mapView.post { debouncedUpdate() }
+        }
+
+        onDispose {
+            try {
+                mapView.overlays.clear()
+            } catch (_: Exception) {}
+            pendingUpdateRunnable?.let { handler.removeCallbacks(it) }
+            try {
+                mapView.removeOnFirstLayoutListener(firstLayoutListener)
+            } catch (_: Exception) {}
+            try {
+                mapView.removeMapListener(listener)
+            } catch (_: Exception) {}
+            try {
+                mapView.setMapCenterOffset(0, 0)
+            } catch (_: Exception) {}
+        }
+    }
+
+    Box(modifier = modifier) {
+        AndroidView(
+            factory = { mapView },
+            update = { view ->
+                if (view.mapCenterOffsetY != targetOffsetY) {
+                    isSettingOffsetRef.set(true)
+                    try {
+                        view.setMapCenterOffset(0, targetOffsetY)
+                        view.invalidate()
+                    } finally {
+                        isSettingOffsetRef.set(false)
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = if (isDarkMode) Color(0xD90F172A) else Color(0xD9F8FAFC),
+            contentColor = if (isDarkMode) Color(0xCCCBD5E1) else Color(0xCC334155),
+            shadowElevation = 0.dp,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 8.dp, bottom = 6.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = "Attribution",
+                    modifier = Modifier.size(11.dp),
+                    tint = if (isDarkMode) Color(0xAA94A3B8) else Color(0xAA64748B)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "© CARTO, © OpenStreetMap contributors",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.1.sp
+                    )
+                )
+            }
+        }
+    }
+}

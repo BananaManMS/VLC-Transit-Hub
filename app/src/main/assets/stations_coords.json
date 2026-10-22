@@ -1,0 +1,1512 @@
+[
+  {
+    "id": "190",
+    "name": "Alacant",
+    "lines": [
+      "L10"
+    ],
+    "zone": "A",
+    "latitude": 39.46420275856861,
+    "longitude": -0.377693591203814
+  },
+  {
+    "id": "191",
+    "name": "Russafa",
+    "lines": [
+      "L10"
+    ],
+    "zone": "A",
+    "latitude": 39.46392160608133,
+    "longitude": -0.36918375186112495
+  },
+  {
+    "id": "197",
+    "name": "Natzaret",
+    "lines": [
+      "L10"
+    ],
+    "zone": "A",
+    "latitude": 39.44989193250197,
+    "longitude": -0.33472830914940116
+  },
+  {
+    "id": "193",
+    "name": "Quatre Carreres",
+    "lines": [
+      "L10"
+    ],
+    "zone": "A",
+    "latitude": 39.452427166256626,
+    "longitude": -0.36024480405269804
+  },
+  {
+    "id": "192",
+    "name": "Amado Granell - Montolivet",
+    "lines": [
+      "L10"
+    ],
+    "zone": "A",
+    "latitude": 39.459405179397706,
+    "longitude": -0.3652344828968413
+  },
+  {
+    "id": "194",
+    "name": "Ciutat Arts i Ciències - Justícia",
+    "lines": [
+      "L10"
+    ],
+    "zone": "A",
+    "latitude": 39.45269714296525,
+    "longitude": -0.3533157865520709
+  },
+  {
+    "id": "195",
+    "name": "Oceanogràfic",
+    "lines": [
+      "L10"
+    ],
+    "zone": "A",
+    "latitude": 39.45193606767608,
+    "longitude": -0.3473490988313985
+  },
+  {
+    "id": "196",
+    "name": "Moreres",
+    "lines": [
+      "L10"
+    ],
+    "zone": "A",
+    "latitude": 39.44998677738987,
+    "longitude": -0.3384852283288174
+  },
+  {
+    "id": "96",
+    "name": "Trànsits",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A",
+    "latitude": 39.489563105499315,
+    "longitude": -0.3870114389782164
+  },
+  {
+    "id": "93",
+    "name": "Sagunt",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A",
+    "latitude": 39.486525869887764,
+    "longitude": -0.3748661750531585
+  },
+  {
+    "id": "92",
+    "name": "Pont de Fusta",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A",
+    "latitude": 39.48217202450386,
+    "longitude": -0.37286975726496413
+  },
+  {
+    "id": "94",
+    "name": "Reus",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A",
+    "latitude": 39.48594122055301,
+    "longitude": -0.38172791442824655
+  },
+  {
+    "id": "95",
+    "name": "Marxalenes",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A",
+    "latitude": 39.48795690795396,
+    "longitude": -0.38383561621803697
+  },
+  {
+    "id": "97",
+    "name": "Benicalap",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A",
+    "latitude": 39.489985047971544,
+    "longitude": -0.3900132698644617
+  },
+  {
+    "id": "98",
+    "name": "Garbí",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A",
+    "latitude": 39.49243855424835,
+    "longitude": -0.3944056732734784
+  },
+  {
+    "id": "99",
+    "name": "Florista",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A",
+    "latitude": 39.49571564730212,
+    "longitude": -0.3979260443369749
+  },
+  {
+    "id": "110",
+    "name": "Mas del Rosari",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.52493374942953,
+    "longitude": -0.4358351244153468
+  },
+  {
+    "id": "114",
+    "name": "Ll. Llarga - Terramelar",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.509881234689935,
+    "longitude": -0.4304508584273681
+  },
+  {
+    "id": "126",
+    "name": "Neptú",
+    "lines": [
+      "L8"
+    ],
+    "zone": "A",
+    "latitude": 39.46326172754096,
+    "longitude": -0.3257980729754067
+  },
+  {
+    "id": "132",
+    "name": "Tossal del Rei",
+    "lines": [
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.49577717336432,
+    "longitude": -0.3724673254789925
+  },
+  {
+    "id": "100",
+    "name": "Palau de Congressos",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A",
+    "latitude": 39.49726384021926,
+    "longitude": -0.40005636544058165
+  },
+  {
+    "id": "101",
+    "name": "La Granja",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.503907801073,
+    "longitude": -0.41231452114445477
+  },
+  {
+    "id": "102",
+    "name": "Sant Joan",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.50530639701291,
+    "longitude": -0.4163902114618257
+  },
+  {
+    "id": "103",
+    "name": "Campus",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.507084466576266,
+    "longitude": -0.41734914059595046
+  },
+  {
+    "id": "104",
+    "name": "Vicent Andrés Estellés",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.50857470381115,
+    "longitude": -0.4199067550293096
+  },
+  {
+    "id": "105",
+    "name": "À Punt",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.51219762122792,
+    "longitude": -0.42469928725677164
+  },
+  {
+    "id": "113",
+    "name": "Parc Científic",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.515212372014,
+    "longitude": -0.4224822863096499
+  },
+  {
+    "id": "112",
+    "name": "Tomás y Valiente",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.51975169975049,
+    "longitude": -0.42571068164541886
+  },
+  {
+    "id": "111",
+    "name": "La Coma",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.52157837338042,
+    "longitude": -0.4317028406863737
+  },
+  {
+    "id": "127",
+    "name": "Canyamelar",
+    "lines": [
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.46650487106638,
+    "longitude": -0.3279369882432028
+  },
+  {
+    "id": "83",
+    "name": "Dr. Lluch",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.46841676163249,
+    "longitude": -0.328116380686948
+  },
+  {
+    "id": "84",
+    "name": "Cabanyal",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.47228411177598,
+    "longitude": -0.3275499710948246
+  },
+  {
+    "id": "85",
+    "name": "La Cadena",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.47525491845758,
+    "longitude": -0.329394162154311
+  },
+  {
+    "id": "86",
+    "name": "Beteró",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.47673237835171,
+    "longitude": -0.3345171783485716
+  },
+  {
+    "id": "87",
+    "name": "Tarongers - Ernest Lluch",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.47818653357761,
+    "longitude": -0.3395640707022626
+  },
+  {
+    "id": "88",
+    "name": "La Carrasca",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.4796188046441,
+    "longitude": -0.3445313636146047
+  },
+  {
+    "id": "89",
+    "name": "Universitat Politècnica",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.48118499469027,
+    "longitude": -0.3499795516825875
+  },
+  {
+    "id": "90",
+    "name": "Vicente Zaragozá",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.4833289338857,
+    "longitude": -0.3573059063189455
+  },
+  {
+    "id": "91",
+    "name": "Trinitat",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.486322995287566,
+    "longitude": -0.36753356653674185
+  },
+  {
+    "id": "128",
+    "name": "Alfauir",
+    "lines": [
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.48967794441815,
+    "longitude": -0.3654449636087096
+  },
+  {
+    "id": "129",
+    "name": "Orriols",
+    "lines": [
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.493141021053354,
+    "longitude": -0.36752699417060275
+  },
+  {
+    "id": "130",
+    "name": "Estadi Ciutat de València",
+    "lines": [
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.49502452174191,
+    "longitude": -0.36517302480993963
+  },
+  {
+    "id": "131",
+    "name": "Sant Miquel dels Reis",
+    "lines": [
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.49765712542591,
+    "longitude": -0.36988711848798467
+  },
+  {
+    "id": "122",
+    "name": "Francesc Cubells",
+    "lines": [
+      "L6",
+      "L8"
+    ],
+    "zone": "A",
+    "latitude": 39.463302374222195,
+    "longitude": -0.33423279304648423
+  },
+  {
+    "id": "123",
+    "name": "Grau - La Marina",
+    "lines": [
+      "L6",
+      "L8"
+    ],
+    "zone": "A",
+    "latitude": 39.46319195005276,
+    "longitude": -0.32989443747860914
+  },
+  {
+    "id": "81",
+    "name": "Platja Malva-rosa",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.473917193459364,
+    "longitude": -0.3256341125631742
+  },
+  {
+    "id": "82",
+    "name": "Platja les Arenes",
+    "lines": [
+      "L4",
+      "L6"
+    ],
+    "zone": "A",
+    "latitude": 39.46891362131532,
+    "longitude": -0.32566209892195763
+  },
+  {
+    "id": "115",
+    "name": "Marítim",
+    "lines": [
+      "L5",
+      "L6",
+      "L7",
+      "L8"
+    ],
+    "zone": "A",
+    "latitude": 39.46480357174854,
+    "longitude": -0.33848726371294846
+  },
+  {
+    "id": "1",
+    "name": "Rafelbunyol",
+    "lines": [
+      "L3"
+    ],
+    "zone": "A B",
+    "latitude": 39.5878572205243,
+    "longitude": -0.33075290926600326
+  },
+  {
+    "id": "43",
+    "name": "Alginet",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.262954437671375,
+    "longitude": -0.47502999384592465
+  },
+  {
+    "id": "42",
+    "name": "Ausiàs March",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.24956118625579,
+    "longitude": -0.49196524890987436
+  },
+  {
+    "id": "41",
+    "name": "Carlet",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.22752393271673,
+    "longitude": -0.5252467403502091
+  },
+  {
+    "id": "40",
+    "name": "Benimodo",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.21653441699375,
+    "longitude": -0.5195379647157279
+  },
+  {
+    "id": "80",
+    "name": "Horta Vella",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.58197942802018,
+    "longitude": -0.4427488446760734
+  },
+  {
+    "id": "79",
+    "name": "Masies",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.56663265224319,
+    "longitude": -0.4050042468158742
+  },
+  {
+    "id": "77",
+    "name": "Moncada - Alfara",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.54348281210717,
+    "longitude": -0.3884374870494326
+  },
+  {
+    "id": "76",
+    "name": "Massarrojos",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.5364481663913,
+    "longitude": -0.40296919137978277
+  },
+  {
+    "id": "75",
+    "name": "Rocafort",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.529177555261995,
+    "longitude": -0.40725437465695913
+  },
+  {
+    "id": "74",
+    "name": "Godella",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.51914357705821,
+    "longitude": -0.4141835411393214
+  },
+  {
+    "id": "73",
+    "name": "Burjassot - Godella",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.5132107452825,
+    "longitude": -0.41157425030432315
+  },
+  {
+    "id": "72",
+    "name": "Burjassot",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.5083991260699,
+    "longitude": -0.4067654046148428
+  },
+  {
+    "id": "71",
+    "name": "Llíria",
+    "lines": [
+      "L2"
+    ],
+    "zone": "B",
+    "latitude": 39.62255871238752,
+    "longitude": -0.5905160394533774
+  },
+  {
+    "id": "49",
+    "name": "Realón",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.39402672725061,
+    "longitude": -0.4639571613245845
+  },
+  {
+    "id": "48",
+    "name": "Sant Ramon",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.384272511472055,
+    "longitude": -0.46729281677273904
+  },
+  {
+    "id": "47",
+    "name": "Picassent",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.363046085158985,
+    "longitude": -0.4648156334606926
+  },
+  {
+    "id": "46",
+    "name": "Omet",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.353171709608006,
+    "longitude": -0.4736946405783953
+  },
+  {
+    "id": "45",
+    "name": "Espioca",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.326507739896286,
+    "longitude": -0.4686963674007971
+  },
+  {
+    "id": "44",
+    "name": "Font Almaguer",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.289385283619936,
+    "longitude": -0.4644145196909823
+  },
+  {
+    "id": "118",
+    "name": "Salt de l'Aigua",
+    "lines": [
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "A B",
+    "latitude": 39.485324822505476,
+    "longitude": -0.4506013331237012
+  },
+  {
+    "id": "109",
+    "name": "Bailén",
+    "lines": [
+      "L7"
+    ],
+    "zone": "A",
+    "latitude": 39.46302797333043,
+    "longitude": -0.3794421344658511
+  },
+  {
+    "id": "200",
+    "name": "Faitanar",
+    "lines": [
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "A B",
+    "latitude": 39.47740664283258,
+    "longitude": -0.4326765846332133
+  },
+  {
+    "id": "119",
+    "name": "Manises",
+    "lines": [
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "A B",
+    "latitude": 39.48987378917445,
+    "longitude": -0.4599998738363349
+  },
+  {
+    "id": "117",
+    "name": "Quart de Poblet",
+    "lines": [
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "A B",
+    "latitude": 39.48062424380139,
+    "longitude": -0.4413803325368406
+  },
+  {
+    "id": "67",
+    "name": "L'Eliana",
+    "lines": [
+      "L2"
+    ],
+    "zone": "B",
+    "latitude": 39.5616107076999,
+    "longitude": -0.5359346238104113
+  },
+  {
+    "id": "120",
+    "name": "Roses",
+    "lines": [
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "A B",
+    "latitude": 39.492439212972506,
+    "longitude": -0.4666079695966086
+  },
+  {
+    "id": "108",
+    "name": "El Clot",
+    "lines": [
+      "L2"
+    ],
+    "zone": "B",
+    "latitude": 39.54987658621284,
+    "longitude": -0.5280791748266431
+  },
+  {
+    "id": "121",
+    "name": "Aeroport",
+    "lines": [
+      "L3",
+      "L5"
+    ],
+    "zone": "+",
+    "latitude": 39.49269935312983,
+    "longitude": -0.4742153188653564
+  },
+  {
+    "id": "65",
+    "name": "Entrepins",
+    "lines": [
+      "L2"
+    ],
+    "zone": "B",
+    "latitude": 39.54327157389638,
+    "longitude": -0.5140318829194261
+  },
+  {
+    "id": "64",
+    "name": "La Vallesa",
+    "lines": [
+      "L2"
+    ],
+    "zone": "A B",
+    "latitude": 39.53822838198825,
+    "longitude": -0.4985398832860644
+  },
+  {
+    "id": "63",
+    "name": "La Canyada",
+    "lines": [
+      "L2"
+    ],
+    "zone": "A B",
+    "latitude": 39.526830765101614,
+    "longitude": -0.4870570837103187
+  },
+  {
+    "id": "70",
+    "name": "Benaguasil",
+    "lines": [
+      "L2"
+    ],
+    "zone": "B",
+    "latitude": 39.599031770780016,
+    "longitude": -0.584142501941783
+  },
+  {
+    "id": "69",
+    "name": "Fondo de Benaguasil",
+    "lines": [
+      "L2"
+    ],
+    "zone": "B",
+    "latitude": 39.592730849164674,
+    "longitude": -0.5781761937368245
+  },
+  {
+    "id": "68",
+    "name": "La Pobla de Vallbona",
+    "lines": [
+      "L2"
+    ],
+    "zone": "B",
+    "latitude": 39.58223853841236,
+    "longitude": -0.5616906674872323
+  },
+  {
+    "id": "201",
+    "name": "Gallipont - Torre del Virrei",
+    "lines": [
+      "L2"
+    ],
+    "zone": "B",
+    "latitude": 39.56893266648836,
+    "longitude": -0.5421382403668045
+  },
+  {
+    "id": "66",
+    "name": "Montesol",
+    "lines": [
+      "L2"
+    ],
+    "zone": "B",
+    "latitude": 39.55549455678422,
+    "longitude": -0.5317363494791882
+  },
+  {
+    "id": "60",
+    "name": "Paterna",
+    "lines": [
+      "L2"
+    ],
+    "zone": "A B",
+    "latitude": 39.49870803263294,
+    "longitude": -0.4419168922469124
+  },
+  {
+    "id": "52",
+    "name": "Túria",
+    "lines": [
+      "L1",
+      "L2"
+    ],
+    "zone": "A",
+    "latitude": 39.478319375714804,
+    "longitude": -0.3902247980143185
+  },
+  {
+    "id": "54",
+    "name": "Beniferri",
+    "lines": [
+      "L1",
+      "L2"
+    ],
+    "zone": "A",
+    "latitude": 39.490851254734636,
+    "longitude": -0.3995797304356884
+  },
+  {
+    "id": "61",
+    "name": "Santa Rita",
+    "lines": [
+      "L2"
+    ],
+    "zone": "A B",
+    "latitude": 39.50588544164904,
+    "longitude": -0.45536282331150113
+  },
+  {
+    "id": "57",
+    "name": "Benimàmet",
+    "lines": [
+      "L2"
+    ],
+    "zone": "A B",
+    "latitude": 39.50185797934678,
+    "longitude": -0.41912630331073425
+  },
+  {
+    "id": "58",
+    "name": "Les Carolines - Fira",
+    "lines": [
+      "L2"
+    ],
+    "zone": "A B",
+    "latitude": 39.49930485478156,
+    "longitude": -0.4245584797341072
+  },
+  {
+    "id": "55",
+    "name": "Empalme",
+    "lines": [
+      "L1",
+      "L2",
+      "L4"
+    ],
+    "zone": "A",
+    "latitude": 39.49938059498631,
+    "longitude": -0.4022280969952223
+  },
+  {
+    "id": "56",
+    "name": "Cantereria",
+    "lines": [
+      "L2"
+    ],
+    "zone": "A B",
+    "latitude": 39.50247187376062,
+    "longitude": -0.41151603955109484
+  },
+  {
+    "id": "53",
+    "name": "Campanar",
+    "lines": [
+      "L1",
+      "L2"
+    ],
+    "zone": "A",
+    "latitude": 39.483367472326705,
+    "longitude": -0.39416174653848807
+  },
+  {
+    "id": "62",
+    "name": "Fuente del Jarro",
+    "lines": [
+      "L2"
+    ],
+    "zone": "A B",
+    "latitude": 39.511222204019056,
+    "longitude": -0.46401026535322637
+  },
+  {
+    "id": "59",
+    "name": "Campament",
+    "lines": [
+      "L2"
+    ],
+    "zone": "A B",
+    "latitude": 39.495826865770844,
+    "longitude": -0.43526864624885164
+  },
+  {
+    "id": "51",
+    "name": "Pl. Espanya",
+    "lines": [
+      "L1",
+      "L2"
+    ],
+    "zone": "A",
+    "latitude": 39.46625081977057,
+    "longitude": -0.38209804187361646
+  },
+  {
+    "id": "50",
+    "name": "Col·legi El Vedat",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.41147131260734,
+    "longitude": -0.46022838511486275
+  },
+  {
+    "id": "107",
+    "name": "Bétera",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.59039069063699,
+    "longitude": -0.45670199911206216
+  },
+  {
+    "id": "78",
+    "name": "Seminari - CEU",
+    "lines": [
+      "L1"
+    ],
+    "zone": "A B",
+    "latitude": 39.54974460052388,
+    "longitude": -0.38966041373260246
+  },
+  {
+    "id": "39",
+    "name": "L'Alcúdia",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.19318058691267,
+    "longitude": -0.5102556195325801
+  },
+  {
+    "id": "38",
+    "name": "Montortal",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.17437016361194,
+    "longitude": -0.5156853018533283
+  },
+  {
+    "id": "37",
+    "name": "Massalavés",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.14412265978502,
+    "longitude": -0.5183917014106347
+  },
+  {
+    "id": "36",
+    "name": "Alberic",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.1170198073135,
+    "longitude": -0.5236435056564729
+  },
+  {
+    "id": "186",
+    "name": "Riba-roja de Túria",
+    "lines": [
+      "L9"
+    ],
+    "zone": "B",
+    "latitude": 39.543304574653945,
+    "longitude": -0.559555929227018
+  },
+  {
+    "id": "185",
+    "name": "Masia de Traver",
+    "lines": [
+      "L9"
+    ],
+    "zone": "B",
+    "latitude": 39.538175333455776,
+    "longitude": -0.5466608048349785
+  },
+  {
+    "id": "188",
+    "name": "València la Vella",
+    "lines": [
+      "L9"
+    ],
+    "zone": "B",
+    "latitude": 39.53052498477246,
+    "longitude": -0.5343011864847279
+  },
+  {
+    "id": "184",
+    "name": "La Presa",
+    "lines": [
+      "L9"
+    ],
+    "zone": "A B",
+    "latitude": 39.5171607567923,
+    "longitude": -0.5159268056271293
+  },
+  {
+    "id": "183",
+    "name": "La Cova",
+    "lines": [
+      "L9"
+    ],
+    "zone": "A B",
+    "latitude": 39.498904001954344,
+    "longitude": -0.48444215226475607
+  },
+  {
+    "id": "34",
+    "name": "Torrent Avinguda",
+    "lines": [
+      "L2",
+      "L7"
+    ],
+    "zone": "A B",
+    "latitude": 39.431284234720664,
+    "longitude": -0.47218870884594977
+  },
+  {
+    "id": "33",
+    "name": "Torrent",
+    "lines": [
+      "L1",
+      "L2",
+      "L7"
+    ],
+    "zone": "A B",
+    "latitude": 39.43633679403496,
+    "longitude": -0.46060999851318873
+  },
+  {
+    "id": "32",
+    "name": "Picanya",
+    "lines": [
+      "L1",
+      "L2",
+      "L7"
+    ],
+    "zone": "A B",
+    "latitude": 39.433129693778454,
+    "longitude": -0.437065416588349
+  },
+  {
+    "id": "31",
+    "name": "Paiporta",
+    "lines": [
+      "L1",
+      "L2",
+      "L7"
+    ],
+    "zone": "A B",
+    "latitude": 39.432229446304966,
+    "longitude": -0.4181899687067768
+  },
+  {
+    "id": "30",
+    "name": "València Sud",
+    "lines": [
+      "L1",
+      "L2",
+      "L7"
+    ],
+    "zone": "A",
+    "latitude": 39.440811196343056,
+    "longitude": -0.4106472133564586
+  },
+  {
+    "id": "28",
+    "name": "Sant Isidre",
+    "lines": [
+      "L1",
+      "L2",
+      "L7"
+    ],
+    "zone": "A",
+    "latitude": 39.45055486146477,
+    "longitude": -0.40307035826613336
+  },
+  {
+    "id": "27",
+    "name": "Safranar",
+    "lines": [
+      "L1",
+      "L2",
+      "L7"
+    ],
+    "zone": "A",
+    "latitude": 39.454904862331084,
+    "longitude": -0.39789990795122787
+  },
+  {
+    "id": "26",
+    "name": "Patraix",
+    "lines": [
+      "L1",
+      "L2",
+      "L7"
+    ],
+    "zone": "A",
+    "latitude": 39.45646355664549,
+    "longitude": -0.3905844450471503
+  },
+  {
+    "id": "25",
+    "name": "Jesús",
+    "lines": [
+      "L1",
+      "L2",
+      "L7"
+    ],
+    "zone": "A",
+    "latitude": 39.45927544382186,
+    "longitude": -0.38483044358305485
+  },
+  {
+    "id": "17",
+    "name": "Àngel Guimerà",
+    "lines": [
+      "L1",
+      "L2",
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.47038,
+    "longitude": -0.38522
+  },
+  {
+    "id": "18",
+    "name": "Av. del Cid",
+    "lines": [
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.468654274910186,
+    "longitude": -0.3985279692250935
+  },
+  {
+    "id": "19",
+    "name": "Nou d'Octubre",
+    "lines": [
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.47084154857711,
+    "longitude": -0.4072792104772264
+  },
+  {
+    "id": "20",
+    "name": "Mislata",
+    "lines": [
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "AB",
+    "latitude": 39.473672806911935,
+    "longitude": -0.4171368287447822
+  },
+  {
+    "id": "21",
+    "name": "Mislata Almassil",
+    "lines": [
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "AB",
+    "latitude": 39.47552668175652,
+    "longitude": -0.4229175977730965
+  },
+  {
+    "id": "16",
+    "name": "Xàtiva",
+    "lines": [
+      "L3",
+      "L5",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.467568094666944,
+    "longitude": -0.37709573524832896
+  },
+  {
+    "id": "15",
+    "name": "Colón",
+    "lines": [
+      "L3",
+      "L5",
+      "L7",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.46994532967509,
+    "longitude": -0.37090947426738485
+  },
+  {
+    "id": "14",
+    "name": "Alameda",
+    "lines": [
+      "L3",
+      "L5",
+      "L7",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.473177134984624,
+    "longitude": -0.36589014175803286
+  },
+  {
+    "id": "24",
+    "name": "Aragó",
+    "lines": [
+      "L5",
+      "L7"
+    ],
+    "zone": "A",
+    "latitude": 39.47257172100103,
+    "longitude": -0.3580901765953225
+  },
+  {
+    "id": "23",
+    "name": "Amistat",
+    "lines": [
+      "L5",
+      "L7"
+    ],
+    "zone": "A",
+    "latitude": 39.47040295116345,
+    "longitude": -0.3507159307887573
+  },
+  {
+    "id": "22",
+    "name": "Ayora",
+    "lines": [
+      "L5",
+      "L7"
+    ],
+    "zone": "A",
+    "latitude": 39.46720580693319,
+    "longitude": -0.3430849494620167
+  },
+  {
+    "id": "11",
+    "name": "Machado",
+    "lines": [
+      "L3",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.49212621989964,
+    "longitude": -0.3586976783219993
+  },
+  {
+    "id": "13",
+    "name": "Facultats - Manuel Broseta",
+    "lines": [
+      "L3",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.47809051203812,
+    "longitude": -0.36189402015214694
+  },
+  {
+    "id": "12",
+    "name": "Benimaclet",
+    "lines": [
+      "L3",
+      "L4",
+      "L6",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.48492,
+    "longitude": -0.36265
+  },
+  {
+    "id": "35",
+    "name": "Castelló",
+    "lines": [
+      "L1"
+    ],
+    "zone": "B",
+    "latitude": 39.080594469679255,
+    "longitude": -0.513246157582947
+  },
+  {
+    "id": "10",
+    "name": "Alboraia Palmaret",
+    "lines": [
+      "L3",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.4959820531079,
+    "longitude": -0.3554807041093226
+  },
+  {
+    "id": "9",
+    "name": "Alboraia Peris Aragó",
+    "lines": [
+      "L3",
+      "L9"
+    ],
+    "zone": "A",
+    "latitude": 39.5009551658129,
+    "longitude": -0.35240380384782255
+  },
+  {
+    "id": "8",
+    "name": "Almàssera",
+    "lines": [
+      "L3"
+    ],
+    "zone": "A B",
+    "latitude": 39.51209931895789,
+    "longitude": -0.3540779275459792
+  },
+  {
+    "id": "7",
+    "name": "Meliana",
+    "lines": [
+      "L3"
+    ],
+    "zone": "A B",
+    "latitude": 39.52804354852118,
+    "longitude": -0.35176679665303995
+  },
+  {
+    "id": "6",
+    "name": "Foios",
+    "lines": [
+      "L3"
+    ],
+    "zone": "A B",
+    "latitude": 39.537328570163254,
+    "longitude": -0.35365946758344846
+  },
+  {
+    "id": "5",
+    "name": "Albalat dels Sorells",
+    "lines": [
+      "L3"
+    ],
+    "zone": "A B",
+    "latitude": 39.5452948227579,
+    "longitude": -0.3481638965365763
+  },
+  {
+    "id": "4",
+    "name": "Museros",
+    "lines": [
+      "L3"
+    ],
+    "zone": "A B",
+    "latitude": 39.56169559593332,
+    "longitude": -0.34066385633100754
+  },
+  {
+    "id": "3",
+    "name": "Massamagrell",
+    "lines": [
+      "L3"
+    ],
+    "zone": "A B",
+    "latitude": 39.57040994019929,
+    "longitude": -0.3327916633693265
+  },
+  {
+    "id": "2",
+    "name": "La Pobla de Farnals",
+    "lines": [
+      "L3"
+    ],
+    "zone": "A B",
+    "latitude": 39.57883878188504,
+    "longitude": -0.3301431535014126
+  },
+  {
+    "id": "106",
+    "name": "Fira València",
+    "lines": [
+      "L4"
+    ],
+    "zone": "A B",
+    "latitude": 39.50404434998194,
+    "longitude": -0.42557602185424914
+  }
+]

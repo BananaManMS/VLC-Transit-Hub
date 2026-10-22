@@ -1,0 +1,211 @@
+package com.example.data.repository
+
+import android.content.Context
+import com.example.data.database.AppDatabase
+import com.example.data.database.TransitCardEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import org.json.JSONObject
+
+class MetroCardRepository(
+    private val context: Context,
+    private val database: AppDatabase = AppDatabase.getDatabase(context)
+) {
+    private val client: OkHttpClient = com.example.data.network.NetworkModule.okHttpClient
+    private val cardDao = database.transitCardDao()
+
+    @get:JvmName("getTransitCardsPropertyFlow")
+    val transitCardsFlow: Flow<List<TransitCardEntity>> = cardDao.getAllCardsFlow()
+
+    fun getTransitCardsFlow(): Flow<List<TransitCardEntity>> = transitCardsFlow
+
+    suspend fun getCards(): List<TransitCardEntity> = withContext(Dispatchers.IO) {
+        cardDao.getAllCards()
+    }
+
+    suspend fun saveCard(card: TransitCardEntity) = withContext(Dispatchers.IO) {
+        cardDao.insertCard(card)
+    }
+
+    suspend fun getCardDetails(cardNumber: String, client: OkHttpClient = this.client): JSONObject? = withContext(Dispatchers.IO) {
+        val card = cardDao.getCardByNumber(cardNumber) ?: return@withContext null
+        try {
+            JSONObject(card.detailsJson)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    suspend fun updateTransitCardName(cardNumber: String, newName: String) = withContext(Dispatchers.IO) {
+        val card = cardDao.getCardByNumber(cardNumber) ?: return@withContext
+        cardDao.insertCard(card.copy(assignedName = newName))
+    }
+
+    suspend fun updateTransitCardManualStatus(cardNumber: String, isManuallyInactive: Boolean) = withContext(Dispatchers.IO) {
+        val card = cardDao.getCardByNumber(cardNumber) ?: return@withContext
+        val details = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
+        details.put("manually_inactive", isManuallyInactive)
+        cardDao.insertCard(card.copy(isManuallyInactive = isManuallyInactive, detailsJson = details.toString()))
+    }
+
+    suspend fun updateCardHomeVisibility(cardNumber: String, showOnHome: Boolean) = withContext(Dispatchers.IO) {
+        val card = cardDao.getCardByNumber(cardNumber) ?: return@withContext
+        val details = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
+        details.put("show_on_home", showOnHome)
+        cardDao.insertCard(card.copy(showOnHome = showOnHome, detailsJson = details.toString()))
+    }
+
+    suspend fun updateCardsOrder(cardNumbersInOrder: List<String>) = withContext(Dispatchers.IO) {
+        cardNumbersInOrder.forEachIndexed { index, num ->
+            val card = cardDao.getCardByNumber(num) ?: return@forEachIndexed
+            val details = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
+            details.put("custom_order", index)
+            cardDao.insertCard(card.copy(customOrder = index, detailsJson = details.toString()))
+        }
+    }
+
+    suspend fun deleteTransitCard(cardNumber: String) = withContext(Dispatchers.IO) {
+        cardDao.deleteCardByNumber(cardNumber)
+    }
+
+class CardAlreadyExistsException(message: String = "Esta tarjeta ya está añadida") : Exception(message)
+
+    suspend fun addTransitCard(
+        cardNumber: String,
+        customName: String?,
+        allowOfflineFallback: Boolean = false
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val cleanCard = cardNumber.filter { it.isDigit() }
+            val base10 = cleanCard.take(10)
+            val existingCards = cardDao.getAllCards()
+            if (base10.isNotBlank() && existingCards.any { it.cardNumber.filter { c -> c.isDigit() }.take(10) == base10 }) {
+                return@withContext Result.failure(CardAlreadyExistsException())
+            }
+
+            val cardJson = try {
+                com.example.ui.metro.MetroCardNetworkSource.fetchCardFromNetwork(cleanCard)
+            } catch (e: Exception) {
+                if (allowOfflineFallback) {
+                    JSONObject().apply {
+                        put("titulo", "Móbilis / SUMA")
+                        put("clase", "MULTIVIAJE")
+                        put("saldo", "Consultar en estación")
+                        put("zona", "Zona A")
+                    }
+                } else {
+                    throw e
+                }
+            }
+            val title = cardJson.optString("titulo", cardJson.optString("nombre", "Tarjeta $cleanCard"))
+            val cardType = cardJson.optString("clase", cardJson.optString("tipo", "SUMA"))
+            val remainingValue = cardJson.optString("saldo", cardJson.optString("saldoFormateado", "0 viajes"))
+
+            val nextOrder = if (existingCards.isEmpty()) 0 else (existingCards.maxOfOrNull { it.customOrder } ?: 0) + 1
+
+            val detailsObj = JSONObject(cardJson.toString())
+            detailsObj.put("custom_order", nextOrder)
+            detailsObj.put("show_on_home", true)
+            detailsObj.put("manually_inactive", false)
+
+            val entity = TransitCardEntity(
+                cardNumber = cleanCard,
+                assignedName = customName ?: "",
+                defaultName = title,
+                cardType = cardType,
+                remainingValue = remainingValue,
+                lastUpdated = System.currentTimeMillis(),
+                detailsJson = detailsObj.toString(),
+                customOrder = nextOrder,
+                showOnHome = true,
+                isManuallyInactive = false
+            )
+            cardDao.insertCard(entity)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun refreshTransitCards() = withContext(Dispatchers.IO) {
+        val cards = cardDao.getAllCards()
+        for (card in cards) {
+            try {
+                val cardJson = com.example.ui.metro.MetroCardNetworkSource.fetchCardFromNetwork(card.cardNumber)
+                val title = cardJson.optString("titulo", cardJson.optString("nombre", card.defaultName))
+                val cardType = cardJson.optString("clase", cardJson.optString("tipo", card.cardType))
+                val remainingValue = cardJson.optString("saldo", cardJson.optString("saldoFormateado", card.remainingValue))
+
+                // Merge network JSON while strictly PRESERVING user preferences
+                val oldDetails = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
+                val mergedDetails = JSONObject(cardJson.toString())
+                val preservedOrder = if (oldDetails.has("custom_order")) oldDetails.optInt("custom_order", card.customOrder) else card.customOrder
+                val preservedHome = if (oldDetails.has("show_on_home")) oldDetails.optBoolean("show_on_home", card.showOnHome) else card.showOnHome
+                val preservedInactive = if (oldDetails.has("manually_inactive")) oldDetails.optBoolean("manually_inactive", card.isManuallyInactive) else card.isManuallyInactive
+
+                mergedDetails.put("custom_order", preservedOrder)
+                mergedDetails.put("show_on_home", preservedHome)
+                mergedDetails.put("manually_inactive", preservedInactive)
+
+                val updated = card.copy(
+                    defaultName = title,
+                    cardType = cardType,
+                    remainingValue = remainingValue,
+                    detailsJson = mergedDetails.toString(),
+                    lastUpdated = System.currentTimeMillis(),
+                    customOrder = preservedOrder,
+                    showOnHome = preservedHome,
+                    isManuallyInactive = preservedInactive
+                )
+                cardDao.insertCard(updated)
+            } catch (e: Exception) {
+                android.util.Log.w("MetroCardRepository", "Error al actualizar tarjeta ${card.cardNumber}: ${e.message}")
+            }
+        }
+    }
+
+    suspend fun refreshTransitCardsIfNeeded(maxAgeMillis: Long = 3600000L): Boolean = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val cards = cardDao.getAllCards()
+        var refreshedAny = false
+        for (card in cards) {
+            if (now - card.lastUpdated > maxAgeMillis) {
+                try {
+                    val cardJson = com.example.ui.metro.MetroCardNetworkSource.fetchCardFromNetwork(card.cardNumber)
+                    val title = cardJson.optString("titulo", cardJson.optString("nombre", card.defaultName))
+                    val cardType = cardJson.optString("clase", cardJson.optString("tipo", card.cardType))
+                    val remainingValue = cardJson.optString("saldo", cardJson.optString("saldoFormateado", card.remainingValue))
+
+                    // Merge network JSON while strictly PRESERVING user preferences
+                    val oldDetails = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
+                    val mergedDetails = JSONObject(cardJson.toString())
+                    val preservedOrder = if (oldDetails.has("custom_order")) oldDetails.optInt("custom_order", card.customOrder) else card.customOrder
+                    val preservedHome = if (oldDetails.has("show_on_home")) oldDetails.optBoolean("show_on_home", card.showOnHome) else card.showOnHome
+                    val preservedInactive = if (oldDetails.has("manually_inactive")) oldDetails.optBoolean("manually_inactive", card.isManuallyInactive) else card.isManuallyInactive
+
+                    mergedDetails.put("custom_order", preservedOrder)
+                    mergedDetails.put("show_on_home", preservedHome)
+                    mergedDetails.put("manually_inactive", preservedInactive)
+
+                    val updated = card.copy(
+                        defaultName = title,
+                        cardType = cardType,
+                        remainingValue = remainingValue,
+                        detailsJson = mergedDetails.toString(),
+                        lastUpdated = now,
+                        customOrder = preservedOrder,
+                        showOnHome = preservedHome,
+                        isManuallyInactive = preservedInactive
+                    )
+                    cardDao.insertCard(updated)
+                    refreshedAny = true
+                } catch (e: Exception) {
+                    android.util.Log.w("MetroCardRepository", "Error al actualizar tarjeta ${card.cardNumber}: ${e.message}")
+                }
+            }
+        }
+        refreshedAny
+    }
+}

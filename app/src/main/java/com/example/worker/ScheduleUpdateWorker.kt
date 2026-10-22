@@ -1,0 +1,38 @@
+package com.example.worker
+
+import android.content.Context
+import androidx.work.CoroutineWorker
+import androidx.work.WorkerParameters
+import com.example.data.repository.renfe.RenfeRepository
+import com.example.data.repository.MetroCardRepository
+import com.example.data.database.AppDatabase
+
+class ScheduleUpdateWorker(
+    appContext: Context,
+    workerParams: WorkerParameters
+) : CoroutineWorker(appContext, workerParams) {
+
+    override suspend fun doWork(): Result {
+        return try {
+            val db = AppDatabase.getDatabase(applicationContext)
+            val renfeRepository = RenfeRepository(applicationContext, db)
+            renfeRepository.syncScheduleFromRemoteIfNeeded()
+
+            com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(applicationContext)
+
+            val metroScheduleRepository = com.example.data.repository.MetroScheduleRepository.getInstance(applicationContext)
+            metroScheduleRepository.syncScheduleFromRemoteIfNeeded()
+
+            com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(applicationContext)
+            com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(applicationContext)
+
+            val metroCardRepository = MetroCardRepository(applicationContext, db)
+            metroCardRepository.refreshTransitCardsIfNeeded()
+
+            Result.success()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.retry()
+        }
+    }
+}

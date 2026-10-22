@@ -1,0 +1,46 @@
+# Build outputs & caches
+*.apk
+*.aab
+build/
+/build
+app/build/
+**/build/
+.build-outputs/
+
+# Gradle & Kotlin
+.gradle/
+.kotlin/
+*.iml
+
+# Local & environment properties
+local.properties
+/local.properties
+.env
+.env.local
+
+# Signing keys & keystores (never upload private production keys to git)
+*.jks
+*.keystore
+debug.keystore
+my-upload-key.jks
+# debug.keystore.base64 is tracked so CI/GitHub Actions builds match the exact app signature fingerprint
+
+# IDE & Editor caches
+.idea/
+.externalNativeBuild
+.cxx
+/captures
+
+# AI Studio platform internal files
+.aistudio/
+tmp/
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Python & scripts
+__pycache__/
+*.pyc
+process_shapes_valencia.py

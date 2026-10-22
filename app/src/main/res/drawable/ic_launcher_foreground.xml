@@ -1,0 +1,40 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Cuerpo del tren (Blanco) -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M44,22 L64,22 C69.5,22 74,26.5 74,32 L74,62 C74,64.2 72.2,66 70,66 L38,66 C35.8,66 34,64.2 34,62 L34,32 C34,26.5 38.5,22 44,22 Z" />
+    
+    <!-- Cristal / Parabrisas (Oscuro) -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M42,27 L66,27 C67.7,27 69,28.3 69,30 L69,44 C69,45.7 67.7,47 66,47 L42,47 C40.3,47 39,45.7 39,44 L39,30 C39,28.3 40.3,27 42,27 Z" />
+    
+    <!-- Franja Horizontal Recta de Metrovalencia (Naranja) -->
+    <path
+        android:fillColor="#F97316"
+        android:pathData="M34,52 L74,52 L74,56 L34,56 Z" />
+        
+    <!-- Faros alineados (Amarillo) -->
+    <path
+        android:fillColor="#FACC15"
+        android:pathData="M42,59 A2,2 0,1,1 41.99,59 Z M66,59 A2,2 0,1,1 65.99,59 Z" />
+
+    <!-- Letras VLC con grosor poligonal uniforme de exactamente 2.5dp -->
+    <!-- Letra V -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M35,74 L37.5,74 L41,81.5 L44.5,74 L47,74 L42.25,84 L39.75,84 Z" />
+    <!-- Letra L -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M51,74 L53.5,74 L53.5,81.5 L58,81.5 L58,84 L51,84 Z" />
+    <!-- Letra C -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M62,74 L69,74 L69,76.5 L64.5,76.5 L64.5,81.5 L69,81.5 L69,84 L62,84 Z" />
+</vector>

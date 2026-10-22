@@ -1,0 +1,943 @@
+package com.example.ui.routing
+
+import android.app.Application
+import android.content.Context
+import android.location.Location
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.data.database.AppDatabase
+import com.example.data.database.CercaniasStationEntity
+import com.example.data.database.GeoportalStopEntity
+import com.example.data.model.MetroStation
+import com.example.data.model.NominatimResult
+import com.example.data.model.routing.PlannedItinerary
+import com.example.data.repository.DashboardRepository
+import com.example.data.repository.GeocodingRepository
+import com.example.data.repository.MetroAlertsRepository
+import com.example.data.repository.UnifiedSearchEngine
+import com.example.data.repository.routing.HybridRoutingRepository
+import com.example.ui.common.search.mapSearchResultToPlannerLocation
+import com.example.ui.common.search.recentSearchToSearchResult
+import com.example.ui.map.MapSearchResult
+import com.example.ui.map.RecentSearch
+import com.example.util.LocationUtils
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+enum class PlannerSearchField {
+    NONE,
+    ORIGIN,
+    DESTINATION
+}
+
+class RoutePlannerViewModel @JvmOverloads constructor(
+    application: Application,
+    private val hybridRoutingRepository: HybridRoutingRepository = HybridRoutingRepository(
+        metroAlertsRepository = MetroAlertsRepository(),
+        context = application.applicationContext
+    ),
+    private val geocodingRepository: GeocodingRepository = GeocodingRepository(
+        application.applicationContext,
+        AppDatabase.getDatabase(application.applicationContext)
+    )
+) : AndroidViewModel(application) {
+
+    private val database = AppDatabase.getDatabase(application)
+    private val dashboardRepository = DashboardRepository(application, database)
+    private val unifiedSearchEngine = UnifiedSearchEngine(application.applicationContext, database, geocodingRepository)
+    private val gson = Gson()
+
+    private val _origin = MutableStateFlow<PlannerLocation?>(null)
+    val origin: StateFlow<PlannerLocation?> = _origin.asStateFlow()
+
+    private val _destination = MutableStateFlow<PlannerLocation?>(null)
+    val destination: StateFlow<PlannerLocation?> = _destination.asStateFlow()
+
+    private val _originQuery = MutableStateFlow("")
+    val originQuery: StateFlow<String> = _originQuery.asStateFlow()
+
+    private val _destinationQuery = MutableStateFlow("")
+    val destinationQuery: StateFlow<String> = _destinationQuery.asStateFlow()
+
+    private val _activeSearchField = MutableStateFlow(PlannerSearchField.NONE)
+    val activeSearchField: StateFlow<PlannerSearchField> = _activeSearchField.asStateFlow()
+
+    private val _searchResults = MutableStateFlow<List<MapSearchResult>>(emptyList())
+    val searchResults: StateFlow<List<MapSearchResult>> = _searchResults.asStateFlow()
+
+    private val _isSearching = MutableStateFlow(false)
+    val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
+
+    // Backward compatibility flows
+    val isSearchingOrigin: StateFlow<Boolean> = _isSearching.map { it && _activeSearchField.value == PlannerSearchField.ORIGIN }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val isSearchingDestination: StateFlow<Boolean> = _isSearching.map { it && _activeSearchField.value == PlannerSearchField.DESTINATION }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    // Search History and Favorites from unified dashboard preferences
+    val recentSearches: StateFlow<List<RecentSearch>> = dashboardRepository.getPreferenceFlow("recent_searches", "[]")
+        .map { json ->
+            try {
+                val type = object : TypeToken<List<RecentSearch>>() {}.type
+                gson.fromJson<List<RecentSearch>>(json, type) ?: emptyList()
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val homeLocation: StateFlow<RecentSearch?> = dashboardRepository.getPreferenceFlow("home_location", "")
+        .map { json ->
+            if (json.isBlank()) null
+            else try {
+                gson.fromJson(json, RecentSearch::class.java)
+            } catch (e: Exception) {
+                null
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val workLocation: StateFlow<RecentSearch?> = dashboardRepository.getPreferenceFlow("work_location", "")
+        .map { json ->
+            if (json.isBlank()) null
+            else try {
+                gson.fromJson(json, RecentSearch::class.java)
+            } catch (e: Exception) {
+                null
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val pinnedLocation: StateFlow<RecentSearch?> = dashboardRepository.getPreferenceFlow("pinned_location", "")
+        .map { json ->
+            if (json.isBlank()) null
+            else try {
+                gson.fromJson(json, RecentSearch::class.java)
+            } catch (e: Exception) {
+                null
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val customFavorites: StateFlow<List<RecentSearch>> = dashboardRepository.getPreferenceFlow("custom_favorites", "[]")
+        .map { json ->
+            try {
+                val type = object : TypeToken<List<RecentSearch>>() {}.type
+                gson.fromJson<List<RecentSearch>>(json, type) ?: emptyList()
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // Transit Favorites flow
+    val favoriteBusStopsSet = dashboardRepository.getPreferenceFlow("favorite_bus_stops", "")
+        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    val favoriteMetroStationsSet = dashboardRepository.getPreferenceFlow("favorite_stations", "")
+        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    val favoriteCercaniasStationsSet = dashboardRepository.getPreferenceFlow("favorite_cercanias_stations", "")
+        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    val favoriteMetrobusStopsSet = dashboardRepository.getPreferenceFlow("favorite_metrobus_stops", "")
+        .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    val unifiedTransitFavorites: StateFlow<List<RecentSearch>> = combine(
+        favoriteBusStopsSet,
+        favoriteMetroStationsSet,
+        favoriteCercaniasStationsSet
+    ) { favBuses, favMetros, favCercanias ->
+        val list = mutableListOf<RecentSearch>()
+        try {
+            val busStops = database.geoportalStopDao().getAllActiveStops()
+            val metroStations = database.stationDao().getAllStations()
+            val cercaniasStations = database.cercaniasStationDao().getAllStations()
+
+            favBuses.forEach { id ->
+                busStops.find { it.id_parada == id }?.let { stop ->
+                    list.add(RecentSearch(
+                        type = "bus",
+                        id = stop.id_parada,
+                        title = stop.denominacion,
+                        subtitle = "Parada ${stop.id_parada}",
+                        latitude = stop.lat,
+                        longitude = stop.lon,
+                        extraData = stop.lineas
+                    ))
+                }
+            }
+
+            favMetros.forEach { id ->
+                metroStations.find { it.id.toString() == id }?.let { station ->
+                    val z = com.example.data.model.cleanZoneCode(station.zone)
+                    list.add(RecentSearch(
+                        type = "metro",
+                        id = station.id.toString(),
+                        title = station.name,
+                        subtitle = "Zona $z • Metrovalencia",
+                        latitude = station.latitude ?: 39.4697,
+                        longitude = station.longitude ?: -0.3734,
+                        extraData = station.lines
+                    ))
+                }
+            }
+
+            favCercanias.forEach { id ->
+                cercaniasStations.find { it.stop_id == id }?.let { station ->
+                    list.add(RecentSearch(
+                        type = "cercanias",
+                        id = station.stop_id,
+                        title = station.nombre,
+                        subtitle = "Cercanías",
+                        latitude = station.lat,
+                        longitude = station.lon
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore on initial load
+        }
+        list
+    }.flowOn(Dispatchers.IO)
+     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _selectedModeFilters = MutableStateFlow<Set<RouteModeFilter>>(emptySet())
+    val selectedModeFilters: StateFlow<Set<RouteModeFilter>> = _selectedModeFilters.asStateFlow()
+
+    private val _fewestTransfers = MutableStateFlow(false)
+    val fewestTransfers: StateFlow<Boolean> = _fewestTransfers.asStateFlow()
+
+    private val _departureType = MutableStateFlow(DepartureType.LEAVE_NOW)
+    val departureType: StateFlow<DepartureType> = _departureType.asStateFlow()
+
+    private val _selectedTime = MutableStateFlow<String?>(null) // "HH:mm"
+    val selectedTime: StateFlow<String?> = _selectedTime.asStateFlow()
+
+    private val _selectedDate = MutableStateFlow<String?>(null) // "yyyy-MM-dd"
+    val selectedDate: StateFlow<String?> = _selectedDate.asStateFlow()
+
+    private val _uiState = MutableStateFlow<RoutePlannerUiState>(RoutePlannerUiState.Idle)
+    val uiState: StateFlow<RoutePlannerUiState> = _uiState.asStateFlow()
+
+    private val _selectedItinerary = MutableStateFlow<PlannedItinerary?>(null)
+    val selectedItinerary: StateFlow<PlannedItinerary?> = _selectedItinerary.asStateFlow()
+
+    private val _isRecalculatingTransfer = MutableStateFlow(false)
+    val isRecalculatingTransfer: StateFlow<Boolean> = _isRecalculatingTransfer.asStateFlow()
+
+    private val _transferRecalculateMessage = MutableStateFlow<String?>(null)
+    val transferRecalculateMessage: StateFlow<String?> = _transferRecalculateMessage.asStateFlow()
+
+    fun clearTransferRecalculateMessage() {
+        _transferRecalculateMessage.value = null
+    }
+
+    private var searchJob: Job? = null
+    private var userLat: Double? = null
+    private var userLon: Double? = null
+
+    fun setUserLocation(location: Location?) {
+        if (location != null) {
+            userLat = location.latitude
+            userLon = location.longitude
+            if (_origin.value?.isUserGps == true) {
+                _origin.value = _origin.value?.copy(latitude = location.latitude, longitude = location.longitude)
+            }
+        }
+    }
+
+    fun setUserLocationAsOrigin(location: Location?) {
+        if (location != null) {
+            userLat = location.latitude
+            userLon = location.longitude
+            useCurrentLocationAsOrigin(location.latitude, location.longitude)
+        } else {
+            useCurrentLocationAsOrigin(userLat ?: 39.4699, userLon ?: -0.3763)
+        }
+    }
+
+    fun useCurrentLocationAsOrigin(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val lastLoc = LocationUtils.getBestLastLocation(context)
+            if (lastLoc != null) {
+                useCurrentLocationAsOrigin(lastLoc.latitude, lastLoc.longitude)
+            } else {
+                LocationUtils.requestDeviceLocation(context) { lat, lon ->
+                    useCurrentLocationAsOrigin(lat, lon)
+                }
+            }
+        }
+    }
+
+    fun useCurrentLocationAsOrigin(lat: Double = 39.4699, lon: Double = -0.3763) {
+        userLat = lat
+        userLon = lon
+        val loc = PlannerLocation(
+            title = "Ubicación actual",
+            subtitle = "GPS",
+            latitude = lat,
+            longitude = lon,
+            isUserGps = true
+        )
+        _origin.value = loc
+        _originQuery.value = "Ubicación actual"
+        _activeSearchField.value = PlannerSearchField.NONE
+        _searchResults.value = emptyList()
+        triggerAutoSearchIfReady()
+    }
+
+    fun setOrigin(location: PlannerLocation) {
+        _origin.value = location
+        _originQuery.value = location.title.ifBlank { location.subtitle ?: "Ubicación seleccionada" }
+        _activeSearchField.value = PlannerSearchField.NONE
+        _searchResults.value = emptyList()
+        triggerAutoSearchIfReady()
+    }
+
+    fun setDestination(location: PlannerLocation) {
+        _destination.value = location
+        _destinationQuery.value = location.title.ifBlank { location.subtitle ?: "Ubicación seleccionada" }
+        _activeSearchField.value = PlannerSearchField.NONE
+        _searchResults.value = emptyList()
+
+        // If origin is not set, automatically default origin to Ubicación actual (GPS)
+        if (_origin.value == null || _originQuery.value.isBlank()) {
+            val lat = userLat ?: 39.4699
+            val lon = userLon ?: -0.3763
+            _origin.value = PlannerLocation(
+                title = "Ubicación actual",
+                subtitle = "GPS",
+                latitude = lat,
+                longitude = lon,
+                isUserGps = true
+            )
+            _originQuery.value = "Ubicación actual"
+        }
+
+        triggerAutoSearchIfReady()
+    }
+
+    fun commitCurrentSearchQueryIfFieldUnfocused(field: PlannerSearchField) {
+        if (_activeSearchField.value == field) {
+            _activeSearchField.value = PlannerSearchField.NONE
+        }
+        val defaultLat = userLat ?: 39.4699
+        val defaultLon = userLon ?: -0.3763
+
+        if (field == PlannerSearchField.ORIGIN) {
+            if (_origin.value == null && _originQuery.value.isNotBlank()) {
+                val topResult = _searchResults.value.firstOrNull()
+                if (topResult != null) {
+                    selectSearchResult(topResult)
+                } else {
+                    val queryTitle = _originQuery.value.trim()
+                    setOrigin(PlannerLocation(title = queryTitle, latitude = defaultLat, longitude = defaultLon))
+                }
+            } else if (_origin.value != null) {
+                val title = _origin.value?.title ?: ""
+                if (title.isNotBlank()) {
+                    _originQuery.value = title
+                }
+            }
+        } else if (field == PlannerSearchField.DESTINATION) {
+            if (_destination.value == null && _destinationQuery.value.isNotBlank()) {
+                val topResult = _searchResults.value.firstOrNull()
+                if (topResult != null) {
+                    selectSearchResult(topResult)
+                } else {
+                    val queryTitle = _destinationQuery.value.trim()
+                    setDestination(PlannerLocation(title = queryTitle, latitude = defaultLat, longitude = defaultLon))
+                }
+            } else if (_destination.value != null) {
+                val title = _destination.value?.title ?: ""
+                if (title.isNotBlank()) {
+                    _destinationQuery.value = title
+                }
+            }
+        }
+    }
+
+    fun setDestinationFromCoordinates(title: String, lat: Double, lon: Double) {
+        val loc = PlannerLocation(
+            title = title,
+            latitude = lat,
+            longitude = lon
+        )
+        setDestination(loc)
+    }
+
+    fun onOriginFocused() {
+        _activeSearchField.value = PlannerSearchField.ORIGIN
+        executeSearchForQuery(_originQuery.value)
+    }
+
+    fun onDestinationFocused() {
+        _activeSearchField.value = PlannerSearchField.DESTINATION
+        executeSearchForQuery(_destinationQuery.value)
+    }
+
+    fun dismissSearchPanel() {
+        searchJob?.cancel()
+        _isSearching.value = false
+        _activeSearchField.value = PlannerSearchField.NONE
+        _searchResults.value = emptyList()
+    }
+
+    fun updateOriginQuery(query: String) {
+        val prevIsGps = _origin.value?.isUserGps == true ||
+            _originQuery.value.trim().equals("Ubicación actual", ignoreCase = true) ||
+            _originQuery.value.trim().equals("Ubicació actual", ignoreCase = true)
+
+        if (prevIsGps && query != _originQuery.value) {
+            // Any deletion or typing over "Ubicación actual" completely clears the block
+            if (query.isEmpty() || query.length < _originQuery.value.length) {
+                _origin.value = null
+                _originQuery.value = ""
+                _activeSearchField.value = PlannerSearchField.ORIGIN
+                executeSearchForQuery("")
+                return
+            } else {
+                val newChars = query.removePrefix("Ubicación actual").removePrefix("Ubicació actual").trim()
+                _origin.value = null
+                _originQuery.value = newChars
+                _activeSearchField.value = PlannerSearchField.ORIGIN
+                executeSearchForQuery(newChars)
+                return
+            }
+        }
+
+        _originQuery.value = query
+        if (_origin.value?.title != query) {
+            _origin.value = null
+        }
+        _activeSearchField.value = PlannerSearchField.ORIGIN
+        executeSearchForQuery(query)
+    }
+
+    fun updateDestinationQuery(query: String) {
+        val prevIsGps = _destination.value?.isUserGps == true ||
+            _destinationQuery.value.trim().equals("Ubicación actual", ignoreCase = true) ||
+            _destinationQuery.value.trim().equals("Ubicació actual", ignoreCase = true)
+
+        if (prevIsGps && query != _destinationQuery.value) {
+            // Any deletion or typing over "Ubicación actual" completely clears the block
+            if (query.isEmpty() || query.length < _destinationQuery.value.length) {
+                _destination.value = null
+                _destinationQuery.value = ""
+                _activeSearchField.value = PlannerSearchField.DESTINATION
+                executeSearchForQuery("")
+                return
+            } else {
+                val newChars = query.removePrefix("Ubicación actual").removePrefix("Ubicació actual").trim()
+                _destination.value = null
+                _destinationQuery.value = newChars
+                _activeSearchField.value = PlannerSearchField.DESTINATION
+                executeSearchForQuery(newChars)
+                return
+            }
+        }
+
+        _destinationQuery.value = query
+        if (_destination.value?.title != query) {
+            _destination.value = null
+        }
+        _activeSearchField.value = PlannerSearchField.DESTINATION
+        executeSearchForQuery(query)
+    }
+
+    private fun executeSearchForQuery(query: String) {
+        searchJob?.cancel()
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            _isSearching.value = false
+            _searchResults.value = emptyList()
+            return
+        }
+
+        _isSearching.value = true
+        searchJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(150) // Debounce
+            try {
+                unifiedSearchEngine.performSearch(
+                    query = trimmed,
+                    userLat = userLat,
+                    userLon = userLon,
+                    customFavorites = customFavorites.value,
+                    homeLocation = homeLocation.value,
+                    workLocation = workLocation.value,
+                    favoriteBusStops = favoriteBusStopsSet.value,
+                    favoriteMetroStations = favoriteMetroStationsSet.value,
+                    favoriteCercaniasStations = favoriteCercaniasStationsSet.value,
+                    favoriteMetrobusStops = favoriteMetrobusStopsSet.value
+                ).collect { results ->
+                    _searchResults.value = results
+                    _isSearching.value = false
+                }
+            } catch (e: Exception) {
+                _isSearching.value = false
+            }
+        }
+    }
+
+    fun selectSearchResult(result: MapSearchResult) {
+        val loc = mapSearchResultToPlannerLocation(result)
+        
+        // Save to Recent Searches
+        val recentSearch = when (result) {
+            is MapSearchResult.BusStop -> {
+                val alias = result.alias
+                RecentSearch(
+                    type = "bus",
+                    id = result.stop.id_parada,
+                    title = alias ?: result.stop.denominacion,
+                    subtitle = if (!alias.isNullOrBlank()) "${result.stop.denominacion} • Parada ${result.stop.id_parada}" else "Parada ${result.stop.id_parada}",
+                    latitude = result.stop.lat,
+                    longitude = result.stop.lon,
+                    extraData = result.stop.lineas
+                )
+            }
+            is MapSearchResult.MetrobusStop -> {
+                val alias = result.alias
+                RecentSearch(
+                    type = "metrobus",
+                    id = result.stop.id_parada,
+                    title = alias ?: result.stop.denominacion,
+                    subtitle = if (!alias.isNullOrBlank()) "${result.stop.denominacion} • Metrobús • Parada ${result.stop.id_parada}" else "Metrobús • Parada ${result.stop.id_parada}",
+                    latitude = result.stop.lat,
+                    longitude = result.stop.lon,
+                    extraData = result.stop.lineas
+                )
+            }
+            is MapSearchResult.Metro -> {
+                val z = com.example.data.model.cleanZoneCode(result.station.zone)
+                RecentSearch(
+                    type = "metro",
+                    id = result.station.id,
+                    title = result.station.name,
+                    subtitle = "Zona $z • Metrovalencia",
+                    latitude = result.station.latitude,
+                    longitude = result.station.longitude,
+                    extraData = result.station.lines.joinToString(",")
+                )
+            }
+            is MapSearchResult.Cercanias -> RecentSearch(
+                type = "cercanias",
+                id = result.station.stop_id,
+                title = result.station.displayName,
+                subtitle = "Cercanías",
+                latitude = result.station.lat,
+                longitude = result.station.lon
+            )
+            is MapSearchResult.Address -> {
+                val homeLoc = homeLocation.value
+                val workLoc = workLocation.value
+                val isHome = result.result.type == "home" ||
+                        result.customTitle?.equals("Casa", ignoreCase = true) == true ||
+                        result.result.placeName?.equals("Casa", ignoreCase = true) == true ||
+                        (homeLoc != null && Math.abs(homeLoc.latitude - result.result.latitude) < 0.0001 && Math.abs(homeLoc.longitude - result.result.longitude) < 0.0001)
+
+                val isWork = result.result.type == "work" ||
+                        result.customTitle?.equals("Trabajo", ignoreCase = true) == true ||
+                        result.customTitle?.equals("Feina", ignoreCase = true) == true ||
+                        result.result.placeName?.equals("Trabajo", ignoreCase = true) == true ||
+                        result.result.placeName?.equals("Feina", ignoreCase = true) == true ||
+                        (workLoc != null && Math.abs(workLoc.latitude - result.result.latitude) < 0.0001 && Math.abs(workLoc.longitude - result.result.longitude) < 0.0001)
+
+                val matchingFav = customFavorites.value.find {
+                    Math.abs(it.latitude - result.result.latitude) < 0.0001 && Math.abs(it.longitude - result.result.longitude) < 0.0001
+                }
+                val isFav = isHome || isWork || result.isFavorite || result.result.type == "favorite" || result.result.category == "favorite" || matchingFav != null
+
+                val favItem = when {
+                    isHome -> homeLoc
+                    isWork -> workLoc
+                    else -> matchingFav
+                }
+
+                val mainTitle = when {
+                    isHome -> homeLoc?.title?.ifBlank { "Casa" } ?: "Casa"
+                    isWork -> workLoc?.title?.ifBlank { "Trabajo" } ?: "Trabajo"
+                    matchingFav != null -> matchingFav.title
+                    !result.customTitle.isNullOrBlank() -> result.customTitle
+                    !result.result.placeName.isNullOrBlank() -> result.result.placeName
+                    else -> loc.title
+                }
+                val subTitle = favItem?.subtitle ?: (loc.subtitle ?: "València")
+
+                RecentSearch(
+                    type = if (isFav) "favorite" else "address",
+                    id = if (isFav) (favItem?.id ?: "fav_${result.result.latitude}_${result.result.longitude}") else "addr_${result.result.latitude}_${result.result.longitude}",
+                    title = mainTitle,
+                    subtitle = subTitle,
+                    latitude = result.result.latitude,
+                    longitude = result.result.longitude,
+                    categoryName = result.result.placeCategory.name,
+                    categoryType = "${result.result.category}:${result.result.type}",
+                    placeName = result.result.placeName,
+                    road = result.result.road,
+                    houseNumber = result.result.houseNumber,
+                    suburb = result.result.suburb,
+                    city = result.result.city,
+                    postcode = result.result.postcode,
+                    openingHours = result.result.openingHours,
+                    wheelchair = result.result.wheelchair,
+                    brand = result.result.brand,
+                    operator = result.result.operator,
+                    phone = result.result.phone,
+                    email = result.result.email,
+                    website = result.result.website,
+                    wikipedia = result.result.wikipedia,
+                    wikidata = result.result.wikidata,
+                    fee = result.result.fee,
+                    charge = result.result.charge,
+                    startDate = result.result.startDate,
+                    historicType = result.result.historicType
+                )
+            }
+        }
+        addRecentSearch(recentSearch)
+
+        val target = _activeSearchField.value
+        if (target == PlannerSearchField.ORIGIN) {
+            setOrigin(loc)
+        } else if (target == PlannerSearchField.DESTINATION) {
+            setDestination(loc)
+        } else {
+            if (_origin.value == null) {
+                setOrigin(loc)
+            } else {
+                setDestination(loc)
+            }
+        }
+    }
+
+    fun selectRecentSearch(item: RecentSearch) {
+        val result = recentSearchToSearchResult(item)
+        selectSearchResult(result)
+    }
+
+    fun addRecentSearch(search: RecentSearch) {
+        viewModelScope.launch {
+            val currentList = recentSearches.value.toMutableList()
+            currentList.removeAll { it.id == search.id || (it.latitude == search.latitude && it.longitude == search.longitude) }
+            currentList.add(0, search)
+            val limitedList = currentList.take(8)
+            val json = gson.toJson(limitedList)
+            dashboardRepository.savePreference("recent_searches", json)
+        }
+    }
+
+    fun clearRecentSearches() {
+        viewModelScope.launch {
+            dashboardRepository.savePreference("recent_searches", "[]")
+        }
+    }
+
+    fun removeRecentSearch(searchId: String) {
+        viewModelScope.launch {
+            val currentList = recentSearches.value.toMutableList()
+            currentList.removeAll { it.id == searchId }
+            val json = gson.toJson(currentList)
+            dashboardRepository.savePreference("recent_searches", json)
+        }
+    }
+
+    fun saveHomeLocation(location: RecentSearch?) {
+        viewModelScope.launch {
+            val json = if (location == null) "" else gson.toJson(location)
+            dashboardRepository.savePreference("home_location", json)
+        }
+    }
+
+    fun saveWorkLocation(location: RecentSearch?) {
+        viewModelScope.launch {
+            val json = if (location == null) "" else gson.toJson(location)
+            dashboardRepository.savePreference("work_location", json)
+        }
+    }
+
+    fun savePinnedLocation(location: RecentSearch?) {
+        viewModelScope.launch {
+            val json = if (location == null) "" else gson.toJson(location)
+            dashboardRepository.savePreference("pinned_location", json)
+        }
+    }
+
+    fun swapOriginAndDestination() {
+        val tempOrig = _origin.value
+        val tempOrigQuery = _originQuery.value
+        _origin.value = _destination.value
+        _originQuery.value = _destinationQuery.value
+        _destination.value = tempOrig
+        _destinationQuery.value = tempOrigQuery
+        dismissSearchPanel()
+        triggerAutoSearchIfReady()
+    }
+
+    fun toggleModeFilter(filter: RouteModeFilter) {
+        val current = _selectedModeFilters.value.toMutableSet()
+        if (current.contains(filter)) {
+            current.remove(filter)
+        } else {
+            current.add(filter)
+        }
+        _selectedModeFilters.value = current
+        searchRoutes()
+    }
+
+    fun clearModeFilters() {
+        _selectedModeFilters.value = emptySet()
+        searchRoutes()
+    }
+
+    fun toggleFewestTransfers() {
+        _fewestTransfers.value = !_fewestTransfers.value
+        searchRoutes()
+    }
+
+    fun setDepartureSchedule(type: DepartureType, time: String? = null, date: String? = null) {
+        _departureType.value = type
+        val now = Date()
+        val madridTz = java.util.TimeZone.getTimeZone("Europe/Madrid")
+        val defaultTime = time ?: if (type != DepartureType.LEAVE_NOW) {
+            SimpleDateFormat("HH:mm", Locale.getDefault()).apply { timeZone = madridTz }.format(now)
+        } else null
+        val defaultDate = date ?: if (type != DepartureType.LEAVE_NOW || !defaultTime.isNullOrEmpty()) {
+            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = madridTz }.format(now)
+        } else null
+        _selectedTime.value = defaultTime
+        _selectedDate.value = defaultDate
+        searchRoutes()
+    }
+
+    fun selectItinerary(itinerary: PlannedItinerary?) {
+        _selectedItinerary.value = itinerary
+    }
+
+    fun recalculateTransfer(
+        stationName: String,
+        lat: Double = 0.0,
+        lon: Double = 0.0,
+        arrivalTime: String = "",
+        walkBufferMinutes: Int = 2,
+        isCa: Boolean = false
+    ) {
+        val currentItin = _selectedItinerary.value ?: return
+        val dest = _destination.value ?: return
+        val validLat = if (lat != 0.0) lat else (userLat ?: 39.4699)
+        val validLon = if (lon != 0.0) lon else (userLon ?: -0.3763)
+
+        viewModelScope.launch {
+            _isRecalculatingTransfer.value = true
+            val result = TransferRecalculator.recalculateTransferAlternative(
+                hybridRoutingRepository = hybridRoutingRepository,
+                currentItinerary = currentItin,
+                stationName = stationName,
+                transferLat = validLat,
+                transferLon = validLon,
+                arrivalTime = arrivalTime.ifBlank { currentItin.formattedDepartureTime },
+                walkBufferMinutes = walkBufferMinutes,
+                destination = dest,
+                selectedDate = _selectedDate.value,
+                selectedModes = _selectedModeFilters.value,
+                isCa = isCa
+            )
+
+            result.fold(
+                onSuccess = { updatedItinerary ->
+                    _selectedItinerary.value = updatedItinerary
+                    val currentState = _uiState.value
+                    if (currentState is RoutePlannerUiState.Success) {
+                        val currentList = currentState.itineraries.toMutableList()
+                        val existingIndex = currentList.indexOfFirst { it.id == currentItin.id }
+                        if (existingIndex != -1) {
+                            currentList[existingIndex] = updatedItinerary
+                        } else {
+                            currentList.add(updatedItinerary)
+                        }
+                        val isArriveBy = _departureType.value == DepartureType.ARRIVE_BY
+                        val sortedList = if (isArriveBy) {
+                            currentList.sortedWith(
+                                compareByDescending<PlannedItinerary> { com.example.data.repository.routing.RoutingDataMapper.getEffectiveArrivalEpochMs(it) }
+                                    .thenBy { it.totalDurationSeconds }
+                                    .thenByDescending { com.example.data.repository.routing.RoutingDataMapper.getEffectiveDepartureEpochMs(it) }
+                            )
+                        } else {
+                            currentList.sortedWith(
+                                compareBy<PlannedItinerary> { com.example.data.repository.routing.RoutingDataMapper.getEffectiveArrivalEpochMs(it) }
+                                    .thenBy { it.totalDurationSeconds }
+                                    .thenBy { com.example.data.repository.routing.RoutingDataMapper.getEffectiveDepartureEpochMs(it) }
+                            )
+                        }
+                        _uiState.value = RoutePlannerUiState.Success(sortedList)
+                    }
+                    _transferRecalculateMessage.value = updatedItinerary.viabilityNotice
+                },
+                onFailure = { error ->
+                    _transferRecalculateMessage.value = error.localizedMessage
+                }
+            )
+            _isRecalculatingTransfer.value = false
+        }
+    }
+
+    fun recalculateFromStation(stationName: String, lat: Double = 0.0, lon: Double = 0.0) {
+        recalculateTransfer(stationName, lat, lon)
+    }
+
+    private fun triggerAutoSearchIfReady() {
+        if (_origin.value != null && _destination.value != null) {
+            searchRoutes()
+        }
+    }
+
+    private var realTimeEnrichmentJob: Job? = null
+
+    fun searchRoutes() {
+        val orig = _origin.value
+        val dest = _destination.value
+        if (orig == null || dest == null) return
+
+        val isOnline = com.example.util.isNetworkAvailable(getApplication())
+        if (!isOnline) {
+            _uiState.value = RoutePlannerUiState.Error(
+                message = "Sin conexión a internet. Se requiere conexión para calcular y buscar rutas.",
+                isOffline = true
+            )
+            return
+        }
+
+        realTimeEnrichmentJob?.cancel()
+        _uiState.value = RoutePlannerUiState.Loading(PlannerLoadingStage.SCHEDULED_TRIPS)
+        _selectedItinerary.value = null
+
+        viewModelScope.launch {
+            val maxTransfers = if (_fewestTransfers.value) 1 else 3
+            val arriveBy = _departureType.value == DepartureType.ARRIVE_BY
+            val isDepartNow = _departureType.value == DepartureType.LEAVE_NOW
+            
+            val selectedFilters = _selectedModeFilters.value
+            val modes = if (selectedFilters.isEmpty()) {
+                "WALK,SUBWAY,TRAM,BUS,COACH,REGIONAL_RAIL"
+            } else {
+                ("WALK," + selectedFilters.flatMap { it.modes }.distinct().joinToString(","))
+            }
+
+            val isOriginStation = orig.stopType != null || orig.stopId != null || com.example.data.repository.routing.RoutingDataMapper.isStationOrStopDescriptor(orig.title, orig.stopType, orig.stopId)
+            val isDestStation = dest.stopType != null || dest.stopId != null || com.example.data.repository.routing.RoutingDataMapper.isStationOrStopDescriptor(dest.title, dest.stopType, dest.stopId)
+
+            val result = hybridRoutingRepository.planRoute(
+                fromLat = orig.latitude,
+                fromLon = orig.longitude,
+                toLat = dest.latitude,
+                toLon = dest.longitude,
+                time = _selectedTime.value,
+                date = _selectedDate.value,
+                arriveBy = arriveBy,
+                maxTransfers = maxTransfers,
+                modes = modes,
+                originName = orig.title,
+                destinationName = dest.title,
+                isOriginStationOrStop = isOriginStation,
+                isDestinationStationOrStop = isDestStation
+            )
+
+            result.fold(
+                onSuccess = { itineraries ->
+                    if (itineraries.isEmpty()) {
+                        val isNowOffline = !com.example.util.isNetworkAvailable(getApplication())
+                        _uiState.value = RoutePlannerUiState.Error(
+                            message = if (isNowOffline) "Sin conexión a internet. No se pudieron buscar rutas." else "No se encontraron rutas para el trayecto seleccionado.",
+                            isOffline = isNowOffline
+                        )
+                    } else {
+                        val hasLiveEligible = isDepartNow || itineraries.any {
+                            hybridRoutingRepository.shouldAttemptLiveReconciliation(it)
+                        }
+
+                        if (hasLiveEligible) {
+                            // Advance to real-time crossing stage
+                            _uiState.value = RoutePlannerUiState.Loading(PlannerLoadingStage.REAL_TIME_CROSS)
+                            
+                            // Reconcile in background coroutine while keeping loading indicator clean
+                            try {
+                                val enrichedList = withContext(Dispatchers.IO) {
+                                    hybridRoutingRepository.reconcileItineraries(itineraries, isDepartNow = isDepartNow)
+                                }
+                                _uiState.value = RoutePlannerUiState.Loading(PlannerLoadingStage.BUILDING_ROUTES)
+                                delay(220) // Smooth visual transition
+                                _uiState.value = RoutePlannerUiState.Success(enrichedList)
+                            } catch (e: Exception) {
+                                _uiState.value = RoutePlannerUiState.Success(itineraries)
+                            }
+                        } else {
+                            _uiState.value = RoutePlannerUiState.Loading(PlannerLoadingStage.BUILDING_ROUTES)
+                            delay(180)
+                            _uiState.value = RoutePlannerUiState.Success(itineraries)
+                        }
+                    }
+                },
+                onFailure = { err ->
+                    val isOffline = !com.example.util.isNetworkAvailable(getApplication()) ||
+                        err is java.net.UnknownHostException ||
+                        err is java.net.ConnectException ||
+                        err is java.net.SocketTimeoutException
+                    _uiState.value = RoutePlannerUiState.Error(
+                        message = if (isOffline) "Sin conexión a internet. No se han podido calcular las rutas." else (err.localizedMessage ?: "Error de conexión al calcular la ruta. Inténtalo de nuevo."),
+                        isOffline = isOffline
+                    )
+                }
+            )
+        }
+    }
+
+    private fun startBackgroundRealTimeEnrichment(initialItineraries: List<PlannedItinerary>) {
+        realTimeEnrichmentJob?.cancel()
+        val isDepartNow = _departureType.value == DepartureType.LEAVE_NOW
+        val hasLiveEligible = isDepartNow || initialItineraries.any {
+            hybridRoutingRepository.shouldAttemptLiveReconciliation(it)
+        }
+        if (!hasLiveEligible) return
+
+        realTimeEnrichmentJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val enrichedList = hybridRoutingRepository.reconcileItineraries(initialItineraries, isDepartNow = isDepartNow)
+
+                withContext(Dispatchers.Main) {
+                    val currentState = _uiState.value
+                    if (currentState is RoutePlannerUiState.Success) {
+                        _uiState.value = RoutePlannerUiState.Success(enrichedList)
+                        // Update selected itinerary if open
+                        val currentSelected = _selectedItinerary.value
+                        if (currentSelected != null) {
+                            val updatedSelected = enrichedList.find { it.id == currentSelected.id }
+                            if (updatedSelected != null) {
+                                _selectedItinerary.value = updatedSelected
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Background enrichment silently falls back to initially rendered theoretical/quick itineraries
+            }
+        }
+    }
+}

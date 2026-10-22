@@ -1,0 +1,37 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <!-- Official Metrobús Valencia 10-Dot Chevron Logo -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M64,24 a16,16 0 1,0 0,32 a16,16 0 1,0 0,-32 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M112,20 a20,20 0 1,0 0,40 a20,20 0 1,0 0,-40 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M112,66 a24,24 0 1,0 0,48 a24,24 0 1,0 0,-48 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M160,73 a17,17 0 1,0 0,34 a17,17 0 1,0 0,-34 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M160,118 a20,20 0 1,0 0,40 a20,20 0 1,0 0,-40 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M208,114 a24,24 0 1,0 0,48 a24,24 0 1,0 0,-48 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M160,163 a23,23 0 1,0 0,46 a23,23 0 1,0 0,-46 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M112,166 a20,20 0 1,0 0,40 a20,20 0 1,0 0,-40 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M64,208 a24,24 0 1,0 0,48 a24,24 0 1,0 0,-48 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M112,215 a17,17 0 1,0 0,34 a17,17 0 1,0 0,-34 Z" />
+</vector>

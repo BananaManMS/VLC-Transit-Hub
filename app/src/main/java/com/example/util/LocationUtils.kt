@@ -1,0 +1,447 @@
+package com.example.util
+
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationManager
+import android.net.Uri
+import android.widget.Toast
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationServices
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.Locale
+import kotlin.coroutines.resume
+
+object LocationUtils {
+    @Volatile
+    var lastKnownLocationCache: Location? = null
+
+    @JvmStatic
+    fun hasLocationPermission(context: Context): Boolean {
+        val hasFine = ContextCompat.checkSelfPermission(context, "android.permission.ACCESS_FINE_LOCATION") == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(context, "android.permission.ACCESS_COARSE_LOCATION") == PackageManager.PERMISSION_GRANTED
+        return hasFine || hasCoarse
+    }
+
+    @JvmStatic
+    fun hasFineLocationPermission(context: Context): Boolean {
+        return ContextCompat.checkSelfPermission(context, "android.permission.ACCESS_FINE_LOCATION") == PackageManager.PERMISSION_GRANTED
+    }
+
+    @JvmStatic
+    fun hasOnlyCoarseLocationPermission(context: Context): Boolean {
+        val hasFine = hasFineLocationPermission(context)
+        val hasCoarse = ContextCompat.checkSelfPermission(context, "android.permission.ACCESS_COARSE_LOCATION") == PackageManager.PERMISSION_GRANTED
+        return !hasFine && hasCoarse
+    }
+
+    suspend fun getBestLastLocation(context: Context): Location? {
+        if (!hasLocationPermission(context)) return null
+        return suspendCancellableCoroutine { continuation ->
+            try {
+                val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+                fusedClient.lastLocation
+                    .addOnSuccessListener { loc ->
+                        if (loc != null) {
+                            lastKnownLocationCache = loc
+                        }
+                        if (continuation.isActive) {
+                            continuation.resume(loc ?: getLocationFromLocationManager(context))
+                        }
+                    }
+                    .addOnFailureListener {
+                        if (continuation.isActive) {
+                            continuation.resume(getLocationFromLocationManager(context))
+                        }
+                    }
+            } catch (e: Exception) {
+                if (continuation.isActive) {
+                    continuation.resume(getLocationFromLocationManager(context))
+                }
+            }
+        }
+    }
+
+    @JvmStatic
+    fun getLocationFromLocationManager(context: Context): Location? {
+        if (!hasLocationPermission(context)) return null
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+        var bestLocation: Location? = null
+        for (provider in providers) {
+            try {
+                val loc = locationManager.getLastKnownLocation(provider)
+                if (loc != null && (bestLocation == null || loc.time > bestLocation.time)) {
+                    bestLocation = loc
+                }
+            } catch (_: Exception) {}
+        }
+        if (bestLocation != null) {
+            lastKnownLocationCache = bestLocation
+        }
+        return bestLocation
+    }
+
+    @JvmStatic
+    fun calculateDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val phi1 = Math.toRadians(lat1)
+        val phi2 = Math.toRadians(lat2)
+        val deltaPhi = Math.toRadians(lat2 - lat1)
+        val deltaLambda = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(deltaPhi / 2.0) * Math.sin(deltaPhi / 2.0) +
+                Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2.0) * Math.sin(deltaLambda / 2.0)
+        val c = Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a)) * 2.0
+        return 6371000.0 * c
+    }
+
+    @JvmStatic
+    fun formatDistance(distanceMeters: Double): String {
+        return if (distanceMeters < 1000.0) {
+            "${distanceMeters.toInt()} m"
+        } else {
+            String.format(Locale("es", "ES"), "%.1f km", distanceMeters / 1000.0)
+        }
+    }
+
+    @JvmStatic
+    fun openGoogleMapsForStation(context: Context, stationName: String) {
+        val query = "Metro " + stationName + " Valencia salidas"
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=" + Uri.encode(query)))
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            Toast.makeText(context, context.getString(com.example.R.string.toast_cannot_open_maps), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun requestDeviceLocation(context: Context, onLocationResult: (Double, Double) -> Unit) {
+        if (!hasLocationPermission(context)) return
+
+        var lastEmittedLat = 0.0
+        var lastEmittedLon = 0.0
+        var hasDeliveredFreshFix = false
+
+        fun deliverIfSignificant(lat: Double, lon: Double, isFresh: Boolean) {
+            if (hasDeliveredFreshFix && !isFresh) return
+            val distance = calculateDistanceMeters(lastEmittedLat, lastEmittedLon, lat, lon)
+            if (lastEmittedLat == 0.0 || distance > 10.0 || (isFresh && !hasDeliveredFreshFix)) {
+                lastEmittedLat = lat
+                lastEmittedLon = lon
+                if (isFresh) hasDeliveredFreshFix = true
+                val temp = Location("single_fix").apply {
+                    latitude = lat
+                    longitude = lon
+                    time = System.currentTimeMillis()
+                }
+                lastKnownLocationCache = temp
+                onLocationResult(lat, lon)
+            }
+        }
+
+        // 1. Immediate check from cache if available and under 15 seconds old
+        val cached = lastKnownLocationCache ?: getLocationFromLocationManager(context)
+        if (cached != null && (System.currentTimeMillis() - cached.time < 15_000L)) {
+            deliverIfSignificant(cached.latitude, cached.longitude, isFresh = false)
+        }
+
+        // 2. Single fresh location request via Fused Location Provider
+        CoroutineScope(Dispatchers.Main).launch {
+            var fusedSucceeded = false
+            try {
+                val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+                val cts = com.google.android.gms.tasks.CancellationTokenSource()
+                fusedClient.getCurrentLocation(
+                    com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                    cts.token
+                ).addOnSuccessListener { freshLoc ->
+                    if (freshLoc != null) {
+                        fusedSucceeded = true
+                        deliverIfSignificant(freshLoc.latitude, freshLoc.longitude, isFresh = true)
+                    }
+                }
+                launch {
+                    kotlinx.coroutines.delay(4000L)
+                    try { cts.cancel() } catch (_: Exception) {}
+                }
+            } catch (_: Exception) {}
+
+            // 3. Fallback to LocationManager ONLY if Fused failed or timed out
+            kotlinx.coroutines.delay(2000L)
+            if (!fusedSucceeded && !hasDeliveredFreshFix) {
+                requestSingleLocationManagerUpdate(context) { lat, lon ->
+                    deliverIfSignificant(lat, lon, isFresh = true)
+                }
+            }
+        }
+    }
+
+    private fun requestSingleLocationManagerUpdate(
+        context: Context,
+        onLocationResult: (Double, Double) -> Unit
+    ) {
+        if (!hasLocationPermission(context)) return
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+        val listener = object : android.location.LocationListener {
+            override fun onLocationChanged(location: Location) {
+                onLocationResult(location.latitude, location.longitude)
+                try {
+                    locationManager.removeUpdates(this)
+                } catch (_: Exception) {}
+            }
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+        }
+        val mainLooper = android.os.Looper.getMainLooper()
+        try {
+            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, listener, mainLooper)
+            }
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000L, 0f, listener, mainLooper)
+            }
+            CoroutineScope(Dispatchers.Main).launch {
+                kotlinx.coroutines.delay(15000L)
+                try {
+                    locationManager.removeUpdates(listener)
+                } catch (_: Exception) {}
+            }
+        } catch (_: SecurityException) {}
+    }
+
+    fun getLocationUpdates(
+        context: Context,
+        intervalMs: Long = 12000L,
+        minDistanceMeters: Float = 10.0f,
+        allowSatelliteGps: Boolean = true
+    ): Flow<Location> = callbackFlow {
+        if (!hasLocationPermission(context)) {
+            close()
+            return@callbackFlow
+        }
+        val now = System.currentTimeMillis()
+        var lastEmittedLoc: Location? = null
+
+        fun safeTrySend(loc: Location?) {
+            if (loc == null || loc.latitude == 0.0 || loc.longitude == 0.0) return
+            val prev = lastEmittedLoc
+            if (prev != null) {
+                val distance = prev.distanceTo(loc)
+                val timeDiff = Math.abs(loc.time - prev.time)
+                // Filter out rapid micro-jitter (< 2.5 meters apart within 3 seconds) unless accuracy improved significantly
+                if (distance < 2.5f && timeDiff < 3000L) {
+                    val prevAcc = if (prev.hasAccuracy()) prev.accuracy else 100f
+                    val newAcc = if (loc.hasAccuracy()) loc.accuracy else 100f
+                    if (newAcc >= prevAcc) return
+                }
+            }
+            lastEmittedLoc = loc
+            trySend(loc)
+        }
+
+        // Emit best last known location immediately ONLY if recent (under 15 seconds)
+        getLocationFromLocationManager(context)?.let { loc ->
+            if (now - loc.time < 15_000L) {
+                safeTrySend(loc)
+            }
+        }
+
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        val listener = android.location.LocationListener { loc ->
+            safeTrySend(loc)
+        }
+        var fusedCallback: com.google.android.gms.location.LocationCallback? = null
+        var fusedClient: com.google.android.gms.location.FusedLocationProviderClient? = null
+        var isFusedActive = false
+        try {
+            val fc = LocationServices.getFusedLocationProviderClient(context)
+            fusedClient = fc
+            fc.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null && (now - loc.time < 15_000L)) safeTrySend(loc)
+            }
+            val priority = if (allowSatelliteGps) {
+                com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY
+            } else {
+                com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY
+            }
+            val request = com.google.android.gms.location.LocationRequest.Builder(
+                priority,
+                intervalMs
+            ).setMinUpdateDistanceMeters(minDistanceMeters).build()
+            val cb = object : com.google.android.gms.location.LocationCallback() {
+                override fun onLocationResult(result: com.google.android.gms.location.LocationResult) {
+                    result.lastLocation?.let { safeTrySend(it) }
+                }
+            }
+            fusedCallback = cb
+            fc.requestLocationUpdates(request, cb, android.os.Looper.getMainLooper())
+            isFusedActive = true
+        } catch (_: Exception) {}
+
+        try {
+            val mainLooper = android.os.Looper.getMainLooper()
+            // Only request GPS/Network providers if Fused is not active to prevent sensor fighting
+            if (!isFusedActive) {
+                if (allowSatelliteGps && locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true) {
+                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, intervalMs, minDistanceMeters, listener, mainLooper)
+                }
+                if (locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true) {
+                    locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, intervalMs, minDistanceMeters, listener, mainLooper)
+                }
+                // Only register PASSIVE_PROVIDER if Fused is unavailable to prevent competing updates
+                if (locationManager?.isProviderEnabled(LocationManager.PASSIVE_PROVIDER) == true) {
+                    locationManager.requestLocationUpdates(LocationManager.PASSIVE_PROVIDER, intervalMs, minDistanceMeters, listener, mainLooper)
+                }
+            }
+        } catch (e: SecurityException) {
+            close(e)
+        }
+        awaitClose {
+            try {
+                locationManager?.removeUpdates(listener)
+            } catch (_: Exception) {}
+            try {
+                if (fusedCallback != null && fusedClient != null) {
+                    fusedClient.removeLocationUpdates(fusedCallback)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun getDynamicLocationUpdates(
+        context: Context,
+        intervalFlow: StateFlow<Long>,
+        minDistanceMeters: Float = 10.0f,
+        allowSatelliteGpsFlow: StateFlow<Boolean>? = null
+    ): Flow<Location> = callbackFlow {
+        if (!hasLocationPermission(context)) {
+            close()
+            return@callbackFlow
+        }
+        val now = System.currentTimeMillis()
+        var lastEmittedLoc: Location? = null
+
+        fun safeTrySend(loc: Location?) {
+            if (loc == null || loc.latitude == 0.0 || loc.longitude == 0.0) return
+            val prev = lastEmittedLoc
+            if (prev != null) {
+                val distance = prev.distanceTo(loc)
+                val timeDiff = Math.abs(loc.time - prev.time)
+                if (distance < 2.5f && timeDiff < 3000L) {
+                    val prevAcc = if (prev.hasAccuracy()) prev.accuracy else 100f
+                    val newAcc = if (loc.hasAccuracy()) loc.accuracy else 100f
+                    if (newAcc >= prevAcc) return
+                }
+            }
+            lastEmittedLoc = loc
+            trySend(loc)
+        }
+
+        getLocationFromLocationManager(context)?.let { loc ->
+            if (now - loc.time < 15_000L) safeTrySend(loc)
+        }
+
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        var fusedClient: com.google.android.gms.location.FusedLocationProviderClient? = null
+        var fusedCallback: com.google.android.gms.location.LocationCallback? = null
+        var isFusedAvailable = false
+
+        val lmListener = android.location.LocationListener { loc ->
+            safeTrySend(loc)
+        }
+
+        try {
+            val fc = LocationServices.getFusedLocationProviderClient(context)
+            fusedClient = fc
+            fc.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null && (now - loc.time < 15_000L)) safeTrySend(loc)
+            }
+            val cb = object : com.google.android.gms.location.LocationCallback() {
+                override fun onLocationResult(result: com.google.android.gms.location.LocationResult) {
+                    result.lastLocation?.let { safeTrySend(it) }
+                }
+            }
+            fusedCallback = cb
+            isFusedAvailable = true
+        } catch (_: Exception) {
+            isFusedAvailable = false
+        }
+
+        val mainLooper = android.os.Looper.getMainLooper()
+
+        fun updateRequests(intervalMs: Long, allowSatelliteGps: Boolean) {
+            if (isFusedAvailable && fusedClient != null && fusedCallback != null) {
+                val priority = if (allowSatelliteGps) {
+                    com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY
+                } else {
+                    com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY
+                }
+                val request = com.google.android.gms.location.LocationRequest.Builder(
+                    priority,
+                    intervalMs
+                ).setMinUpdateDistanceMeters(minDistanceMeters).build()
+
+                try {
+                    fusedClient.requestLocationUpdates(request, fusedCallback, mainLooper)
+                } catch (_: Exception) {}
+            } else {
+                try {
+                    locationManager?.removeUpdates(lmListener)
+                    if (allowSatelliteGps && locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true) {
+                        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, intervalMs, minDistanceMeters, lmListener, mainLooper)
+                    }
+                    if (locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true) {
+                        locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, intervalMs, minDistanceMeters, lmListener, mainLooper)
+                    }
+                    if (locationManager?.isProviderEnabled(LocationManager.PASSIVE_PROVIDER) == true) {
+                        locationManager.requestLocationUpdates(LocationManager.PASSIVE_PROVIDER, intervalMs, minDistanceMeters, lmListener, mainLooper)
+                    }
+                } catch (_: SecurityException) {}
+            }
+        }
+
+        updateRequests(
+            intervalMs = intervalFlow.value,
+            allowSatelliteGps = allowSatelliteGpsFlow?.value ?: true
+        )
+
+        val job = launch {
+            val combinedFlow = if (allowSatelliteGpsFlow != null) {
+                kotlinx.coroutines.flow.combine(intervalFlow, allowSatelliteGpsFlow) { interval, allowGps ->
+                    Pair(interval, allowGps)
+                }
+            } else {
+                intervalFlow.map { interval -> Pair(interval, true) }
+            }
+
+            combinedFlow.distinctUntilChanged().collect { (interval, allowGps) ->
+                updateRequests(interval, allowGps)
+            }
+        }
+
+        awaitClose {
+            job.cancel()
+            try {
+                if (fusedCallback != null && fusedClient != null) {
+                    fusedClient.removeLocationUpdates(fusedCallback)
+                }
+            } catch (_: Exception) {}
+            try {
+                locationManager?.removeUpdates(lmListener)
+            } catch (_: Exception) {}
+        }
+    }
+}

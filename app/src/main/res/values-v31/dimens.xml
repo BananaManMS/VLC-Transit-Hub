@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Notification padding for Android 12+ (API 31+), where system handles outer card margins -->
+    <dimen name="notification_padding_horizontal">0dp</dimen>
+    <dimen name="notification_padding_vertical">0dp</dimen>
+    <dimen name="notification_padding_compact_vertical">0dp</dimen>
+</resources>

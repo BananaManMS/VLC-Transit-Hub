@@ -1,0 +1,776 @@
+{
+  "type": "FeatureCollection",
+  "name": "ruta_metrovalencia_4",
+  "crs": null,
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "full_id": "r5621993",
+        "osm_id": "5621993",
+        "osm_type": "relation",
+        "route": "tram",
+        "name:es": null,
+        "name:ca": null,
+        "wikipedia": "ca:Línia 6 de Metrovalència",
+        "wikidata": "Q3832664",
+        "type": "route",
+        "to": "Marítim",
+        "ref": "6",
+        "public_transport:version": "2",
+        "owner:wikidata": "Q750832",
+        "operator:wikipedia": "ca:Ferrocarrils de la Generalitat Valenciana",
+        "operator:wikidata": "Q750832",
+        "operator:short": "FGV",
+        "operator": "Ferrocarrils de la Generalitat Valenciana",
+        "network:wikipedia": "ca:Metrovalència",
+        "network:wikidata": "Q511171",
+        "network": "Metrovalencia",
+        "name": "Línia 6: Tossal del Rei => Marítim - Serrería",
+        "from": "Tossal del Rei",
+        "colour": "#8884BF",
+        "layer": null,
+        "path": null
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              -0.3258848,
+              39.4745485
+            ],
+            [
+              -0.3270858,
+              39.4746204
+            ],
+            [
+              -0.3274609,
+              39.4746787
+            ]
+          ],
+          [
+            [
+              -0.3256259,
+              39.4742595
+            ],
+            [
+              -0.3256295,
+              39.4743573
+            ],
+            [
+              -0.3256681,
+              39.4744582
+            ],
+            [
+              -0.3257598,
+              39.4745276
+            ],
+            [
+              -0.3258848,
+              39.4745485
+            ]
+          ],
+          [
+            [
+              -0.3256436,
+              39.4680964
+            ],
+            [
+              -0.3256259,
+              39.4742595
+            ]
+          ],
+          [
+            [
+              -0.3259952,
+              39.4674973
+            ],
+            [
+              -0.3257608,
+              39.4675046
+            ],
+            [
+              -0.3256737,
+              39.4675438
+            ],
+            [
+              -0.3255929,
+              39.4676318
+            ],
+            [
+              -0.3255707,
+              39.4677345
+            ],
+            [
+              -0.3256309,
+              39.4679558
+            ],
+            [
+              -0.3256436,
+              39.4680964
+            ]
+          ],
+          [
+            [
+              -0.3259952,
+              39.4674973
+            ],
+            [
+              -0.3274032,
+              39.4676141
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "full_id": "r5622028",
+        "osm_id": "5622028",
+        "osm_type": "relation",
+        "route": "tram",
+        "name:es": null,
+        "name:ca": null,
+        "wikipedia": "ca:Línia 6 de Metrovalència",
+        "wikidata": "Q3832664",
+        "type": "route",
+        "to": "Tossal del Rei",
+        "ref": "6",
+        "public_transport:version": "2",
+        "owner:wikidata": "Q750832",
+        "operator:wikipedia": "ca:Ferrocarrils de la Generalitat Valenciana",
+        "operator:wikidata": "Q750832",
+        "operator:short": "FGV",
+        "operator": "Ferrocarrils de la Generalitat Valenciana",
+        "network:wikipedia": "ca:Metrovalència",
+        "network:wikidata": "Q511171",
+        "network": "Metrovalencia",
+        "name": "Línia 6: Marítim => Tossal del Rei",
+        "from": "Marítim",
+        "colour": "#8884BF",
+        "layer": null,
+        "path": null
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              -0.3379569,
+              39.4646713
+            ],
+            [
+              -0.3390399,
+              39.4649891
+            ]
+          ],
+          [
+            [
+              -0.337736,
+              39.4645644
+            ],
+            [
+              -0.3379569,
+              39.4646713
+            ]
+          ],
+          [
+            [
+              -0.3372199,
+              39.464414
+            ],
+            [
+              -0.337736,
+              39.4645644
+            ]
+          ],
+          [
+            [
+              -0.3366823,
+              39.4642582
+            ],
+            [
+              -0.3372199,
+              39.464414
+            ]
+          ],
+          [
+            [
+              -0.3286412,
+              39.463456
+            ],
+            [
+              -0.3292204,
+              39.4634841
+            ],
+            [
+              -0.3293508,
+              39.4634688
+            ],
+            [
+              -0.3294988,
+              39.4634074
+            ],
+            [
+              -0.3302806,
+              39.4629477
+            ],
+            [
+              -0.3304012,
+              39.4628967
+            ],
+            [
+              -0.3305327,
+              39.462887
+            ],
+            [
+              -0.3318216,
+              39.4629505
+            ],
+            [
+              -0.3324314,
+              39.463027
+            ],
+            [
+              -0.333189,
+              39.4631555
+            ],
+            [
+              -0.3349426,
+              39.4633762
+            ],
+            [
+              -0.3353893,
+              39.4634826
+            ],
+            [
+              -0.3362224,
+              39.4635939
+            ],
+            [
+              -0.3363557,
+              39.4636569
+            ],
+            [
+              -0.3364278,
+              39.4637388
+            ],
+            [
+              -0.3364584,
+              39.4638446
+            ],
+            [
+              -0.3364328,
+              39.4640232
+            ],
+            [
+              -0.3364623,
+              39.4641206
+            ],
+            [
+              -0.3365655,
+              39.4642117
+            ],
+            [
+              -0.3366823,
+              39.4642582
+            ]
+          ],
+          [
+            [
+              -0.3279804,
+              39.4676624
+            ],
+            [
+              -0.3280922,
+              39.4677052
+            ],
+            [
+              -0.3281539,
+              39.467759
+            ],
+            [
+              -0.3281941,
+              39.4678209
+            ],
+            [
+              -0.328203,
+              39.467935
+            ]
+          ],
+          [
+            [
+              -0.328203,
+              39.467935
+            ],
+            [
+              -0.328127,
+              39.4684375
+            ]
+          ],
+          [
+            [
+              -0.328127,
+              39.4684375
+            ],
+            [
+              -0.3272828,
+              39.474295
+            ]
+          ],
+          [
+            [
+              -0.3272828,
+              39.474295
+            ],
+            [
+              -0.3272907,
+              39.4744639
+            ],
+            [
+              -0.3273657,
+              39.4745921
+            ],
+            [
+              -0.3274609,
+              39.4746787
+            ],
+            [
+              -0.3276629,
+              39.474774
+            ]
+          ],
+          [
+            [
+              -0.3276629,
+              39.474774
+            ],
+            [
+              -0.3514695,
+              39.4816348
+            ]
+          ],
+          [
+            [
+              -0.3514695,
+              39.4816348
+            ],
+            [
+              -0.3518626,
+              39.4817489
+            ]
+          ],
+          [
+            [
+              -0.3518626,
+              39.4817489
+            ],
+            [
+              -0.3627231,
+              39.4849332
+            ]
+          ],
+          [
+            [
+              -0.3627231,
+              39.4849332
+            ],
+            [
+              -0.3674559,
+              39.4863223
+            ],
+            [
+              -0.3680114,
+              39.4864724
+            ],
+            [
+              -0.3690612,
+              39.4867158
+            ]
+          ],
+          [
+            [
+              -0.3690612,
+              39.4867158
+            ],
+            [
+              -0.3693984,
+              39.4868556
+            ],
+            [
+              -0.3694656,
+              39.4869356
+            ],
+            [
+              -0.369484,
+              39.4870165
+            ],
+            [
+              -0.3694733,
+              39.4870997
+            ],
+            [
+              -0.369367,
+              39.4872293
+            ]
+          ],
+          [
+            [
+              -0.369367,
+              39.4872293
+            ],
+            [
+              -0.3685382,
+              39.4878784
+            ],
+            [
+              -0.368259,
+              39.4880649
+            ],
+            [
+              -0.3675892,
+              39.4884515
+            ],
+            [
+              -0.3663799,
+              39.4891137
+            ],
+            [
+              -0.3650828,
+              39.4898651
+            ],
+            [
+              -0.3649811,
+              39.4899305
+            ],
+            [
+              -0.3648825,
+              39.4900387
+            ],
+            [
+              -0.3648427,
+              39.4901729
+            ],
+            [
+              -0.3648532,
+              39.4902479
+            ],
+            [
+              -0.3648779,
+              39.4903074
+            ],
+            [
+              -0.3649688,
+              39.4904239
+            ],
+            [
+              -0.3672682,
+              39.4921355
+            ],
+            [
+              -0.3678627,
+              39.4925623
+            ],
+            [
+              -0.3679244,
+              39.492649
+            ],
+            [
+              -0.3679303,
+              39.4927181
+            ],
+            [
+              -0.3679009,
+              39.4928047
+            ],
+            [
+              -0.3678264,
+              39.49288
+            ],
+            [
+              -0.3642309,
+              39.4957546
+            ],
+            [
+              -0.3641569,
+              39.4958342
+            ],
+            [
+              -0.364143,
+              39.4958711
+            ],
+            [
+              -0.3641369,
+              39.4959614
+            ],
+            [
+              -0.3641519,
+              39.4960191
+            ],
+            [
+              -0.3642216,
+              39.4961159
+            ],
+            [
+              -0.3643156,
+              39.4961671
+            ],
+            [
+              -0.3653,
+              39.4964512
+            ],
+            [
+              -0.3656543,
+              39.4965427
+            ],
+            [
+              -0.3668451,
+              39.4967935
+            ],
+            [
+              -0.3710076,
+              39.4979989
+            ],
+            [
+              -0.3712002,
+              39.4980453
+            ],
+            [
+              -0.3713481,
+              39.4980524
+            ],
+            [
+              -0.3714586,
+              39.4980263
+            ],
+            [
+              -0.3715638,
+              39.4979752
+            ],
+            [
+              -0.3716069,
+              39.4979431
+            ],
+            [
+              -0.3716901,
+              39.4978325
+            ],
+            [
+              -0.3725848,
+              39.4954994
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "full_id": "r5621993",
+        "osm_id": "5621993",
+        "osm_type": "relation",
+        "route": "tram",
+        "name:es": null,
+        "name:ca": null,
+        "wikipedia": "ca:Línia 6 de Metrovalència",
+        "wikidata": "Q3832664",
+        "type": "route",
+        "to": "Marítim",
+        "ref": "6",
+        "public_transport:version": "2",
+        "owner:wikidata": "Q750832",
+        "operator:wikipedia": "ca:Ferrocarrils de la Generalitat Valenciana",
+        "operator:wikidata": "Q750832",
+        "operator:short": "FGV",
+        "operator": "Ferrocarrils de la Generalitat Valenciana",
+        "network:wikipedia": "ca:Metrovalència",
+        "network:wikidata": "Q511171",
+        "network": "Metrovalencia",
+        "name": "Línia 6: Tossal del Rei => Marítim - Serrería",
+        "from": "Tossal del Rei",
+        "colour": "#8884BF",
+        "layer": null,
+        "path": null
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              -0.3277345,
+              39.4674902
+            ],
+            [
+              -0.3276974,
+              39.4675344
+            ],
+            [
+              -0.3276324,
+              39.4675774
+            ],
+            [
+              -0.3275206,
+              39.4676101
+            ],
+            [
+              -0.3274032,
+              39.4676141
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "full_id": "r5622028",
+        "osm_id": "5622028",
+        "osm_type": "relation",
+        "route": "tram",
+        "name:es": null,
+        "name:ca": null,
+        "wikipedia": "ca:Línia 6 de Metrovalència",
+        "wikidata": "Q3832664",
+        "type": "route",
+        "to": "Tossal del Rei",
+        "ref": "6",
+        "public_transport:version": "2",
+        "owner:wikidata": "Q750832",
+        "operator:wikipedia": "ca:Ferrocarrils de la Generalitat Valenciana",
+        "operator:wikidata": "Q750832",
+        "operator:short": "FGV",
+        "operator": "Ferrocarrils de la Generalitat Valenciana",
+        "network:wikipedia": "ca:Metrovalència",
+        "network:wikidata": "Q511171",
+        "network": "Metrovalencia",
+        "name": "Línia 6: Marítim => Tossal del Rei",
+        "from": "Marítim",
+        "colour": "#8884BF",
+        "layer": null,
+        "path": null
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              -0.3277345,
+              39.4674902
+            ],
+            [
+              -0.327739,
+              39.4675151
+            ],
+            [
+              -0.3277967,
+              39.4675928
+            ],
+            [
+              -0.3279804,
+              39.4676624
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "full_id": "r5622028",
+        "osm_id": "5622028",
+        "osm_type": "relation",
+        "route": "tram",
+        "name:es": null,
+        "name:ca": null,
+        "wikipedia": "ca:Línia 6 de Metrovalència",
+        "wikidata": "Q3832664",
+        "type": "route",
+        "to": "Tossal del Rei",
+        "ref": "6",
+        "public_transport:version": "2",
+        "owner:wikidata": "Q750832",
+        "operator:wikipedia": "ca:Ferrocarrils de la Generalitat Valenciana",
+        "operator:wikidata": "Q750832",
+        "operator:short": "FGV",
+        "operator": "Ferrocarrils de la Generalitat Valenciana",
+        "network:wikipedia": "ca:Metrovalència",
+        "network:wikidata": "Q511171",
+        "network": "Metrovalencia",
+        "name": "Línia 6: Marítim => Tossal del Rei",
+        "from": "Marítim",
+        "colour": "#8884BF",
+        "layer": null,
+        "path": null
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              -0.3286412,
+              39.463456
+            ],
+            [
+              -0.328326,
+              39.463445
+            ],
+            [
+              -0.3282536,
+              39.4634554
+            ],
+            [
+              -0.3281302,
+              39.4635154
+            ],
+            [
+              -0.3280873,
+              39.4635517
+            ],
+            [
+              -0.3280297,
+              39.4636383
+            ],
+            [
+              -0.3279367,
+              39.4640519
+            ],
+            [
+              -0.3278886,
+              39.4645188
+            ],
+            [
+              -0.3278827,
+              39.4649171
+            ],
+            [
+              -0.3279119,
+              39.4652772
+            ],
+            [
+              -0.3280066,
+              39.4658127
+            ],
+            [
+              -0.3280124,
+              39.4659601
+            ],
+            [
+              -0.3279979,
+              39.4660906
+            ],
+            [
+              -0.3277239,
+              39.467431
+            ],
+            [
+              -0.3277345,
+              39.4674902
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

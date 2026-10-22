@@ -1,0 +1,555 @@
+package com.example.ui.routing.components
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.DirectionsRailway
+import androidx.compose.material.icons.filled.RssFeed
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import com.example.R
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.data.model.routing.ItineraryViability
+import com.example.data.model.routing.PlannedItinerary
+import com.example.data.model.routing.PlannedLeg
+import com.example.data.model.routing.SchedulePhase
+import com.example.data.model.routing.TransitMode
+import com.example.ui.dashboard.AppLanguage
+
+import android.location.Location
+import com.example.ui.routing.PlannerLocation
+import com.example.util.TripStartEligibility
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ItineraryCard(
+    itinerary: PlannedItinerary,
+    isSelected: Boolean = false,
+    isFastest: Boolean = false,
+    onClick: () -> Unit,
+    onStartTrip: ((PlannedItinerary) -> Unit)? = null,
+    userLocation: Location? = null,
+    originLocation: PlannerLocation? = null,
+    isDarkMode: Boolean = false,
+    appLanguage: AppLanguage = AppLanguage.CA,
+    modifier: Modifier = Modifier
+) {
+    val cardBg = if (isSelected) {
+        if (isDarkMode) Color(0xFF1E2D4A) else Color(0xFFEFF6FF)
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    val cardBorder = if (isSelected) {
+        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+    } else {
+        null
+    }
+
+    Card(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("itinerary_card_${itinerary.id}"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = cardBg
+        ),
+        border = cardBorder,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Top Row: Duration & Departure/Arrival Times & Transfers Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = itinerary.formattedDuration,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    if (isFastest) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isDarkMode) Color(0xFF1B3822) else Color(0xFFE8F5E9),
+                            contentColor = if (isDarkMode) Color(0xFF81C784) else Color(0xFF1B5E20)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.itinerary_fastest_tag),
+                                tint = if (isDarkMode) Color(0xFF81C784) else Color(0xFF1B5E20),
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    .size(16.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "${itinerary.formattedDepartureTime} ➔ ${itinerary.formattedArrivalTime}",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
+
+                val transferText = when (itinerary.transfersCount) {
+                    0 -> androidx.compose.ui.res.stringResource(com.example.R.string.transfers_zero)
+                    1 -> androidx.compose.ui.res.stringResource(com.example.R.string.transfers_one)
+                    else -> androidx.compose.ui.res.stringResource(com.example.R.string.transfers_plural_format, itinerary.transfersCount)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                ) {
+                    Text(
+                        text = transferText,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            // Live GPS Real-Time / Service Alert / Programado Status Badge
+            Spacer(modifier = Modifier.height(10.dp))
+            ViabilityBadge(itinerary = itinerary, isDarkMode = isDarkMode, appLanguage = appLanguage)
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Visual Multimodal Timeline Badges
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                itinerary.legs.forEachIndexed { index, leg ->
+                    LegBadge(leg = leg, isDarkMode = isDarkMode)
+                    if (index < itinerary.legs.size - 1) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Luego",
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+
+            // Alternative connecting lines within tolerance (e.g. "También disponible: Bus 4 (+1m)")
+            if (itinerary.alternativeConnections.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DirectionsBus,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.route_also_available_header),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            itinerary.alternativeConnections.forEach { alt ->
+                                val chipColor = try {
+                                    Color(android.graphics.Color.parseColor(alt.routeColorHex))
+                                } catch (e: Exception) {
+                                    Color(0xFFDA291C)
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = chipColor,
+                                    contentColor = Color.White
+                                ) {
+                                    val deltaText = when {
+                                        alt.deltaDurationMinutes > 0 -> "+${alt.deltaDurationMinutes} min"
+                                        alt.deltaDurationMinutes < 0 -> "${alt.deltaDurationMinutes} min"
+                                        else -> androidx.compose.ui.res.stringResource(com.example.R.string.route_same_duration)
+                                    }
+                                    val modeLabel = if (alt.mode == TransitMode.TRAM) "Tranvía" else "Bus"
+                                    Text(
+                                        text = "$modeLabel ${alt.lineName} ($deltaText)",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Bottom summary footer & Start Action
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (itinerary.totalWalkDistanceMeters >= 10.0) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                            contentDescription = "A pie",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.route_walk_format, itinerary.totalWalkDistanceMeters.toInt()),
+                            style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.width(1.dp))
+                }
+
+                val canStart = onStartTrip != null && TripStartEligibility.canStartTrip(itinerary, userLocation, originLocation)
+
+                if (canStart) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF00A86B),
+                        contentColor = Color.White,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onStartTrip!!(itinerary) }
+                            .testTag("start_trip_button_${itinerary.id}")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_start_trip_short),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onClick() }
+                            .testTag("view_route_button_${itinerary.id}")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.btn_view_itinerary),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ViabilityBadge(
+    itinerary: PlannedItinerary,
+    isDarkMode: Boolean = false,
+    appLanguage: AppLanguage = AppLanguage.CA
+) {
+    if (itinerary.viability == ItineraryViability.CHECKING_REAL_TIME) {
+        val infiniteTransition = rememberInfiniteTransition(label = "skeleton_pulse")
+        val alpha by infiniteTransition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 0.85f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(800, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "skeleton_alpha"
+        )
+
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = if (isDarkMode) Color(0xFF1E2D4A).copy(alpha = alpha) else Color(0xFFEFF6FF).copy(alpha = alpha),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = alpha * 0.5f)),
+            contentColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = alpha)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = androidx.compose.ui.res.stringResource(com.example.R.string.route_checking_live),
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = alpha)
+                    ),
+                    maxLines = 1
+                )
+            }
+        }
+        return
+    }
+
+    val isLiveGps = itinerary.viability == ItineraryViability.VIABLE_ON_TIME ||
+            itinerary.legs.any { it.isRealTimeVerified && it.schedulePhase == SchedulePhase.LIVE_ACQUIRED }
+    val (bgColor, textColor, icon) = when {
+        itinerary.viability == ItineraryViability.SERVICE_ALERT -> Triple(
+            if (isDarkMode) Color(0xFF3E1E1E) else Color(0xFFFFEBEE),
+            if (isDarkMode) Color(0xFFFF8A80) else Color(0xFFB71C1C),
+            Icons.Default.Warning
+        )
+        itinerary.viability == ItineraryViability.ADJUSTED_NEXT_DEPARTURE -> Triple(
+            if (isDarkMode) Color(0xFF3E2C1E) else Color(0xFFFFF3E0),
+            if (isDarkMode) Color(0xFFFFD180) else Color(0xFFE65100),
+            Icons.Default.Schedule
+        )
+        isLiveGps -> Triple(
+            if (isDarkMode) Color(0xFF1B3822) else Color(0xFFE8F5E9),
+            if (isDarkMode) Color(0xFF81C784) else Color(0xFF1B5E20),
+            Icons.Default.RssFeed
+        )
+        else -> Triple(
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            MaterialTheme.colorScheme.onSurfaceVariant,
+            Icons.Default.Schedule
+        )
+    }
+
+    val noticeText = when {
+        !itinerary.viabilityNotice.isNullOrBlank() -> itinerary.viabilityNotice
+            ?.replace("GPS en directo: ", "")
+            ?.replace("GPS en directe: ", "")
+            ?.replace("En vivo: ", "")
+            ?.replace("En viu: ", "")
+        itinerary.activeAlerts.isNotEmpty() -> itinerary.activeAlerts.first()
+        isLiveGps -> androidx.compose.ui.res.stringResource(com.example.R.string.route_status_live_on_time)
+        itinerary.viability == ItineraryViability.ADJUSTED_NEXT_DEPARTURE -> androidx.compose.ui.res.stringResource(com.example.R.string.route_status_recalculated_live)
+        itinerary.viability == ItineraryViability.SERVICE_ALERT -> androidx.compose.ui.res.stringResource(com.example.R.string.route_status_active_alert)
+        else -> androidx.compose.ui.res.stringResource(com.example.R.string.route_status_scheduled)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = bgColor,
+        contentColor = textColor,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isLiveGps) {
+                com.example.ui.components.LiveRssFeedIcon(
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = textColor
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = textColor
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = noticeText ?: androidx.compose.ui.res.stringResource(com.example.R.string.scheduled_time_label),
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp
+                ),
+                maxLines = 2
+            )
+        }
+    }
+}
+
+private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+@Composable
+fun LegBadge(
+    leg: PlannedLeg,
+    isDarkMode: Boolean = false
+) {
+    val hexColor = com.example.util.LineColorResolver.resolveRouteColor(leg.mode, leg.routeShortName, leg.routeColorHex, leg.agencyName)
+
+    val isEmtBus = leg.mode == TransitMode.BUS && (
+        leg.agencyName?.contains("EMT", ignoreCase = true) == true ||
+        (leg.agencyName.isNullOrBlank() && !leg.routeShortName.orEmpty().let {
+            it.length >= 3 && (it.startsWith("1") || it.startsWith("2") || it.startsWith("3"))
+        })
+    )
+
+    val icon: ImageVector = when (leg.mode) {
+        TransitMode.WALK -> Icons.AutoMirrored.Filled.DirectionsWalk
+        TransitMode.BUS, TransitMode.METROBUS -> Icons.Default.DirectionsBus
+        TransitMode.SUBWAY, TransitMode.TRAM -> Icons.Default.Subway
+        TransitMode.RAIL, TransitMode.CERCANIAS -> Icons.Default.DirectionsRailway
+        TransitMode.BICYCLE, TransitMode.VALENBISI -> Icons.AutoMirrored.Filled.DirectionsWalk
+        else -> Icons.AutoMirrored.Filled.DirectionsWalk
+    }
+
+    val badgeLabel = when (leg.mode) {
+        TransitMode.WALK -> "${(leg.durationSeconds / 60).coerceAtLeast(1)} min"
+        TransitMode.BUS -> leg.routeShortName ?: "Bus"
+        TransitMode.METROBUS -> leg.routeShortName ?: "Metrobús"
+        TransitMode.SUBWAY -> if (leg.routeShortName.isNullOrBlank()) "Metro" else if (leg.routeShortName.startsWith("L")) leg.routeShortName else "L${leg.routeShortName}"
+        TransitMode.TRAM -> if (leg.routeShortName.isNullOrBlank()) "Tranvía" else if (leg.routeShortName.startsWith("L") || leg.routeShortName.startsWith("T")) leg.routeShortName else "L${leg.routeShortName}"
+        TransitMode.RAIL, TransitMode.CERCANIAS -> leg.routeShortName ?: "Rodalia"
+        TransitMode.BICYCLE, TransitMode.VALENBISI -> "Bici"
+        else -> leg.routeShortName ?: ""
+    }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = if (leg.mode == TransitMode.WALK) {
+            MaterialTheme.colorScheme.surfaceVariant
+        } else {
+            hexColor
+        },
+        contentColor = if (leg.mode == TransitMode.WALK) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            Color.White
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isEmtBus) {
+                Icon(
+                    painter = painterResource(id = R.drawable.logo_emt_valencia),
+                    contentDescription = "EMT",
+                    modifier = Modifier.size(14.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = leg.mode.displayNameEs,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = badgeLabel,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                )
+            )
+        }
+    }
+}

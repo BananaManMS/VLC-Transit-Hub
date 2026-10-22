@@ -1,0 +1,8 @@
+{
+  "name": "VLC Transit",
+  "description": "Aplicación de transporte público en tiempo real para Valencia: Metrovalencia, EMT Bus, Cercanías Renfe y MetroBus.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
