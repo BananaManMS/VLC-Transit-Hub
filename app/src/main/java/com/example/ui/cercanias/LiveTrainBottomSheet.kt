@@ -47,11 +47,13 @@ fun LiveTrainBottomSheet(
     isDarkMode: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    maxExpandedHeight: Dp = 640.dp,
+    maxExpandedHeight: Dp = 440.dp,
     sheetState: DetailSheetState = DetailSheetState.HALF_EXPANDED,
     onSheetStateChanged: (DetailSheetState) -> Unit = {},
+    dismissOnCollapse: Boolean = true,
     bottomPadding: Dp = 32.dp
 ) {
+    val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
 
     val sheetBg = if (isDarkMode) Color(0xFF171717) else Color(0xFFFAFAFA)
@@ -61,7 +63,7 @@ fun LiveTrainBottomSheet(
     // Normalize Line Info
     val cleanNum = CercaniasRouteUtils.getCanonicalLineNumber(vehicle.routeId, vehicle.tripId)
     val lineCode = "C$cleanNum"
-    val lineColor = getCercaniasLineColor(lineCode)
+    val lineColor = TransitLogoUtils.getCercaniasLineColor(lineCode)
 
     // Fallback terminals based on line
     val defaultTerminalPair = remember(lineCode) {
@@ -103,10 +105,85 @@ fun LiveTrainBottomSheet(
         else -> Triple("+$delayMin min de retraso", Color(0xFFFFEBEE), Color(0xFFC62828))
     }
 
-    val dragOffsetAnimatable = remember { Animatable(0f) }
-    var totalDragAmount by remember { mutableFloatStateOf(0f) }
+    var measuredTopContentPx by remember { mutableFloatStateOf(0f) }
+    val defaultHalfExpandedPx = with(density) { (215.dp + bottomPadding).toPx() }
+    val halfExpandedPx = if (measuredTopContentPx > 0f) {
+        measuredTopContentPx + with(density) { bottomPadding.toPx() }
+    } else {
+        defaultHalfExpandedPx
+    }
+
+    val collapsedPx = with(density) { (70.dp + bottomPadding).toPx() }
+
+    val halfExpandedDp = with(density) { halfExpandedPx.toDp() }
+    val fullyExpandedDp = (maxExpandedHeight + bottomPadding).coerceAtLeast(halfExpandedDp + 110.dp)
+    val fullyExpandedPx = with(density) { fullyExpandedDp.toPx() }
+
+    val heightAnimatable = remember {
+        Animatable(
+            when (sheetState) {
+                DetailSheetState.COLLAPSED -> collapsedPx
+                DetailSheetState.HALF_EXPANDED -> halfExpandedPx
+                DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
+            }
+        )
+    }
+
+    LaunchedEffect(sheetState, collapsedPx, halfExpandedPx, fullyExpandedPx) {
+        val target = when (sheetState) {
+            DetailSheetState.COLLAPSED -> collapsedPx
+            DetailSheetState.HALF_EXPANDED -> halfExpandedPx
+            DetailSheetState.FULLY_EXPANDED -> fullyExpandedPx
+        }
+        if (kotlin.math.abs(heightAnimatable.value - target) > 1f && heightAnimatable.targetValue != target) {
+            heightAnimatable.animateTo(
+                targetValue = target,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            )
+        }
+    }
+
+    val currentHeightPx = heightAnimatable.value
+    val panelHeight = with(density) { currentHeightPx.toDp() }
 
     val scrollState = rememberScrollState()
+
+    val controller = remember(collapsedPx, halfExpandedPx, fullyExpandedPx, sheetState, dismissOnCollapse) {
+        BottomSheetDragScrollController(
+            heightAnimatable = heightAnimatable,
+            collapsedPx = collapsedPx,
+            halfExpandedPx = halfExpandedPx,
+            fullyExpandedPx = fullyExpandedPx,
+            dismissOnCollapse = dismissOnCollapse,
+            onSheetStateChanged = onSheetStateChanged,
+            onDismiss = onDismiss,
+            coroutineScope = coroutineScope
+        )
+    }
+
+    val nestedScrollConnection = remember(controller) {
+        controller.createNestedScrollConnection {
+            scrollState.value == 0
+        }
+    }
+    val headerDragModifier = remember(controller) {
+        controller.createHeaderDragModifier()
+    }
+
+    LaunchedEffect(scrollState.isScrollInProgress) {
+        if (!scrollState.isScrollInProgress && !heightAnimatable.isRunning) {
+            val currentHeight = heightAnimatable.value
+            val isStable = kotlin.math.abs(currentHeight - collapsedPx) < 2f ||
+                           kotlin.math.abs(currentHeight - halfExpandedPx) < 2f ||
+                           kotlin.math.abs(currentHeight - fullyExpandedPx) < 2f
+            if (!isStable && currentHeight > 0f) {
+                controller.settleSheetState(0f)
+            }
+        }
+    }
 
     Surface(
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -115,215 +192,199 @@ fun LiveTrainBottomSheet(
         modifier = modifier
             .fillMaxWidth()
             .widthIn(max = 640.dp)
-            .wrapContentHeight()
-            .offset {
-                IntOffset(0, dragOffsetAnimatable.value.roundToInt().coerceAtLeast(0))
-            }
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragStart = { totalDragAmount = 0f },
-                    onDragEnd = {
-                        val currentOffset = dragOffsetAnimatable.value
-                        if (currentOffset > 80f || totalDragAmount > 50f) {
-                            onDismiss()
-                        } else {
-                            coroutineScope.launch {
-                                dragOffsetAnimatable.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                        stiffness = Spring.StiffnessMedium
-                                    )
-                                )
-                            }
-                        }
-                    },
-                    onVerticalDrag = { change, dragAmount ->
-                        if (dragAmount > 0 || dragOffsetAnimatable.value > 0) {
-                            change.consume()
-                            totalDragAmount += dragAmount
-                            coroutineScope.launch {
-                                val newOffset = (dragOffsetAnimatable.value + dragAmount).coerceAtLeast(0f)
-                                dragOffsetAnimatable.snapTo(newOffset)
-                            }
-                        }
-                    }
-                )
-            }
+            .height(panelHeight)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(scrollState)
-                .navigationBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 18.dp + bottomPadding)
+                .fillMaxSize()
+                .nestedScroll(nestedScrollConnection)
         ) {
-            // Drag handle decoration
-            Box(
+            // Top Preview Section (Draggable header, status pill, and telemetry cards)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 6.dp),
-                contentAlignment = Alignment.Center
+                    .onSizeChanged { measuredTopContentPx = it.height.toFloat() }
+                    .then(headerDragModifier)
             ) {
+                // Drag handle decoration
                 Box(
                     modifier = Modifier
-                        .width(36.dp)
-                        .height(4.dp)
-                        .clip(CircleShape)
-                        .background(if (isDarkMode) Color(0xFF475569) else Color(0xFFCBD5E1))
-                )
-            }
-
-            // Header Row: Official Line Badge, Train Info, Close Button
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.weight(1f)
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 6.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    CercaniasLineBadge(
-                        routeId = lineCode,
-                        size = 40.dp
+                    Box(
+                        modifier = Modifier
+                            .width(36.dp)
+                            .height(4.dp)
+                            .clip(CircleShape)
+                            .background(if (isDarkMode) Color(0xFF475569) else Color(0xFFCBD5E1))
                     )
+                }
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        val displayTrainNum = remember(vehicle) {
-                            CercaniasRouteUtils.getEffectiveTrainNumber(vehicle.trainNum, vehicle.tripId)
-                        }
-                        Text(
-                            text = if (displayTrainNum.isNotBlank()) "Tren $displayTrainNum" else "Cercanías $lineCode",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = sheetTextColor
+                // Header Row: Official Line Badge, Train Info, Close Button
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        CercaniasLineBadge(
+                            routeId = lineCode,
+                            size = 40.dp
                         )
-                        Text(
-                            text = "$resolvedOrigin ➔ $resolvedDest",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = sheetTextColor.copy(alpha = 0.9f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            val displayTrainNum = remember(vehicle) {
+                                CercaniasRouteUtils.getEffectiveTrainNumber(vehicle.trainNum, vehicle.tripId)
+                            }
+                            Text(
+                                text = if (displayTrainNum.isNotBlank()) "Tren $displayTrainNum" else "Cercanías $lineCode",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = sheetTextColor
+                            )
+                            Text(
+                                text = "$resolvedOrigin ➔ $resolvedDest",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = sheetTextColor.copy(alpha = 0.9f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
+                            tint = sheetTextColor
                         )
                     }
                 }
 
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.size(48.dp)
+                // Delay Status Pill
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = statusBgColor,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
-                        tint = sheetTextColor
-                    )
-                }
-            }
-
-            // Delay Status Pill
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = statusBgColor,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_title),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = statusTextColor,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = statusTextColor,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Telemetry Grid Cards
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Platform / Vía Card
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isDarkMode) Color(0xFF262626) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "VÍA / ANDÉN",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = sheetSubtextColor
+                            text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = statusTextColor,
+                            fontWeight = FontWeight.Medium
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (vehicle.platform.isNotBlank()) "Vía ${vehicle.platform}" else "Por asignar",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            text = statusText,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = statusTextColor,
+                            fontWeight = FontWeight.Bold
                         )
-                        if (vehicle.nextPlatform.isNotBlank()) {
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Telemetry Grid Cards
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Platform / Vía Card
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDarkMode) Color(0xFF262626) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
                             Text(
-                                text = "Siguiente: Vía ${vehicle.nextPlatform}",
-                                style = MaterialTheme.typography.bodySmall,
+                                text = "VÍA / ANDÉN",
+                                style = MaterialTheme.typography.labelSmall,
                                 color = sheetSubtextColor
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (vehicle.platform.isNotBlank()) "Vía ${vehicle.platform}" else "Por asignar",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (vehicle.nextPlatform.isNotBlank()) {
+                                Text(
+                                    text = "Siguiente: Vía ${vehicle.nextPlatform}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = sheetSubtextColor
+                                )
+                            }
+                        }
+                    }
+
+                    // Circulation Status Card
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDarkMode) Color(0xFF262626) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Text(
+                                text = "CIRCULACIÓN",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = sheetSubtextColor
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            val statusDesc = when (vehicle.status) {
+                                "STOPPED_AT" -> "Parado en estación"
+                                "INCOMING_AT" -> "Llegando a estación"
+                                else -> "En trayecto"
+                            }
+                            Text(
+                                text = statusDesc,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = sheetTextColor
                             )
                         }
                     }
                 }
 
-                // Circulation Status Card
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isDarkMode) Color(0xFF262626) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
-                    ) {
-                        Text(
-                            text = "CIRCULACIÓN",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = sheetSubtextColor
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val statusDesc = when (vehicle.status) {
-                            "STOPPED_AT" -> "Parado en estación"
-                            "INCOMING_AT" -> "Llegando a estación"
-                            else -> "En trayecto"
-                        }
-                        Text(
-                            text = statusDesc,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = sheetTextColor
-                        )
-                    }
-                }
+                Spacer(modifier = Modifier.height(10.dp))
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Progress Timeline Stepper
+            // Scrollable Content (Seguimiento en tiempo real)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(scrollState)
+                    .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 18.dp + bottomPadding)
+            ) {
+                // Progress Timeline Stepper
             Text(
                 text = "Seguimiento en tiempo real",
                 style = MaterialTheme.typography.titleSmall,
@@ -402,7 +463,7 @@ fun LiveTrainBottomSheet(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             if (vehicle.nextArrivalTime.isNotBlank()) {
-                                val formattedArrivalTime = formatEstimatedArrivalTime(vehicle.nextArrivalTime)
+                                val formattedArrivalTime = LiveTrainFormatUtils.formatEstimatedArrivalTime(vehicle.nextArrivalTime)
                                 Text(
                                     text = "Llegada estimada: $formattedArrivalTime",
                                     style = MaterialTheme.typography.bodySmall,
@@ -416,56 +477,4 @@ fun LiveTrainBottomSheet(
         }
     }
 }
-
-fun formatEstimatedArrivalTime(rawTime: String): String {
-    if (rawTime.isBlank()) return ""
-    val trimmed = rawTime.trim()
-
-    // 1. Numeric timestamp in epoch seconds or milliseconds
-    val numericTs = trimmed.toLongOrNull()
-    if (numericTs != null && numericTs > 1_000_000_000L) {
-        val millis = if (numericTs < 10_000_000_000L) numericTs * 1000L else numericTs
-        val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).apply {
-            timeZone = java.util.TimeZone.getTimeZone("Europe/Madrid")
-        }
-        return sdf.format(java.util.Date(millis))
-    }
-
-    // 2. Extract the time part after 'T' or space if date prefix is present
-    val timePart = when {
-        trimmed.contains("T", ignoreCase = true) -> trimmed.split(Regex("(?i)T")).getOrNull(1) ?: trimmed
-        trimmed.contains(" ") -> trimmed.split(" ").getOrNull(1) ?: trimmed
-        else -> trimmed
-    }.trim()
-
-    // 3. Match HH.mm or HH:mm with regex, capturing 1-2 hour digits, separator (dot or colon), and 2 minute digits
-    val match = Regex("""^(\d{1,2})[.:](\d{2})(?:[.:]\d{2})?""").find(timePart)
-    if (match != null) {
-        val (h, m) = match.destructured
-        val hh = h.padStart(2, '0')
-        return "$hh:$m"
-    }
-
-    // 4. Fallback search anywhere in timePart for hours and minutes separated by dot or colon
-    val matchAnywhere = Regex("""(\d{1,2})[.:](\d{2})""").find(timePart)
-    if (matchAnywhere != null) {
-        val (h, m) = matchAnywhere.destructured
-        val hh = h.padStart(2, '0')
-        return "$hh:$m"
-    }
-
-    return trimmed
-}
-
-private fun getCercaniasLineColor(lineCode: String): Color {
-    val clean = lineCode.uppercase().replace("C-", "").replace("C_", "").replace("C", "").trim()
-    return when (clean) {
-        "1", "10" -> Color(0xFF00A3E0) // Cyan (C1)
-        "2", "20" -> Color(0xFFFF6A00) // Orange (C2)
-        "3", "30" -> Color(0xFF7A287B) // Purple (C3)
-        "4", "40" -> Color(0xFFE52321) // Red (C4)
-        "5", "50" -> Color(0xFF009639) // Green (C5)
-        "6", "60" -> Color(0xFF002F6C) // Dark Blue (C6)
-        else -> Color(0xFF00A3E0)
-    }
 }

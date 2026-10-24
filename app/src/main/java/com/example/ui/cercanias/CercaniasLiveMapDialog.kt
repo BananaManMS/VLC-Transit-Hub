@@ -691,7 +691,7 @@ fun CercaniasLiveMapDialog(
                         isFavorite = isFavorite,
                         onToggleFavorite = { viewModel.toggleFavoriteCercaniasStation(station.stop_id) },
                         onDismiss = { selectedStationEntity = null },
-                        maxExpandedHeight = 440.dp,
+                        maxExpandedHeight = 620.dp,
                         sheetState = stationSheetState,
                         onSheetStateChanged = { stationSheetState = it },
                         dismissOnCollapse = true,
@@ -727,9 +727,11 @@ fun CercaniasLiveMapDialog(
                         stationNameMap = stationNameMap,
                         isDarkMode = isDarkMode,
                         onDismiss = { selectedTrainVehicle = null },
+                        maxExpandedHeight = 440.dp,
                         sheetState = trainSheetState,
                         onSheetStateChanged = { trainSheetState = it },
-                        bottomPadding = bottomPadding + 20.dp,
+                        dismissOnCollapse = true,
+                        bottomPadding = bottomPadding,
                         modifier = Modifier.align(Alignment.BottomCenter)
                     )
                 }
