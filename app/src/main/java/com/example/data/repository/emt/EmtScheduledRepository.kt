@@ -109,7 +109,7 @@ class EmtScheduledRepository(private val context: Context) {
                     timeZone = MADRID_ZONE
                 }.format(cal.time)
 
-                val isoDay = when (cal.get(Calendar.DAY_OF_WEEK)) {
+                val todayIsoDay = when (cal.get(Calendar.DAY_OF_WEEK)) {
                     Calendar.MONDAY -> 1
                     Calendar.TUESDAY -> 2
                     Calendar.WEDNESDAY -> 3
@@ -120,60 +120,160 @@ class EmtScheduledRepository(private val context: Context) {
                     else -> 1
                 }
 
-                val currentMinuteOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+                val calYesterday = Calendar.getInstance(MADRID_ZONE).apply {
+                    timeInMillis = cal.timeInMillis
+                    add(Calendar.DAY_OF_YEAR, -1)
+                }
+                val yesterdayYmd = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
+                    timeZone = MADRID_ZONE
+                }.format(calYesterday.time)
+
+                val yesterdayIsoDay = when (calYesterday.get(Calendar.DAY_OF_WEEK)) {
+                    Calendar.MONDAY -> 1
+                    Calendar.TUESDAY -> 2
+                    Calendar.WEDNESDAY -> 3
+                    Calendar.THURSDAY -> 4
+                    Calendar.FRIDAY -> 5
+                    Calendar.SATURDAY -> 6
+                    Calendar.SUNDAY -> 7
+                    else -> 1
+                }
+
+                val currentHour = cal.get(Calendar.HOUR_OF_DAY)
+                val currentMinuteOfDay = currentHour * 60 + cal.get(Calendar.MINUTE)
                 val currentSecond = cal.get(Calendar.SECOND)
+
+                fun isApplicable(schObj: JSONObject, ymd: String, isoDay: Int): Boolean {
+                    val datesArr = schObj.optJSONArray("dates")
+                    val daysArr = schObj.optJSONArray("days")
+                    if (datesArr != null && datesArr.length() > 0) {
+                        for (d in 0 until datesArr.length()) {
+                            if (datesArr.optString(d) == ymd) return true
+                        }
+                        return false
+                    }
+                    if (daysArr != null && daysArr.length() > 0) {
+                        for (d in 0 until daysArr.length()) {
+                            if (daysArr.optInt(d) == isoDay) return true
+                        }
+                        return false
+                    }
+                    return false
+                }
+
+                data class EmtScheduledCandidate(
+                    val line: String,
+                    val dest: String,
+                    val diffMinutes: Int,
+                    val secondsRemaining: Int,
+                    val formattedTime: String
+                )
+                val candidates = mutableListOf<EmtScheduledCandidate>()
 
                 for (i in 0 until schedules.length()) {
                     val schObj = schedules.optJSONObject(i) ?: continue
                     val line = schObj.optString("line", "").trim()
                     val dest = schObj.optString("dest", "").trim()
+                    if (line.isBlank()) continue
 
-                    // Check date/day validity
-                    val datesArr = schObj.optJSONArray("dates")
-                    val daysArr = schObj.optJSONArray("days")
-
-                    var isApplicable = false
-                    if (datesArr != null && datesArr.length() > 0) {
-                        for (d in 0 until datesArr.length()) {
-                            if (datesArr.optString(d) == todayYmd) {
-                                isApplicable = true
-                                break
-                            }
-                        }
-                    } else if (daysArr != null && daysArr.length() > 0) {
-                        for (d in 0 until daysArr.length()) {
-                            if (daysArr.optInt(d) == isoDay) {
-                                isApplicable = true
-                                break
-                            }
-                        }
-                    }
-
-                    if (!isApplicable) continue
+                    val isYesterday = isApplicable(schObj, yesterdayYmd, yesterdayIsoDay)
+                    val isToday = isApplicable(schObj, todayYmd, todayIsoDay)
+                    if (!isYesterday && !isToday) continue
 
                     val timesArr = schObj.optJSONArray("times") ?: JSONArray()
-                    val upcomingTimes = mutableListOf<Int>()
-                    for (t in 0 until timesArr.length()) {
-                        val timeMin = timesArr.optInt(t, -1)
-                        if (timeMin >= currentMinuteOfDay) {
-                            upcomingTimes.add(timeMin)
+
+                    if (currentHour < 6) {
+                        // Early morning query (00:00 - 05:59):
+                        // 1) Late night departures from yesterday's service day (e.g. 24:30, 25:15 -> 00:30, 01:15 today)
+                        if (isYesterday) {
+                            for (t in 0 until timesArr.length()) {
+                                val rawMin = timesArr.optInt(t, -1)
+                                if (rawMin >= 1440) {
+                                    val effTodayMin = rawMin - 1440
+                                    if (effTodayMin >= currentMinuteOfDay - 2) {
+                                        val diffMin = effTodayMin - currentMinuteOfDay
+                                        val sec = (diffMin * 60) - currentSecond
+                                        val hh = (effTodayMin / 60) % 24
+                                        val mm = effTodayMin % 60
+                                        val formatted = String.format(Locale.ROOT, "%02d:%02d", hh, mm)
+                                        candidates.add(
+                                            EmtScheduledCandidate(
+                                                line = line,
+                                                dest = dest,
+                                                diffMinutes = diffMin,
+                                                secondsRemaining = sec.coerceAtLeast(0),
+                                                formattedTime = formatted
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        // 2) Today's morning departures starting today (rawMin < 1440)
+                        if (isToday) {
+                            for (t in 0 until timesArr.length()) {
+                                val rawMin = timesArr.optInt(t, -1)
+                                if (rawMin in 0 until 1440) {
+                                    if (rawMin >= currentMinuteOfDay - 2) {
+                                        val diffMin = rawMin - currentMinuteOfDay
+                                        val sec = (diffMin * 60) - currentSecond
+                                        val hh = (rawMin / 60) % 24
+                                        val mm = rawMin % 60
+                                        val formatted = String.format(Locale.ROOT, "%02d:%02d", hh, mm)
+                                        candidates.add(
+                                            EmtScheduledCandidate(
+                                                line = line,
+                                                dest = dest,
+                                                diffMinutes = diffMin,
+                                                secondsRemaining = sec.coerceAtLeast(0),
+                                                formattedTime = formatted
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Daytime / evening query (06:00 - 23:59):
+                        if (isToday) {
+                            for (t in 0 until timesArr.length()) {
+                                val rawMin = timesArr.optInt(t, -1)
+                                if (rawMin >= currentMinuteOfDay - 2) {
+                                    val diffMin = rawMin - currentMinuteOfDay
+                                    val sec = (diffMin * 60) - currentSecond
+                                    val effMin = if (rawMin >= 1440) rawMin - 1440 else rawMin
+                                    val hh = (effMin / 60) % 24
+                                    val mm = effMin % 60
+                                    val formatted = String.format(Locale.ROOT, "%02d:%02d", hh, mm)
+                                    candidates.add(
+                                        EmtScheduledCandidate(
+                                            line = line,
+                                            dest = dest,
+                                            diffMinutes = diffMin,
+                                            secondsRemaining = sec.coerceAtLeast(0),
+                                            formattedTime = formatted
+                                        )
+                                    )
+                                }
+                            }
                         }
                     }
+                }
 
-                    upcomingTimes.take(limitPerLine).forEach { timeMin ->
-                        val diffMinutes = timeMin - currentMinuteOfDay
-                        val secondsRemaining = (diffMinutes * 60) - currentSecond
-                        val hh = (timeMin / 60) % 24
-                        val mm = timeMin % 60
-                        val formattedTime = String.format(Locale.ROOT, "%02d:%02d", hh, mm)
+                val uniqueCandidates = candidates
+                    .distinctBy { "${it.line}__${it.dest}__${it.formattedTime}" }
+                    .sortedWith(compareBy({ it.diffMinutes }, { it.line }))
 
+                val grouped = uniqueCandidates.groupBy { "${it.line}__${it.dest}" }
+                grouped.forEach { (_, depList) ->
+                    depList.take(limitPerLine).forEach { cand ->
                         results.add(
                             EmtBusTime(
-                                linea = line,
-                                destino = dest,
-                                minutos = if (diffMinutes <= 0) "1" else diffMinutes.toString(),
-                                horaLlegada = formattedTime,
-                                secondsRemaining = secondsRemaining.coerceAtLeast(0),
+                                linea = cand.line,
+                                destino = cand.dest,
+                                minutos = if (cand.diffMinutes <= 0) "1" else cand.diffMinutes.toString(),
+                                horaLlegada = cand.formattedTime,
+                                secondsRemaining = cand.secondsRemaining,
                                 isRealTime = false
                             )
                         )

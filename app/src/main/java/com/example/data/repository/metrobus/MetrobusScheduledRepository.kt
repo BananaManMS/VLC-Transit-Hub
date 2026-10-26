@@ -89,19 +89,50 @@ class MetrobusScheduledRepository(private val context: Context) {
 
                                     val direction = depObj.optString("direction", "València").trim()
 
-                                    val depTotalMin = hourInt * 60 + minuteInt
-                                    val diffMin = depTotalMin - currentTotalMin
+                                    val normalizedHour = hourInt % 24
+                                    val formattedTime = String.format(Locale.ROOT, "%02d:%02d", normalizedHour, minuteInt)
 
-                                    if (diffMin >= 0) {
-                                        val secondsRemaining = (diffMin * 60) - currentSecond
-                                        val formattedTime = String.format(Locale.ROOT, "%02d:%02d", hourInt, minuteInt)
+                                    val diffMin: Int = if (currentHour < 6) {
+                                        // Early morning query (00:00 - 05:59):
+                                        if (hourInt >= 24) {
+                                            // Late night service from yesterday's service day (e.g. 24:30 -> 00:30, 25:15 -> 01:15, 27:30 -> 03:30)
+                                            val effTodayMin = (hourInt - 24) * 60 + minuteInt
+                                            effTodayMin - currentTotalMin
+                                        } else if (hourInt < 6) {
+                                            // Early morning departures of today (00:00 - 05:59)
+                                            val effTodayMin = hourInt * 60 + minuteInt
+                                            effTodayMin - currentTotalMin
+                                        } else {
+                                            // Departures later today (06:00 - 23:59)
+                                            val effTodayMin = hourInt * 60 + minuteInt
+                                            effTodayMin - currentTotalMin
+                                        }
+                                    } else {
+                                        // Daytime / evening query (06:00 - 23:59):
+                                        if (hourInt >= 24) {
+                                            // Late night service tonight after midnight (e.g. 24:15, 25:00)
+                                            val depTotalMin = hourInt * 60 + minuteInt
+                                            depTotalMin - currentTotalMin
+                                        } else if (currentHour >= 20 && hourInt < 6) {
+                                            // Late night departures after midnight encoded as 0, 1, 2...
+                                            val depTotalMin = (hourInt + 24) * 60 + minuteInt
+                                            depTotalMin - currentTotalMin
+                                        } else {
+                                            val depTotalMin = hourInt * 60 + minuteInt
+                                            depTotalMin - currentTotalMin
+                                        }
+                                    }
+
+                                    if (diffMin >= -2) {
+                                        val safeDiffMin = diffMin.coerceAtLeast(0)
+                                        val secondsRemaining = (safeDiffMin * 60) - currentSecond
 
                                         list.add(
                                             MetrobusDepartureUiModel(
                                                 lineCode = lineCode,
                                                 lineName = "Línea $lineCode",
                                                 destination = direction,
-                                                minutesRemaining = diffMin,
+                                                minutesRemaining = safeDiffMin,
                                                 timeLabel = formattedTime,
                                                 departureTime = formattedTime,
                                                 routeColor = "#FBC02D",
@@ -122,6 +153,8 @@ class MetrobusScheduledRepository(private val context: Context) {
                 Log.w(TAG, "Error fetching scheduled departures from remote API for stop $stopId: ${e.message}")
             }
             return list
+                .distinctBy { "${it.lineCode}__${it.destination}__${it.departureTime}" }
+                .sortedBy { it.minutesRemaining }
         }
     }
 }

@@ -1,9 +1,12 @@
 package com.example.ui.transit
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import com.example.ui.components.shimmerEffect
 import androidx.compose.material3.Card
@@ -103,14 +107,30 @@ fun UnifiedTransitDepartureCard(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    if (departure.isRealTime && departure.formattedEstimatedTime.isNotBlank()) {
-                        Text(
-                            text = "~${departure.formattedEstimatedTime}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = subtextColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    val showEstimatedTime = departure.isRealTime && departure.formattedEstimatedTime.isNotBlank()
+                    val showOccupancy = departure.occupancy.isNotBlank()
+
+                    if (showEstimatedTime || showOccupancy) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (showEstimatedTime) {
+                                Text(
+                                    text = "~${departure.formattedEstimatedTime}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = subtextColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (showOccupancy) {
+                                OccupancyIndicator(
+                                    occupancy = departure.occupancy,
+                                    isDarkMode = isDarkMode
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -264,4 +284,88 @@ fun UnifiedDepartureCardSkeleton(
         }
     }
 }
+
+@Composable
+private fun OccupancyIndicator(
+    occupancy: String,
+    isDarkMode: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val clean = occupancy.trim().lowercase()
+    val level = when {
+        clean.contains("baja") || clean.contains("low") || clean.contains("1") -> 1
+        clean.contains("alta") || clean.contains("high") || clean.contains("3") -> 3
+        clean.contains("media") || clean.contains("medium") || clean.contains("2") -> 2
+        else -> 1
+    }
+
+    val activeColor = when (level) {
+        1 -> if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669)
+        2 -> if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706)
+        else -> if (isDarkMode) Color(0xFFF87171) else Color(0xFFDC2626)
+    }
+
+    val dimmedColor = if (isDarkMode) {
+        Color.White.copy(alpha = 0.22f)
+    } else {
+        Color.Black.copy(alpha = 0.16f)
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = modifier
+    ) {
+        for (i in 1..3) {
+            val tint = if (i <= level) activeColor else dimmedColor
+            PassengerSilhouette(tint = tint)
+        }
+    }
+}
+
+/**
+ * Sleek, delicately proportioned passenger silhouette drawn directly via Canvas.
+ * Eliminates standard Material icon internal padding to enable crisp, tight spacing without enclosing surfaces.
+ */
+@Composable
+private fun PassengerSilhouette(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.size(width = 8.dp, height = 12.dp)) {
+        val w = size.width
+        val h = size.height
+
+        // Head circle
+        val headRadius = w * 0.28f
+        drawCircle(
+            color = tint,
+            radius = headRadius,
+            center = Offset(w / 2f, headRadius)
+        )
+
+        // Torso with soft curved shoulders and rounded base
+        val bodyTop = (headRadius * 2f) + 1.2.dp.toPx()
+        val left = 0.5.dp.toPx()
+        val right = w - 0.5.dp.toPx()
+        val shoulderRadius = (right - left) * 0.35f
+        val bottomRadius = 0.8.dp.toPx()
+
+        val path = Path().apply {
+            moveTo(left, h - bottomRadius)
+            lineTo(left, bodyTop + shoulderRadius)
+            quadraticBezierTo(left, bodyTop, left + shoulderRadius, bodyTop)
+            lineTo(right - shoulderRadius, bodyTop)
+            quadraticBezierTo(right, bodyTop, right, bodyTop + shoulderRadius)
+            lineTo(right, h - bottomRadius)
+            quadraticBezierTo(right, h, right - bottomRadius, h)
+            lineTo(left + bottomRadius, h)
+            quadraticBezierTo(left, h, left, h - bottomRadius)
+            close()
+        }
+        drawPath(path = path, color = tint)
+    }
+}
+
+
 

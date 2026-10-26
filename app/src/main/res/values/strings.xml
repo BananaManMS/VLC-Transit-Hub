@@ -792,7 +792,7 @@
     <string name="update_status_up_to_date">Tienes instalada la versión más reciente (v%1$s).</string>
     <string name="update_status_available">Nueva versión disponible: v%1$s</string>
     <string name="update_btn_download_install">Descargar e instalar</string>
-    <string name="update_btn_install">Instalar actualización</string>
+    <string name="update_btn_install">Actualizar</string>
     <string name="update_downloading_progress">Descargando actualización: %1$d%% (%2$s de %3$s)</string>
     <string name="update_downloading_title">Descargando actualización...</string>
     <string name="update_ready_title">Actualización lista</string>

@@ -1,6 +1,12 @@
 package com.example.ui.dashboard
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,13 +15,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.DirectionsRailway
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Subway
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -81,6 +93,12 @@ fun PreferredTransitModesCard(
     isDarkMode: Boolean,
     modifier: Modifier = Modifier
 ) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "expand_rotation"
+    )
+
     val context = LocalContext.current
     val isCa = appLanguage == AppLanguage.CA
     val cardBg = if (isDarkMode) Color(0xFF1E222B) else MaterialTheme.colorScheme.surface
@@ -113,11 +131,13 @@ fun PreferredTransitModesCard(
         elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkMode) 0.dp else 1.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Header Row
+            // Header Row (Clickable to expand/collapse)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .testTag("preferred_transit_modes_header"),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -171,83 +191,106 @@ fun PreferredTransitModesCard(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) {
+                        if (isCa) "Plegar" else "Colapsar"
+                    } else {
+                        if (isCa) "Desplegar" else "Desplegar"
+                    },
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(rotation)
+                )
             }
 
-            HorizontalDivider(
-                modifier = Modifier.fillMaxWidth(),
-                thickness = 0.8.dp,
-                color = dividerColor
-            )
-
-            // Compact, Indented List of Transit Modes (Hierarchy established by start padding)
-            ALL_TRANSIT_MODES.forEachIndexed { index, option ->
-                val isSelected = preferredModes.contains(option.code)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { handleToggle(option.code) }
-                        .padding(start = 28.dp, end = 16.dp, top = 6.dp, bottom = 6.dp)
-                        .testTag("chip_mode_${option.code.lowercase()}"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Operator Icon Badge
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (isSelected) option.brandColor.copy(alpha = if (isDarkMode) 0.20f else 0.12f)
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = option.icon,
-                            contentDescription = null,
-                            tint = if (isSelected) option.brandColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    // Operator Name (single line, space saving)
-                    Text(
-                        text = if (isCa) option.labelCa else option.labelEs,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontFamily = SpaceGroteskFontFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // Switch control
-                    Switch(
-                        checked = isSelected,
-                        onCheckedChange = { handleToggle(option.code) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = option.brandColor
-                        )
-                    )
-                }
-
-                if (index < ALL_TRANSIT_MODES.size - 1) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     HorizontalDivider(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 70.dp, end = 16.dp),
-                        thickness = 0.5.dp,
+                        modifier = Modifier.fillMaxWidth(),
+                        thickness = 0.8.dp,
                         color = dividerColor
                     )
+
+                    // Compact, Indented List of Transit Modes (Hierarchy established by start padding)
+                    ALL_TRANSIT_MODES.forEachIndexed { index, option ->
+                        val isSelected = preferredModes.contains(option.code)
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { handleToggle(option.code) }
+                                .padding(start = 28.dp, end = 16.dp, top = 6.dp, bottom = 6.dp)
+                                .testTag("chip_mode_${option.code.lowercase()}"),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Operator Icon Badge
+                            Box(
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (isSelected) option.brandColor.copy(alpha = if (isDarkMode) 0.20f else 0.12f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = option.icon,
+                                    contentDescription = null,
+                                    tint = if (isSelected) option.brandColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            // Operator Name (single line, space saving)
+                            Text(
+                                text = if (isCa) option.labelCa else option.labelEs,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontFamily = SpaceGroteskFontFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            // Switch control
+                            Switch(
+                                checked = isSelected,
+                                onCheckedChange = { handleToggle(option.code) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = option.brandColor
+                                )
+                            )
+                        }
+
+                        if (index < ALL_TRANSIT_MODES.size - 1) {
+                            HorizontalDivider(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 70.dp, end = 16.dp),
+                                thickness = 0.5.dp,
+                                color = dividerColor
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 }

@@ -270,7 +270,7 @@ fun AppUpdateDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
+                .fillMaxWidth(0.96f)
                 .clip(RoundedCornerShape(20.dp)),
             color = surfaceColor,
             tonalElevation = 6.dp

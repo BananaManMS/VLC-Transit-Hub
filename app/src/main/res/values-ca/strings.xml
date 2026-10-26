@@ -792,7 +792,7 @@
     <string name="update_status_up_to_date">Tens instal·lada la versió més recent (v%1$s).</string>
     <string name="update_status_available">Nova versió disponible: v%1$s</string>
     <string name="update_btn_download_install">Descarregar i instal·lar</string>
-    <string name="update_btn_install">Instal·lar actualització</string>
+    <string name="update_btn_install">Actualitzar</string>
     <string name="update_downloading_progress">Descarregant actualització: %1$d%% (%2$s de %3$s)</string>
     <string name="update_downloading_title">Descarregant actualització...</string>
     <string name="update_ready_title">Actualització llesta</string>
