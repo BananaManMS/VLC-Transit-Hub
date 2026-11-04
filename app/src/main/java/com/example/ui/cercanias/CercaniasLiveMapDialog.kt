@@ -84,6 +84,10 @@ fun CercaniasLiveMapDialog(
     val isMapLoading by viewModel.isLiveMapLoading.collectAsState()
     val favoriteStations by viewModel.cercaniasFavoriteStations.collectAsState()
     val allStations by viewModel.allCercaniasStations.collectAsState()
+    val mapEngine by viewModel.mapEngine.collectAsState()
+
+    var gmapsRecenterTrigger by remember { mutableStateOf(0) }
+    var gmapsTarget by remember { mutableStateOf<com.google.android.gms.maps.model.LatLng?>(null) }
 
         // Setup local state for bottom sheet selections
         var selectedStationEntity by remember { mutableStateOf<CercaniasStationEntity?>(null) }
@@ -377,12 +381,40 @@ fun CercaniasLiveMapDialog(
                 }
             }
 
-            // Bind native osmdroid MapView to lifecycle with empty update block to prevent recomposition overhead
-            AndroidView(
-                factory = { mapView },
-                update = { /* Empty to completely prevent lag-inducing recompositions */ },
-                modifier = Modifier.fillMaxSize()
-            )
+            // Map View Selection (Google Maps vs OSMdroid)
+            if (mapEngine == com.example.ui.map.MapEngine.GOOGLE_MAPS) {
+                val favoriteStationIds = remember(favoriteStations) { favoriteStations.map { it.stop_id }.toSet() }
+                CercaniasGoogleMapView(
+                    modifier = Modifier.fillMaxSize(),
+                    isDarkMode = isDarkMode,
+                    stations = stationsList,
+                    favoriteStationIds = favoriteStationIds,
+                    liveTrains = liveTrains,
+                    selectedStation = selectedStationEntity,
+                    selectedTrain = selectedTrainVehicle,
+                    cameraAnimTrigger = gmapsRecenterTrigger,
+                    cameraTarget = gmapsTarget,
+                    onStationClick = { station ->
+                        selectedTrainVehicle = null
+                        selectedStationEntity = station
+                    },
+                    onTrainClick = { vehicle ->
+                        selectedStationEntity = null
+                        selectedTrainVehicle = vehicle
+                    },
+                    onMapClick = {
+                        selectedStationEntity = null
+                        selectedTrainVehicle = null
+                    }
+                )
+            } else {
+                // Bind native osmdroid MapView to lifecycle with empty update block to prevent recomposition overhead
+                AndroidView(
+                    factory = { mapView },
+                    update = { /* Empty to completely prevent lag-inducing recompositions */ },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
             // Top status-bar gradient scrim matching MapScreen.kt EXACTLY
             Box(
@@ -434,12 +466,17 @@ fun CercaniasLiveMapDialog(
                     IconButton(
                         onClick = {
                             val loc = viewModel.lastLocation.value
-                            if (loc != null) {
-                                mapView.controller.animateTo(GeoPoint(loc.first, loc.second))
-                                mapView.controller.setZoom(14.5)
+                            if (mapEngine == com.example.ui.map.MapEngine.GOOGLE_MAPS) {
+                                gmapsTarget = if (loc != null) com.google.android.gms.maps.model.LatLng(loc.first, loc.second) else com.google.android.gms.maps.model.LatLng(39.46975, -0.37739)
+                                gmapsRecenterTrigger++
                             } else {
-                                mapView.controller.animateTo(MapConfig.VALENCIA_CENTER)
-                                mapView.controller.setZoom(10.5)
+                                if (loc != null) {
+                                    mapView.controller.animateTo(GeoPoint(loc.first, loc.second))
+                                    mapView.controller.setZoom(14.5)
+                                } else {
+                                    mapView.controller.animateTo(MapConfig.VALENCIA_CENTER)
+                                    mapView.controller.setZoom(10.5)
+                                }
                             }
                         },
                         modifier = Modifier
@@ -479,7 +516,11 @@ fun CercaniasLiveMapDialog(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "osmdroid, © OpenStreetMap contributors, © CARTO",
+                            text = if (mapEngine == com.example.ui.map.MapEngine.GOOGLE_MAPS) {
+                                "Google Maps, © Google, © CARTO, Renfe Cercanías"
+                            } else {
+                                "osmdroid, © OpenStreetMap contributors, © CARTO"
+                            },
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Medium

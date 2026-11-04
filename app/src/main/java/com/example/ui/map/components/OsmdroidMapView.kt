@@ -266,6 +266,7 @@ fun OsmdroidMapView(
             lifecycleOwner.lifecycle.removeObserver(observer)
             try {
                 mapView.onPause()
+                mapView.onDetach()
             } catch (_: Exception) {}
             stopLiveLocationUpdates()
             handler.removeCallbacksAndMessages(null)

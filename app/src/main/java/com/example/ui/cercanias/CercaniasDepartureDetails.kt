@@ -77,15 +77,7 @@ fun CercaniasDepartureDetails(
         }
     }
 
-    val routeColor = when(departure.routeId.uppercase().replace("-", "").trim()) {
-        "C1" -> Color(0xFF00A3E0)
-        "C2" -> Color(0xFFFF6A00)
-        "C3" -> Color(0xFF7A287B)
-        "C4" -> Color(0xFFE52321)
-        "C5" -> Color(0xFF009639)
-        "C6" -> Color(0xFF002F6C)
-        else -> Color.Gray
-    }
+    val routeColor = com.example.ui.metro.TransitLogoUtils.getCercaniasLineColor(departure.routeId)
     
     val routeText = if (departure.routeId.matches(Regex("C\\d"))) "C-${departure.routeId.substring(1)}" else departure.routeId
     val destinationText = remember(departure.destination) {
@@ -590,16 +582,7 @@ private fun CercaniasTimelineRow(
 }
 
 private fun getCercaniasLineBadgeColor(routeId: String): Color {
-    val clean = routeId.uppercase().replace("-", "").trim()
-    return when (clean) {
-        "C1" -> Color(0xFF00A3E0)
-        "C2" -> Color(0xFFFF6A00)
-        "C3" -> Color(0xFF7A287B)
-        "C4" -> Color(0xFFE52321)
-        "C5" -> Color(0xFF009639)
-        "C6" -> Color(0xFF002F6C)
-        else -> Color(0xFF666666)
-    }
+    return com.example.ui.metro.TransitLogoUtils.getCercaniasLineColor(routeId)
 }
 
 private fun formatCercaniasLineBadgeText(routeId: String): String {

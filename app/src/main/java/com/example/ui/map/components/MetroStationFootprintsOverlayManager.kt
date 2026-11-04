@@ -25,6 +25,9 @@ object MetroStationFootprintsOverlayManager {
     private var isLoaded = false
     @Volatile
     private var isLoading = false
+    private val _isLoadedState = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isLoadedState: kotlinx.coroutines.flow.StateFlow<Boolean> = _isLoadedState
+
     private val stationPolygonsData = java.util.concurrent.CopyOnWriteArrayList<StationPolygonData>()
     private val accessPointsData = java.util.concurrent.CopyOnWriteArrayList<AccessPointData>()
 
@@ -46,6 +49,17 @@ object MetroStationFootprintsOverlayManager {
         val stationName: String,
         val stationAreaId: String = ""
     )
+
+    fun getLoadedPolygonsData(): List<StationPolygonData> = stationPolygonsData.toList()
+    fun getLoadedAccessPointsData(): List<AccessPointData> = accessPointsData.toList()
+
+    suspend fun ensureLoaded(context: Context): List<StationPolygonData> {
+        if (isLoaded) return stationPolygonsData.toList()
+        return withContext(Dispatchers.IO) {
+            loadGeoJsonDataInternal(context.applicationContext)
+            stationPolygonsData.toList()
+        }
+    }
 
     fun preloadGeoJson(context: Context, mapView: MapView? = null) {
         if (mapView != null) {
@@ -170,6 +184,7 @@ object MetroStationFootprintsOverlayManager {
             accessPointsData.addAll(loadedAccessPoints)
 
             isLoaded = true
+            _isLoadedState.value = true
             Log.d(TAG, "Loaded ${stationPolygonsData.size} station footprints and ${accessPointsData.size} access points.")
         } catch (e: Exception) {
             Log.e(TAG, "Error loading GeoJSON overlays", e)

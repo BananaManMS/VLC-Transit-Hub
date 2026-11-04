@@ -368,13 +368,13 @@ class CercaniasTrainOverlayManager(
     private fun getCercaniasLineColorHex(lineCode: String): Int {
         val clean = lineCode.uppercase().replace("C-", "").replace("C_", "").replace("C", "").trim()
         return when (clean) {
-            "1", "10" -> Color.parseColor("#00A3E0") // Cyan (C1)
-            "2", "20" -> Color.parseColor("#FF6A00") // Orange (C2)
-            "3", "30" -> Color.parseColor("#7A287B") // Purple (C3)
-            "4", "40" -> Color.parseColor("#E52321") // Red (C4)
-            "5", "50" -> Color.parseColor("#009639") // Green (C5)
-            "6", "60" -> Color.parseColor("#002F6C") // Dark Blue (C6)
-            else -> Color.parseColor("#00A3E0")
+            "1", "10" -> Color.parseColor("#30A3DC") // C1
+            "2", "20" -> Color.parseColor("#FAB700") // C2
+            "3", "30" -> Color.parseColor("#800080") // C3
+            "4", "40" -> Color.parseColor("#FF0000") // C4
+            "5", "50" -> Color.parseColor("#008A29") // C5
+            "6", "60" -> Color.parseColor("#002D9A") // C6
+            else -> Color.parseColor("#30A3DC")
         }
     }
 

@@ -96,6 +96,12 @@ object EmtMapOverlayLoader {
             .uppercase()
     }
 
+    fun getShapesForLine(rawLine: String, stopLocation: GeoPoint? = null, targetHeadsign: String? = null): List<EmtRouteShape> {
+        val cleanLine = normalizeLine(rawLine)
+        val rawShapes = lineToShapesMap[cleanLine] ?: return emptyList()
+        return pruneShapesForLine(rawShapes, cleanLine, targetHeadsign, stopLocation)
+    }
+
     /**
      * Forces a reload of EMT shapes when new data is downloaded.
      */

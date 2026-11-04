@@ -48,4 +48,24 @@ class ExampleRobolectricTest {
       db.close()
     }
   }
+
+  @Test
+  fun testMetroAndCercaniasPolylineLoaders() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    com.example.ui.map.components.MetroMapOverlayLoader.ensureLoaded(context)
+    while (!com.example.ui.map.components.MetroMapOverlayLoader.isLoaded) {
+      kotlinx.coroutines.delay(50)
+    }
+    val metroSets = com.example.ui.map.components.MetroMapOverlayLoader.getPolylineSets()
+    println("Metro highResMedium count: ${metroSets.highResMedium.size}, highResClose: ${metroSets.highResClose.size}")
+    assertTrue(metroSets.highResMedium.isNotEmpty() || metroSets.highResClose.isNotEmpty())
+
+    com.example.ui.map.components.CercaniasMapOverlayLoader.ensureLoaded(context)
+    while (!com.example.ui.map.components.CercaniasMapOverlayLoader.isLoaded) {
+      kotlinx.coroutines.delay(50)
+    }
+    val cercaniasSets = com.example.ui.map.components.CercaniasMapOverlayLoader.getPolylineSets()
+    println("Cercanias highResMedium count: ${cercaniasSets.highResMedium.size}")
+    assertTrue(cercaniasSets.highResMedium.isNotEmpty() || cercaniasSets.highResClose.isNotEmpty())
+  }
 }

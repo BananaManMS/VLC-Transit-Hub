@@ -1,6 +1,6 @@
 package com.example
 
-import com.example.ui.cercanias.formatEstimatedArrivalTime
+import com.example.ui.cercanias.LiveTrainFormatUtils.formatEstimatedArrivalTime
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

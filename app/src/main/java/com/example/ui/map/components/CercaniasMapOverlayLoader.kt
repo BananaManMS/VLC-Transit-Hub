@@ -116,6 +116,9 @@ object CercaniasMapOverlayLoader {
         return cachedPolylines
     }
 
+    @Synchronized
+    fun getPolylineSets(): MetroMapOverlayLoader.PolylineSets = polylineSets
+
     private fun checkAndRebuildCache(
         mapView: MapView,
         zoomCategory: MetroMapOverlayLoader.ZoomCategory,

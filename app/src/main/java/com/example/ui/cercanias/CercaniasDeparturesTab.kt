@@ -247,15 +247,7 @@ fun CercaniasDeparturesTab(
                             ) {
                                 val linesList = station.lines.filter { it.isNotBlank() }
                                 linesList.forEach { line ->
-                                    val colorHex = when (line) {
-                                        "C1" -> "#00A3E0"
-                                        "C2" -> "#FF6A00"
-                                        "C3" -> "#7A287B"
-                                        "C4" -> "#E52321"
-                                        "C5" -> "#009639"
-                                        "C6" -> "#002F6C"
-                                        else -> "#7F8C8D"
-                                    }
+                                    val colorHex = com.example.util.LineColorResolver.getCercaniasLineColorHex(line)
                                     Surface(
                                         color = Color(android.graphics.Color.parseColor(colorHex)),
                                         shape = RoundedCornerShape(4.dp),

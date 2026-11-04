@@ -38,6 +38,27 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
             initialValue = repository.getPreferenceSync("is_dark_mode", "false").toBoolean()
         )
 
+    val mapEngine: StateFlow<com.example.ui.map.MapEngine> = repository.getPreferenceFlow(
+        "map_engine",
+        repository.getPreferenceSync("map_engine", com.example.ui.map.MapEngine.OSMDROID.name)
+    )
+        .map {
+            try {
+                com.example.ui.map.MapEngine.valueOf(it)
+            } catch (e: Exception) {
+                com.example.ui.map.MapEngine.OSMDROID
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = try {
+                com.example.ui.map.MapEngine.valueOf(repository.getPreferenceSync("map_engine", com.example.ui.map.MapEngine.OSMDROID.name))
+            } catch (e: Exception) {
+                com.example.ui.map.MapEngine.OSMDROID
+            }
+        )
+
     private val _appLanguage = MutableStateFlow(
         try {
             AppLanguage.valueOf(repository.getPreferenceSync("app_language", "CA"))
@@ -332,6 +353,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                     }
                 } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     Log.e("CercaniasViewModel", "Error fetching departures inside poll loop", e)
                     if (_cercaniasDepartures.value.isEmpty() && (heavyInitJob?.isCompleted == true)) {
                         _cercaniasError.value = "Error conectando con Renfe"

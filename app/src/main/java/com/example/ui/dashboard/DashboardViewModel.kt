@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import com.example.ui.map.RecentSearch
+import com.example.ui.map.MapEngine
 import com.google.gson.Gson
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -245,6 +246,26 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val _appLanguage = MutableStateFlow(initialLanguage)
     val appLanguage = _appLanguage.asStateFlow()
 
+    val mapEngine: StateFlow<MapEngine> = repository.getPreferenceFlow(
+        "map_engine",
+        repository.getPreferenceSync("map_engine", MapEngine.OSMDROID.name)
+    )
+        .map {
+            try {
+                MapEngine.valueOf(it)
+            } catch (_: Exception) {
+                MapEngine.OSMDROID
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = try {
+                MapEngine.valueOf(repository.getPreferenceSync("map_engine", MapEngine.OSMDROID.name))
+            } catch (_: Exception) {
+                MapEngine.OSMDROID
+            }
+        )
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing = _isRefreshing.asStateFlow()
@@ -896,6 +917,12 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     .putString("app_language", language.name)
                     .apply()
             } catch (_: Exception) {}
+        }
+    }
+
+    fun setMapEngine(engine: MapEngine) {
+        viewModelScope.launch {
+            repository.savePreference("map_engine", engine.name)
         }
     }
 

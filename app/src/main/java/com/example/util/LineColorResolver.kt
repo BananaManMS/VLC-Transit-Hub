@@ -53,13 +53,13 @@ object LineColorResolver {
         }
 
         return when (lineKey) {
-            "C1" -> "#30A3DC"
-            "C2" -> "#FAB700"
-            "C3" -> "#800080"
-            "C4" -> "#FF0000"
-            "C5" -> "#008A29"
-            "C6" -> "#002D9A"
-            else -> "#702B7B" // Fallback Renfe purple
+            "1", "C1" -> "#30A3DC" // C1 Azul
+            "2", "C2" -> "#FAB700" // C2 Amarillo
+            "3", "C3" -> "#800080" // C3 Morado
+            "4", "C4" -> "#FF0000" // C4 Rojo
+            "5", "C5" -> "#008A29" // C5 Verde
+            "6", "C6" -> "#002D9A" // C6 Azul Oscuro
+            else -> "#FF0000" // Default Renfe Red
         }
     }
 

@@ -44,15 +44,7 @@ fun CercaniasDepartureCard(
     val normalizedRoute = departure.normalizedRoute.ifBlank {
         departure.routeId.uppercase().replace("-", "").trim()
     }
-    val routeColor = when (normalizedRoute) {
-        "C1" -> Color(0xFF00A3E0)
-        "C2" -> Color(0xFFFF6A00)
-        "C3" -> Color(0xFF7A287B)
-        "C4" -> Color(0xFFE52321)
-        "C5" -> Color(0xFF009639)
-        "C6" -> Color(0xFF002F6C)
-        else -> Color.Gray
-    }
+    val routeColor = com.example.ui.metro.TransitLogoUtils.getCercaniasLineColor(normalizedRoute)
     
     val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
     val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)

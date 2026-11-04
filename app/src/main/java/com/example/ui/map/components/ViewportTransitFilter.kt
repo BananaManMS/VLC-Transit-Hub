@@ -85,13 +85,7 @@ object ViewportTransitFilter {
             return prevResult
         }
 
-        val isOnlyBusSelected = mapFilter.showBus &&
-                !mapFilter.showMetro &&
-                !mapFilter.showCercanias &&
-                !mapFilter.showValenbisi &&
-                !mapFilter.isFavorites
-
-        val isOnlyMetrobusSelected = mapFilter.showMetrobus &&
+        val isOnlyBusModeSelected = (mapFilter.showBus || mapFilter.showMetrobus) &&
                 !mapFilter.showMetro &&
                 !mapFilter.showCercanias &&
                 !mapFilter.showValenbisi &&
@@ -99,11 +93,11 @@ object ViewportTransitFilter {
 
         // 1. Bus Stops
         val showBus = (mapFilter.isFavorites || mapFilter.showBus) &&
-                (mapFilter.isFavorites || isOnlyBusSelected || currentZoom >= 15.2)
+                (mapFilter.isFavorites || isOnlyBusModeSelected || currentZoom >= 15.2)
 
         val isFavoritesMode = mapFilter.isFavorites
         // Load bus stops in viewport if bus is active or if metrobus is active (for dual-stop detection)
-        val shouldLoadBusStops = (mapFilter.isFavorites || showBus || (mapFilter.showMetrobus && isOnlyMetrobusSelected)) && busStops.isNotEmpty()
+        val shouldLoadBusStops = (mapFilter.isFavorites || showBus || (mapFilter.showMetrobus && isOnlyBusModeSelected)) && busStops.isNotEmpty()
         val busStopsInViewport = if (shouldLoadBusStops) {
             if (isFavoritesMode || busStops.size <= 50) {
                 busStops
@@ -125,7 +119,7 @@ object ViewportTransitFilter {
 
         // 2. Metrobus Stops
         val showMetrobus = (mapFilter.isFavorites || mapFilter.showMetrobus) &&
-                (mapFilter.isFavorites || isOnlyMetrobusSelected || currentZoom >= 15.2)
+                (mapFilter.isFavorites || isOnlyBusModeSelected || currentZoom >= 15.2)
 
         val isMetrobusFavoritesMode = mapFilter.isFavorites
         val metrobusStopsInViewport = if (showMetrobus && metrobusStops.isNotEmpty()) {

@@ -59,6 +59,8 @@ import com.example.ui.map.components.MapDetailBottomSheetsHost
 import com.example.ui.map.components.MapLocationSelectionOverlay
 import com.example.ui.map.components.NearbyStopsBottomSheet
 import com.example.ui.map.components.OsmdroidMapView
+import com.example.ui.map.google.GoogleMapViewContainer
+import com.example.ui.map.MapEngine
 import com.example.ui.map.components.SaveFavoriteDialog
 import com.example.ui.map.components.SheetState
 import com.example.ui.metro.MetroViewModel
@@ -134,6 +136,7 @@ fun MapScreen(
     val selectionMode by mapViewModel.selectionMode.collectAsState()
     val selectedMetrobusShapes by mapViewModel.selectedMetrobusShapes.collectAsState()
     val activeTripState by dashboardViewModel.activeTripState.collectAsState()
+    val mapEngine by dashboardViewModel.mapEngine.collectAsState()
 
     val isCurrentItineraryActive = remember(selectedItinerary, activeTripState) {
         TripStartEligibility.isItineraryCurrentlyActive(selectedItinerary, activeTripState)
@@ -306,8 +309,109 @@ fun MapScreen(
             label = "mapBottomOffsetAnim"
         )
 
-        // Base Osmdroid Map
-        OsmdroidMapView(
+        // Map Engine Selection (Google Maps vs OSMdroid)
+        if (mapEngine == MapEngine.GOOGLE_MAPS) {
+            GoogleMapViewContainer(
+                modifier = Modifier.fillMaxSize(),
+                isDarkMode = isDarkMode,
+                isSatelliteMode = isSatelliteMode,
+                cameraTarget = cameraTarget,
+                cameraZoom = cameraZoom,
+                cameraAnimTrigger = cameraAnimTrigger,
+                zoomInTrigger = zoomInTrigger,
+                zoomOutTrigger = zoomOutTrigger,
+                userLocation = userLocation,
+                busStops = visibleBusStops,
+                metrobusStops = visibleMetrobusStops,
+                metroStations = visibleMetroStations,
+                cercaniasStations = visibleCercaniasStations,
+                valenbisiStations = valenbisiStations,
+                liveCercaniasVehicles = liveCercaniasVehicles,
+                selectedItinerary = selectedItinerary,
+                homeLocation = homeLocation,
+                workLocation = workLocation,
+                customFavorites = customFavorites,
+                destinationLocation = destinationLocation,
+                destinationTitle = destinationTitle,
+                mapFilter = mapFilter,
+                selectedMapItem = selectedItem,
+                selectedBusLineFilters = selectedBusLineFilters,
+                selectedDirectionFilter = selectedDirectionFilter,
+                selectedMetrobusShapes = selectedMetrobusShapes,
+                bottomPanelOffsetPx = rawBottomOffsetPx,
+                busStopAliases = busStopAliases,
+                favoriteBusStops = favoriteBusStops,
+                favoriteMetroStations = favoriteMetroStations,
+                favoriteCercaniasStations = favoriteCercaniasStations,
+                favoriteValenbisiStations = favoriteValenbisiSet,
+                isCellTowerLocation = isCellTowerLocation,
+                onSelectItem = { item ->
+                    if (selectedItinerary == null) {
+                        mapViewModel.selectItem(item)
+                    }
+                },
+                onMapClick = {
+                    if (isSearchFocused || searchQuery.isNotEmpty()) {
+                        isSearchFocused = false
+                        mapViewModel.setSearchQuery("")
+                        focusManager.clearFocus()
+                        keyboardController?.hide()
+                    }
+                    mapViewModel.clearDestination()
+                    if (selectedItem !is SelectedMapItem.BusStop &&
+                        selectedItem !is SelectedMapItem.Metro &&
+                        selectedItem !is SelectedMapItem.Cercanias &&
+                        selectedItem !is SelectedMapItem.Valenbisi &&
+                        selectedItem !is SelectedMapItem.MetrobusStopItem) {
+                        mapViewModel.selectItem(null)
+                    }
+                    if (nearbySheetState == SheetState.EXPANDED) {
+                        nearbySheetState = SheetState.COLLAPSED
+                    }
+                    if (detailSheetState != DetailSheetState.COLLAPSED) {
+                        detailSheetState = DetailSheetState.COLLAPSED
+                    }
+                },
+                onMapLongClick = { point ->
+                    if (selectedItinerary == null) {
+                        mapViewModel.onMapLongClick(point)
+                    }
+                },
+                onShowDisambiguationMenu = { items ->
+                    if (selectedItinerary == null) {
+                        disambiguationItems = items
+                    }
+                },
+                onMapTouch = {
+                    if (isSearchFocused || searchQuery.isNotEmpty()) {
+                        isSearchFocused = false
+                        mapViewModel.setSearchQuery("")
+                        focusManager.clearFocus()
+                        keyboardController?.hide()
+                    }
+                    mapViewModel.disableFollowUser()
+                },
+                onMapPan = {
+                    if (nearbySheetState == SheetState.EXPANDED) {
+                        nearbySheetState = SheetState.COLLAPSED
+                    }
+                    if (detailSheetState != DetailSheetState.COLLAPSED) {
+                        detailSheetState = DetailSheetState.COLLAPSED
+                    }
+                },
+                onCameraPositionChanged = { center, zoom ->
+                    if (selectionMode != MapSelectionMode.NORMAL) {
+                        isMapMoving = true
+                    }
+                    mapViewModel.updateCameraPosition(center, zoom)
+                },
+                onZoomLevelChanged = { newZoom ->
+                    mapViewModel.setCameraZoom(newZoom)
+                }
+            )
+        } else {
+            // Base Osmdroid Map
+            OsmdroidMapView(
             modifier = Modifier.fillMaxSize(),
             isDarkMode = isDarkMode,
             isSatelliteMode = isSatelliteMode,
@@ -403,6 +507,7 @@ fun MapScreen(
                 }
             }
         )
+    }
 
         // Subtle top gradient scrim to protect status bar indicators (clock, battery) and provide a clean transition
         Box(

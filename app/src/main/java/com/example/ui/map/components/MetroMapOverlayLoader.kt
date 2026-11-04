@@ -112,6 +112,8 @@ object MetroMapOverlayLoader {
         }
     }
 
+    fun getPolylineSets(): PolylineSets = polylineSets
+
     @Synchronized
     fun getLoadedPolylines(mapView: org.osmdroid.views.MapView? = null): List<Polyline> {
         if (mapView != null) {

@@ -36,6 +36,7 @@ import com.example.ui.metro.MetroViewModel
 import com.example.ui.theme.ScreenHeader
 import com.example.ui.update.AppUpdateSettingCard
 import com.example.ui.update.AppUpdateViewModel
+import com.example.ui.map.MapEngine
 import com.example.util.LocationUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +54,7 @@ fun AjustesScreen(
     val appLanguage by viewModel.appLanguage.collectAsState()
     val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
     val isDarkMode by viewModel.isDarkMode.collectAsState()
+    val mapEngine by viewModel.mapEngine.collectAsState()
 
     val favoriteStations by metroViewModel.favoriteStations.collectAsState()
     val cercaniasFavoriteStations by cercaniasViewModel.cercaniasFavoriteStations.collectAsState()
@@ -61,6 +63,7 @@ fun AjustesScreen(
     var showStationSelectionPage by remember { mutableStateOf(false) }
     var showCercaniasStationSelectionPage by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showGoogleMapsSandbox by remember { mutableStateOf(false) }
     var isCalendarConnected by remember { mutableStateOf(false) }
 
     val allActiveAnnouncements by viewModel.allActiveAnnouncements.collectAsState()
@@ -192,6 +195,76 @@ fun AjustesScreen(
                                     onCheckedChange = { viewModel.toggleDarkMode() },
                                     modifier = Modifier.testTag("dark_mode_switch")
                                 )
+                            }
+                        )
+                    }
+                }
+
+                // 1.5 MOTOR CARTOGRÁFICO
+                item {
+                    AjustesSectionHeader(
+                        title = if (appLanguage == AppLanguage.ES) "Motor del mapa" else "Motor del mapa"
+                    )
+                    AjustesGroupCard(isDarkMode = isDarkMode) {
+                        AjustesItemRow(
+                            title = if (appLanguage == AppLanguage.ES) "Motor cartográfico principal" else "Motor cartogràfic principal",
+                            subtitle = when (mapEngine) {
+                                MapEngine.GOOGLE_MAPS -> if (appLanguage == AppLanguage.ES)
+                                    "Google Maps • Fluidez a 60 FPS con aceleración gráfica"
+                                else
+                                    "Google Maps • Fluïdesa a 60 FPS amb acceleració gràfica"
+                                MapEngine.OSMDROID -> if (appLanguage == AppLanguage.ES)
+                                    "OSMdroid (OpenStreetMap) • Motor clásico estándar"
+                                else
+                                    "OSMdroid (OpenStreetMap) • Motor clàssic estàndard"
+                            },
+                            icon = Icons.Default.Layers,
+                            iconTint = if (mapEngine == MapEngine.GOOGLE_MAPS) Color(0xFF3B82F6) else Color(0xFF10B981),
+                            iconContainerColor = (if (mapEngine == MapEngine.GOOGLE_MAPS) Color(0xFF3B82F6) else Color(0xFF10B981)).copy(alpha = 0.12f),
+                            trailingContent = {
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        .padding(2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val isOsm = mapEngine == MapEngine.OSMDROID
+                                    val isGmaps = mapEngine == MapEngine.GOOGLE_MAPS
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isOsm) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                            .clickable { viewModel.setMapEngine(MapEngine.OSMDROID) }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                            .testTag("engine_osmdroid_button")
+                                    ) {
+                                        Text(
+                                            text = "OSM",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = if (isOsm) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isGmaps) Color(0xFF3B82F6) else Color.Transparent)
+                                            .clickable { viewModel.setMapEngine(MapEngine.GOOGLE_MAPS) }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                            .testTag("engine_google_maps_button")
+                                    ) {
+                                        Text(
+                                            text = "Google Maps",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = if (isGmaps) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
                         )
                     }
@@ -409,6 +482,26 @@ fun AjustesScreen(
                     }
                 }
 
+                // 4.5 MODO EXPERIMENTAL / LABORATORIO GOOGLE MAPS
+                item {
+                    AjustesSectionHeader(
+                        title = if (appLanguage == AppLanguage.ES) "Laboratorio y pruebas" else "Laboratori i proves"
+                    )
+                    AjustesGroupCard(isDarkMode = isDarkMode) {
+                        AjustesItemRow(
+                            title = "🧪 Laboratorio Google Maps (Beta)",
+                            subtitle = if (appLanguage == AppLanguage.ES)
+                                "Prueba aislada con polylines, huellas y rendimiento 60 FPS"
+                            else
+                                "Prova aïllada amb polylines, petjades i rendiment 60 FPS",
+                            icon = Icons.Default.Map,
+                            iconTint = Color(0xFF3B82F6),
+                            iconContainerColor = Color(0xFF3B82F6).copy(alpha = 0.12f),
+                            onClick = { showGoogleMapsSandbox = true }
+                        )
+                    }
+                }
+
                 // 5. ACTUALIZACIONES DE LA APLICACIÓN
                 item {
                     AjustesSectionHeader(
@@ -466,6 +559,14 @@ fun AjustesScreen(
                 appLanguage = appLanguage,
                 isDarkMode = isDarkMode,
                 onDismiss = { showActiveAnnouncementsDialog = false }
+            )
+        }
+
+        if (showGoogleMapsSandbox) {
+            com.example.ui.map.google.GoogleMapsSandboxScreen(
+                metroViewModel = metroViewModel,
+                cercaniasViewModel = cercaniasViewModel,
+                onBackClick = { showGoogleMapsSandbox = false }
             )
         }
     }

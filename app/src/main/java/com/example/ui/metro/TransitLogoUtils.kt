@@ -83,12 +83,13 @@ object TransitLogoUtils {
     fun getCercaniasLineColor(routeId: String): Color {
         val clean = routeId.trim().uppercase().replace("-", "").removePrefix("LINEA").trim()
         return when (clean) {
-            "C1", "1" -> Color(0xFF0082C9) // Azul C1
-            "C2", "2" -> Color(0xFF00A859) // Verde C2
-            "C3", "3" -> Color(0xFFF39200) // Naranja C3
-            "C5", "5" -> Color(0xFF95C11E) // Verde Lima C5
-            "C6", "6" -> Color(0xFF9B26B6) // Morado C6
-            else -> Color(0xFFE51A2E) // Renfe Cercanías Rojo estándar
+            "C1", "1" -> Color(0xFF30A3DC) // C1
+            "C2", "2" -> Color(0xFFFAB700) // C2
+            "C3", "3" -> Color(0xFF800080) // C3
+            "C4", "4" -> Color(0xFFFF0000) // C4
+            "C5", "5" -> Color(0xFF008A29) // C5
+            "C6", "6" -> Color(0xFF002D9A) // C6
+            else -> Color(0xFFFF0000) // Renfe Cercanías Rojo estándar
         }
     }
 

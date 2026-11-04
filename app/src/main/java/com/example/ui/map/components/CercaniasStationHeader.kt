@@ -211,15 +211,7 @@ fun CercaniasStationHeader(
 
                 lineList.forEach { rawLineId ->
                     val lineId = CercaniasStationHighlightManager.normalizeLineRef(rawLineId)
-                    val routeColor = when (lineId) {
-                        "C1" -> Color(0xFF00A3E0)
-                        "C2" -> Color(0xFFFF6A00)
-                        "C3" -> Color(0xFF7A287B)
-                        "C4" -> Color(0xFFE52321)
-                        "C5" -> Color(0xFF009639)
-                        "C6" -> Color(0xFF002F6C)
-                        else -> Color(0xFF702B7B)
-                    }
+                    val routeColor = com.example.util.LineColorResolver.getCercaniasLineColor(lineId)
 
                     val isSelected = selectedLineFilters.any {
                         CercaniasStationHighlightManager.normalizeLineRef(it).equals(lineId, ignoreCase = true)

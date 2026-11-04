@@ -45,50 +45,38 @@ class ValenbisiRepository {
 
             val list = mutableListOf<ValenbisiStation>()
 
-        // 1. Primary Source: Official Valencia Geoportal ArcGIS REST Endpoint (Trafico/MapServer/228) with outSR=4326
+        // 1. Primary Source: CityBikes API (Returns all ~275 Valenbisi stations reliably)
         try {
-            val geoportalUrl = "https://geoportal.valencia.es/server/rest/services/OPENDATA/Trafico/MapServer/228/query?where=1=1&outFields=*&outSR=4326&f=json"
-            val request = Request.Builder().url(geoportalUrl).build()
+            val cityBikesUrl = "https://api.citybik.es/v2/networks/valenbisi"
+            val request = Request.Builder().url(cityBikesUrl).build()
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
                     if (body.isNotBlank()) {
                         val root = JSONObject(body)
-                        val features = root.optJSONArray("features") ?: JSONArray()
-                        for (i in 0 until features.length()) {
-                            val feat = features.optJSONObject(i) ?: continue
-                            val attr = feat.optJSONObject("attributes") ?: JSONObject()
-                            val geom = feat.optJSONObject("geometry")
+                        val network = root.optJSONObject("network")
+                        val stations = network?.optJSONArray("stations") ?: JSONArray()
+                        for (i in 0 until stations.length()) {
+                            val st = stations.optJSONObject(i) ?: continue
+                            val extra = st.optJSONObject("extra") ?: JSONObject()
+                            val number = extra.optInt("number", 0)
+                                .let { if (it == 0) extra.optInt("uid", 0) else it }
+                                .let { if (it == 0) i + 1 else it }
 
-                            val number = attr.optInt("NUMERO", 0)
-                                .let { if (it == 0) attr.optInt("number", 0) else it }
-                                .let { if (it == 0) attr.optInt("OBJECTID", 0) else it }
-                                .let { if (it == 0) attr.optInt("gid", i + 1) else it }
+                            val rawName = st.optString("name", "")
+                            val rawAddress = extra.optString("address", rawName)
+                            val cleanName = sanitizeStationName(rawName.ifBlank { rawAddress })
+                            val cleanAddress = sanitizeStationName(rawAddress.ifBlank { rawName })
 
-                            var rawName = attr.optString("DIRECCION", "").trim()
-                            if (rawName.isBlank()) rawName = attr.optString("name", "").trim()
-                            if (rawName.isBlank()) rawName = attr.optString("address", "").trim()
-                            if (rawName.isBlank()) rawName = "Estación Valenbisi $number"
+                            val available = st.optInt("free_bikes", 0)
+                            val free = st.optInt("empty_slots", 0)
+                            val total = extra.optInt("slots", available + free)
+                            val status = st.optString("status", extra.optString("status", "OPEN"))
+                            val isOpen = !status.equals("CLOSED", ignoreCase = true)
+                            val hasBanking = extra.optBoolean("banking", extra.optBoolean("payment-terminal", true))
 
-                            val cleanName = sanitizeStationName(rawName)
-
-                            val available = attr.optInt("DISPONIBILIDAD", attr.optInt("available", attr.optInt("BICIS_DISPONIBLES", 0)))
-                            val free = attr.optInt("LIBRES", attr.optInt("free", attr.optInt("BORNES_LIBRES", 0)))
-                            val total = attr.optInt("TOTAL", attr.optInt("total", attr.optInt("TOTAL_PUESTOS", available + free)))
-
-                            val activoStr = attr.optString("ACTIVO", attr.optString("open", "S")).trim().uppercase()
-                            val isOpen = activoStr == "S" || activoStr == "T" || activoStr == "OPEN" || activoStr == "ACTIVO" || activoStr == "1"
-
-                            val ticketStr = attr.optString("TICKET", attr.optString("ticket", "T")).trim().uppercase()
-                            val hasTicket = ticketStr == "S" || ticketStr == "T" || ticketStr == "1" || attr.optBoolean("ticket", true)
-
-                            var lon = geom?.optDouble("x", 0.0) ?: 0.0
-                            var lat = geom?.optDouble("y", 0.0) ?: 0.0
-
-                            if (lat == 0.0 || lon == 0.0) {
-                                lat = attr.optDouble("LATITUD", attr.optDouble("latitude", attr.optDouble("lat", 0.0)))
-                                lon = attr.optDouble("LONGITUD", attr.optDouble("longitude", attr.optDouble("lon", 0.0)))
-                            }
+                            val lat = st.optDouble("latitude", 0.0)
+                            val lon = st.optDouble("longitude", 0.0)
 
                             if (number > 0 && lat != 0.0 && lon != 0.0) {
                                 list.add(
@@ -96,12 +84,12 @@ class ValenbisiRepository {
                                         gid = number,
                                         name = cleanName,
                                         number = number,
-                                        address = cleanName,
+                                        address = cleanAddress,
                                         open = isOpen,
                                         available = available,
                                         free = free,
                                         total = if (total > 0) total else (available + free),
-                                        ticket = hasTicket,
+                                        ticket = hasBanking,
                                         latitude = lat,
                                         longitude = lon
                                     )
@@ -112,42 +100,54 @@ class ValenbisiRepository {
                 }
             }
         } catch (e: Exception) {
-            Log.w("ValenbisiRepository", "Geoportal 228 fetch error: ${e.message}")
+            Log.w("ValenbisiRepository", "CityBikes fetch warning: ${e.message}")
         }
 
-        // 2. Fallback: CityBikes API (Clean, fast REST endpoint with real-time updates)
+        // 2. Fallback: Official Valencia Geoportal ArcGIS REST Endpoint
         if (list.isEmpty()) {
             try {
-                val cityBikesUrl = "https://api.citybik.es/v2/networks/valenbisi"
-                val request = Request.Builder().url(cityBikesUrl).build()
+                val geoportalUrl = "https://geoportal.valencia.es/server/rest/services/OPENDATA/Trafico/MapServer/228/query?where=1=1&outFields=*&outSR=4326&f=json"
+                val request = Request.Builder().url(geoportalUrl).build()
                 client.newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
                         val body = response.body?.string() ?: ""
                         if (body.isNotBlank()) {
                             val root = JSONObject(body)
-                            val network = root.optJSONObject("network")
-                            val stations = network?.optJSONArray("stations") ?: JSONArray()
-                            for (i in 0 until stations.length()) {
-                                val st = stations.optJSONObject(i) ?: continue
-                                val extra = st.optJSONObject("extra") ?: JSONObject()
-                                val number = extra.optInt("number", 0)
-                                    .let { if (it == 0) extra.optInt("uid", 0) else it }
-                                    .let { if (it == 0) i + 1 else it }
+                            val features = root.optJSONArray("features") ?: JSONArray()
+                            for (i in 0 until features.length()) {
+                                val feat = features.optJSONObject(i) ?: continue
+                                val attr = feat.optJSONObject("attributes") ?: JSONObject()
+                                val geom = feat.optJSONObject("geometry")
 
-                                val rawName = st.optString("name", "")
-                                val rawAddress = extra.optString("address", rawName)
-                                val cleanName = sanitizeStationName(rawName.ifBlank { rawAddress })
-                                val cleanAddress = sanitizeStationName(rawAddress.ifBlank { rawName })
+                                val number = attr.optInt("NUMERO", 0)
+                                    .let { if (it == 0) attr.optInt("number", 0) else it }
+                                    .let { if (it == 0) attr.optInt("OBJECTID", 0) else it }
+                                    .let { if (it == 0) attr.optInt("gid", i + 1) else it }
 
-                                val available = st.optInt("free_bikes", 0)
-                                val free = st.optInt("empty_slots", 0)
-                                val total = extra.optInt("slots", available + free)
-                                val status = extra.optString("status", "OPEN")
-                                val isOpen = !status.equals("CLOSED", ignoreCase = true)
-                                val hasBanking = extra.optBoolean("banking", extra.optBoolean("payment-terminal", true))
+                                var rawName = attr.optString("DIRECCION", "").trim()
+                                if (rawName.isBlank()) rawName = attr.optString("name", "").trim()
+                                if (rawName.isBlank()) rawName = attr.optString("address", "").trim()
+                                if (rawName.isBlank()) rawName = "Estación Valenbisi $number"
 
-                                val lat = st.optDouble("latitude", 0.0)
-                                val lon = st.optDouble("longitude", 0.0)
+                                val cleanName = sanitizeStationName(rawName)
+
+                                val available = attr.optInt("DISPONIBILIDAD", attr.optInt("available", attr.optInt("BICIS_DISPONIBLES", 0)))
+                                val free = attr.optInt("LIBRES", attr.optInt("free", attr.optInt("BORNES_LIBRES", 0)))
+                                val total = attr.optInt("TOTAL", attr.optInt("total", attr.optInt("TOTAL_PUESTOS", available + free)))
+
+                                val activoStr = attr.optString("ACTIVO", attr.optString("open", "S")).trim().uppercase()
+                                val isOpen = activoStr == "S" || activoStr == "T" || activoStr == "OPEN" || activoStr == "ACTIVO" || activoStr == "1"
+
+                                val ticketStr = attr.optString("TICKET", attr.optString("ticket", "T")).trim().uppercase()
+                                val hasTicket = ticketStr == "S" || ticketStr == "T" || ticketStr == "1" || attr.optBoolean("ticket", true)
+
+                                var lon = geom?.optDouble("x", 0.0) ?: 0.0
+                                var lat = geom?.optDouble("y", 0.0) ?: 0.0
+
+                                if (lat == 0.0 || lon == 0.0) {
+                                    lat = attr.optDouble("LATITUD", attr.optDouble("latitude", attr.optDouble("lat", 0.0)))
+                                    lon = attr.optDouble("LONGITUD", attr.optDouble("longitude", attr.optDouble("lon", 0.0)))
+                                }
 
                                 if (number > 0 && lat != 0.0 && lon != 0.0) {
                                     list.add(
@@ -155,12 +155,12 @@ class ValenbisiRepository {
                                             gid = number,
                                             name = cleanName,
                                             number = number,
-                                            address = cleanAddress,
+                                            address = cleanName,
                                             open = isOpen,
                                             available = available,
                                             free = free,
                                             total = if (total > 0) total else (available + free),
-                                            ticket = hasBanking,
+                                            ticket = hasTicket,
                                             latitude = lat,
                                             longitude = lon
                                         )
@@ -171,7 +171,7 @@ class ValenbisiRepository {
                     }
                 }
             } catch (e: Exception) {
-                Log.w("ValenbisiRepository", "CityBikes fetch warning: ${e.message}")
+                Log.w("ValenbisiRepository", "Geoportal 228 fetch error: ${e.message}")
             }
         }
 

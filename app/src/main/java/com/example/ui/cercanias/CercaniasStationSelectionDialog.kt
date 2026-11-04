@@ -270,15 +270,7 @@ fun CercaniasStationSelectionDialog(
                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         val linesList = station.lines.filter { it.isNotBlank() }
                                         linesList.forEach { line ->
-                                            val colorHex = when (line) {
-                                                "C1" -> "#00A3E0"
-                                                "C2" -> "#FF6A00"
-                                                "C3" -> "#7A287B"
-                                                "C4" -> "#E52321"
-                                                "C5" -> "#009639"
-                                                "C6" -> "#002F6C"
-                                                else -> "#7F8C8D"
-                                            }
+                                            val colorHex = com.example.util.LineColorResolver.getCercaniasLineColorHex(line)
                                             val lineText = if (line.matches(Regex("C\\d"))) "C-${line.substring(1)}" else line
                                             Box(
                                                 modifier = Modifier
@@ -626,15 +618,7 @@ fun CercaniasQuickStationPickerDialog(
                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         val linesList = station.lines.filter { it.isNotBlank() }
                                         linesList.forEach { line ->
-                                            val colorHex = when (line) {
-                                                "C1" -> "#00A3E0"
-                                                "C2" -> "#FF6A00"
-                                                "C3" -> "#7A287B"
-                                                "C4" -> "#E52321"
-                                                "C5" -> "#009639"
-                                                "C6" -> "#002F6C"
-                                                else -> "#7F8C8D"
-                                            }
+                                            val colorHex = com.example.util.LineColorResolver.getCercaniasLineColorHex(line)
                                             val lineText = if (line.matches(Regex("C\\d"))) "C-${line.substring(1)}" else line
                                             Box(
                                                 modifier = Modifier

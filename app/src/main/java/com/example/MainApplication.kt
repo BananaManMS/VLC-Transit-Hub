@@ -42,6 +42,27 @@ class MainApplication : Application() {
                 e.printStackTrace()
             }
         }
+
+        // Proactively pre-warm GeoJSON map line overlays and station footprints in background
+        applicationScope.launch {
+            try {
+                com.example.ui.map.components.MetroMapOverlayLoader.ensureLoaded(this@MainApplication)
+                com.example.ui.map.components.CercaniasMapOverlayLoader.ensureLoaded(this@MainApplication)
+                com.example.ui.map.components.MetroStationFootprintsOverlayManager.preloadGeoJson(this@MainApplication)
+            } catch (e: Exception) {
+                // Non-critical background warmup
+            }
+        }
+
+        // Deferred Google Maps SDK warmup (3-second delay to preserve cold-start speed under 300ms)
+        applicationScope.launch {
+            try {
+                kotlinx.coroutines.delay(3000)
+                com.google.android.gms.maps.MapsInitializer.initialize(this@MainApplication, com.google.android.gms.maps.MapsInitializer.Renderer.LATEST) { }
+            } catch (_: Throwable) {
+                // Ignore background warmup exceptions
+            }
+        }
     }
 
     private fun scheduleDailyUpdateWorker() {
