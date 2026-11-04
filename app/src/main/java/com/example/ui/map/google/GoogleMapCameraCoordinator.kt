@@ -75,6 +75,9 @@ fun rememberGoogleMapCameraCoordinator(
     // Active focal target lat/lng to preserve optical centering during sheet height changes
     var activeFocusLatLng by remember { mutableStateOf<LatLng?>(initialLatLng) }
 
+    // Flag to guard programmatic animations (selection flight, zoom, bounds) against interruption by bottom sheet padding moves
+    var isProgrammaticAnimating by remember { mutableStateOf(false) }
+
     // 1. Report camera position and zoom changes (throttled during gestures, instant on settle)
     LaunchedEffect(cameraPositionState) {
         var lastReportTime = 0L
@@ -96,17 +99,10 @@ fun rememberGoogleMapCameraCoordinator(
         }
     }
 
-    // 2. Animate camera ONCE when a new selectedItem is tapped
+    // 2. Keep active focal target in sync with selectedItem without interrupting programmatic animations
     LaunchedEffect(selectedItem) {
         if (selectedItem != null) {
-            val target = LatLng(selectedItem.lat, selectedItem.lon)
-            activeFocusLatLng = target
-            val currentZoom = cameraPositionState.position.zoom
-            val targetZoom = if (currentZoom < 17.0f) 17.0f else currentZoom
-            cameraPositionState.animate(
-                update = CameraUpdateFactory.newLatLngZoom(target, targetZoom),
-                durationMs = 250
-            )
+            activeFocusLatLng = LatLng(selectedItem.lat, selectedItem.lon)
         } else {
             activeFocusLatLng = cameraPositionState.position.target
         }
@@ -117,6 +113,7 @@ fun rememberGoogleMapCameraCoordinator(
         snapshotFlow { Pair(cameraPositionState.isMoving, cameraPositionState.cameraMoveStartedReason) }
             .collect { (isMoving, reason) ->
                 if (isMoving && reason == CameraMoveStartedReason.GESTURE) {
+                    isProgrammaticAnimating = false
                     onMapTouch?.invoke()
                     onMapPan?.invoke()
                 } else if (!isMoving && reason == CameraMoveStartedReason.GESTURE) {
@@ -125,44 +122,69 @@ fun rememberGoogleMapCameraCoordinator(
             }
     }
 
-    // 4. External camera animations from MapScreen (recentering / location / search triggers)
+    // 4. External camera animations from MapScreen (station selection flight, recentering, search)
+    // Matches OSMdroid's 500ms smooth camera animation
     LaunchedEffect(cameraAnimTrigger) {
         if (cameraAnimTrigger > 0 && cameraTarget != null) {
             val target = LatLng(cameraTarget.latitude, cameraTarget.longitude)
             activeFocusLatLng = target
-            val targetZoom = if (cameraZoom > 0.0) cameraZoom.toFloat() else 15.5f
-            cameraPositionState.animate(
-                update = CameraUpdateFactory.newLatLngZoom(target, targetZoom),
-                durationMs = 150
-            )
+            val targetZoom = if (cameraZoom > 0.0) cameraZoom.toFloat() else 17.0f
+            isProgrammaticAnimating = true
+            try {
+                cameraPositionState.animate(
+                    update = CameraUpdateFactory.newLatLngZoom(target, targetZoom),
+                    durationMs = 500
+                )
+                delay(100L)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.w("GoogleMapCameraCoord", "Camera animation interrupted", e)
+            } finally {
+                isProgrammaticAnimating = false
+            }
         }
     }
 
     // 5. Instant 1:1 camera tracking of active focal target when bottom sheet height changes in real-time
+    // Guarded by isProgrammaticAnimating so that bottom sheet expanding on station selection does not cancel the flight animation
     LaunchedEffect(bottomPaddingDp) {
-        val focus = activeFocusLatLng
-        if (focus != null) {
-            val currentZoom = cameraPositionState.position.zoom
-            cameraPositionState.move(
-                update = CameraUpdateFactory.newLatLngZoom(focus, currentZoom)
-            )
+        if (!isProgrammaticAnimating) {
+            val focus = activeFocusLatLng
+            if (focus != null) {
+                val currentZoom = cameraPositionState.position.zoom
+                cameraPositionState.move(
+                    update = CameraUpdateFactory.newLatLngZoom(focus, currentZoom)
+                )
+            }
         }
     }
 
-    // 5. External Zoom In / Out triggers
+    // 6. External Zoom In / Out triggers
     LaunchedEffect(zoomInTrigger) {
         if (zoomInTrigger > 0) {
-            cameraPositionState.animate(CameraUpdateFactory.zoomIn(), 250)
+            isProgrammaticAnimating = true
+            try {
+                cameraPositionState.animate(CameraUpdateFactory.zoomIn(), 250)
+                delay(100L)
+            } finally {
+                isProgrammaticAnimating = false
+            }
         }
     }
 
     LaunchedEffect(zoomOutTrigger) {
         if (zoomOutTrigger > 0) {
-            cameraPositionState.animate(CameraUpdateFactory.zoomOut(), 250)
+            isProgrammaticAnimating = true
+            try {
+                cameraPositionState.animate(CameraUpdateFactory.zoomOut(), 250)
+                delay(100L)
+            } finally {
+                isProgrammaticAnimating = false
+            }
         }
     }
 
-    // 6. Auto-fit camera to route bounding box when an itinerary is loaded or changed
+    // 7. Auto-fit camera to route bounding box when an itinerary is loaded or changed
     var lastZoomedItineraryId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(selectedItinerary?.id) {
         val itinerary = selectedItinerary
@@ -188,13 +210,17 @@ fun rememberGoogleMapCameraCoordinator(
                 if (maxLat - minLat > 0.0001 && maxLon - minLon > 0.0001) {
                     val bounds = LatLngBounds(LatLng(minLat - 0.002, minLon - 0.002), LatLng(maxLat + 0.002, maxLon + 0.002))
                     try {
+                        isProgrammaticAnimating = true
                         cameraPositionState.animate(
                             CameraUpdateFactory.newLatLngBounds(bounds, 90),
                             durationMs = 500
                         )
+                        delay(100L)
                     } catch (e: Exception) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
                         Log.w("GoogleMapCameraCoord", "Could not animate to itinerary bounds", e)
+                    } finally {
+                        isProgrammaticAnimating = false
                     }
                 }
             }
