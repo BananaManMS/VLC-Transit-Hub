@@ -1,11 +1,13 @@
 package com.example.ui.metro
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 
 /**
  * Representa una salida secundaria de una misma línea (ej. +12 min a otro destino o al mismo destino).
  */
+@Immutable
 data class UpcomingDepartureSummary(
     val id: String,
     val destination: String,
@@ -19,6 +21,7 @@ data class UpcomingDepartureSummary(
 /**
  * Agrupa todas las salidas de una misma línea que van en la misma dirección general.
  */
+@Immutable
 data class LineDeparturesGroupUiModel(
     val lineId: String,
     val primaryDestination: String,
@@ -35,6 +38,7 @@ data class LineDeparturesGroupUiModel(
 /**
  * Representa todas las líneas y salidas agrupadas en una dirección física/topológica concreta (Sentido 0 o Sentido 1).
  */
+@Immutable
 data class MetroDirectionGroup(
     val directionId: Int, // 0 o 1
     val lines: List<LineDeparturesGroupUiModel>

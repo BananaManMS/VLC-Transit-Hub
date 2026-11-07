@@ -90,13 +90,19 @@ class TripNotificationManager(private val context: Context) {
             }
             notificationManager.createNotificationChannel(channel)
 
+            // Clean up obsolete v5 alert channel that had IMPORTANCE_DEFAULT
+            try {
+                notificationManager.deleteNotificationChannel("active_trip_alert_channel_v5")
+            } catch (_: Exception) {}
+
             val alertChannel = NotificationChannel(
                 CHANNEL_ALERT_ID,
                 context.getString(R.string.notif_channel_critical_alerts),
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = context.getString(R.string.notif_channel_critical_alerts_desc)
                 enableVibration(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             notificationManager.createNotificationChannel(alertChannel)
         }
@@ -133,8 +139,10 @@ class TripNotificationManager(private val context: Context) {
             .setContentTitle(title)
             .setContentText(desc)
             .setOngoing(true)
+            .setGroup(GROUP_ACTIVE_TRIP)
             .setSortKey("!0_PRIMARY_LIVE_TRIP")
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -249,8 +257,11 @@ class TripNotificationManager(private val context: Context) {
                 .setSmallIcon(R.drawable.ic_stat_train_logo)
                 .setContentTitle(alertTitle)
                 .setContentText(alertBody)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setSortKey("z_trip_alert")
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+                .setGroup(GROUP_ACTIVE_TRIP)
+                .setSortKey("!1_ALERT")
                 .setTimeoutAfter(12000L)
                 .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
@@ -289,9 +300,12 @@ class TripNotificationManager(private val context: Context) {
                 .setSmallIcon(R.drawable.ic_stat_train_logo)
                 .setContentTitle(leaveTitle)
                 .setContentText(leaveBody)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setSortKey("z_trip_alert")
-                .setTimeoutAfter(12000L)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+                .setGroup(GROUP_ACTIVE_TRIP)
+                .setSortKey("!1_ALERT")
+                .setTimeoutAfter(10000L)
                 .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
                 .setAutoCancel(true)
@@ -374,8 +388,12 @@ class TripNotificationManager(private val context: Context) {
                     .setSmallIcon(R.drawable.ic_stat_train_logo)
                     .setContentTitle(debarkTitle)
                     .setContentText(debarkBody)
-                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                    .setSortKey("z_trip_alert")
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+                    .setGroup(GROUP_ACTIVE_TRIP)
+                    .setSortKey("!1_ALERT")
+                    .setTimeoutAfter(10000L)
                     .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
                     .setDefaults(NotificationCompat.DEFAULT_ALL)
                     .setAutoCancel(true)
@@ -501,6 +519,19 @@ class TripNotificationManager(private val context: Context) {
             )
             val cancelActionText = if (currentAppLanguage == AppLanguage.ES) "Cancelar viaje" else "Cancel·lar viatge"
 
+            val publicNotification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_train_logo)
+                .setContentTitle(titleText)
+                .setContentText(subtitleText)
+                .setSubText(chipText)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setOngoing(true)
+                .setGroup(GROUP_ACTIVE_TRIP)
+                .setSortKey("!0_PRIMARY_LIVE_TRIP")
+                .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+                .setContentIntent(openAppPendingIntent)
+                .build()
+
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_train_logo)
                 .setContentTitle(titleText)
@@ -510,8 +541,11 @@ class TripNotificationManager(private val context: Context) {
                 .setCustomBigContentView(expandedView)
                 .setStyle(NotificationCompat.DecoratedCustomViewStyle())
                 .setOngoing(true)
+                .setGroup(GROUP_ACTIVE_TRIP)
                 .setSortKey("!0_PRIMARY_LIVE_TRIP")
                 .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setPublicVersion(publicNotification)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .setOnlyAlertOnce(true)
@@ -556,9 +590,10 @@ class TripNotificationManager(private val context: Context) {
             .setContentTitle(title)
             .setContentText(content)
             .setOngoing(false)
-            .setGroup(GROUP_ACTIVE_TRIP_ONGOING)
-            .setSortKey("0_ongoing_trip")
+            .setGroup(GROUP_ACTIVE_TRIP)
+            .setSortKey("!0_PRIMARY_LIVE_TRIP")
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setSound(null)
@@ -618,11 +653,13 @@ class TripNotificationManager(private val context: Context) {
             .setContentText(text)
             .setOngoing(false)
             .setContentIntent(openAppPendingIntent)
-            .setSortKey("z_trip_alert")
-            .setTimeoutAfter(30000L)
+            .setGroup(GROUP_ACTIVE_TRIP)
+            .setSortKey("!1_ALERT")
+            .setTimeoutAfter(20000L)
             .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(Notification.DEFAULT_ALL)
             .setVibrate(longArrayOf(0, 350, 150, 350))
             .setAutoCancel(true)
@@ -666,9 +703,12 @@ class TripNotificationManager(private val context: Context) {
             .setSmallIcon(R.drawable.ic_stat_train_logo)
             .setContentTitle(title)
             .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setSortKey("z_trip_alert")
-            .setTimeoutAfter(30000L)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setGroup(GROUP_ACTIVE_TRIP)
+            .setSortKey("!1_ALERT")
+            .setTimeoutAfter(12000L)
             .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_ALL)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
@@ -715,8 +755,9 @@ class TripNotificationManager(private val context: Context) {
         const val NOTIFICATION_BOARDING_CONFIRM_ID = 4005
         const val NOTIFICATION_TRANSFER_ARRIVAL_ID = 4006
         const val CHANNEL_ID = "active_trip_channel_v4"
-        const val CHANNEL_ALERT_ID = "active_trip_alert_channel_v5"
-        const val GROUP_ACTIVE_TRIP_ONGOING = "com.example.transit.GROUP_ACTIVE_TRIP_ONGOING"
-        const val GROUP_TRIP_ALERTS = "com.example.transit.GROUP_TRIP_ALERTS"
+        const val CHANNEL_ALERT_ID = "active_trip_alert_channel_v6"
+        const val GROUP_ACTIVE_TRIP = "com.example.transit.GROUP_ACTIVE_TRIP"
+        const val GROUP_ACTIVE_TRIP_ONGOING = GROUP_ACTIVE_TRIP
+        const val GROUP_TRIP_ALERTS = GROUP_ACTIVE_TRIP
     }
 }

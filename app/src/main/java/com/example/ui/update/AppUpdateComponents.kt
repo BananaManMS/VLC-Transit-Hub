@@ -41,18 +41,43 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
 
-class AppUpdateViewModel : ViewModel() {
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import kotlinx.coroutines.Dispatchers
+
+class AppUpdateViewModel(application: Application = com.example.MainApplication.instance) : AndroidViewModel(application) {
     private val _updateState = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
     val updateState: StateFlow<UpdateDownloadState> = _updateState.asStateFlow()
 
     private var downloadedApkFile: File? = null
 
     fun checkForUpdate(silentIfUpToDate: Boolean = false) {
-        viewModelScope.launch {
-            if (!silentIfUpToDate) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val db = com.example.data.database.AppDatabase.getDatabase(getApplication())
+            val now = System.currentTimeMillis()
+            val twelveHoursMs = 12 * 60 * 60 * 1000L
+
+            if (silentIfUpToDate) {
+                val lastCheckStr = try {
+                    db.preferenceDao().getPreference("last_app_update_check")?.value
+                } catch (_: Exception) { null }
+                val lastCheck = lastCheckStr?.toLongOrNull() ?: 0L
+                if (now - lastCheck < twelveHoursMs) {
+                    // Less than 12 hours passed since last check, skip
+                    return@launch
+                }
+            } else {
                 _updateState.value = UpdateDownloadState.Checking
             }
+
             val result = AppUpdateManager.checkForUpdate()
+
+            try {
+                db.preferenceDao().insertPreference(
+                    com.example.data.database.PreferenceEntity("last_app_update_check", now.toString())
+                )
+            } catch (_: Exception) {}
+
             result.onSuccess { info ->
                 if (info.isNewerVersion) {
                     _updateState.value = UpdateDownloadState.UpdateAvailable(info)

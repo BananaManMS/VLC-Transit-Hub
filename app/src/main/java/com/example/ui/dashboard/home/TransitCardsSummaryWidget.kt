@@ -142,7 +142,7 @@ fun TransitCardsSummaryWidget(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(cards) { card ->
+                    items(cards, key = { it.cardNumber }) { card ->
                         CompactTransitCardItem(
                             card = card,
                             appLanguage = appLanguage,

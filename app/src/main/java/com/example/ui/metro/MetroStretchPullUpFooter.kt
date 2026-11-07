@@ -388,7 +388,7 @@ fun MetroScheduledHeaderAndFilters(
                     }
                 }
 
-                items(availableLines) { line ->
+                items(availableLines, key = { it }) { line ->
                     val isSelected = selectedLineFilter?.replace("L", "", ignoreCase = true)?.trim()
                         .equals(line.replace("L", "", ignoreCase = true).trim(), ignoreCase = true)
                     val lineHex = LineColorResolver.getMetroLineColorHex("L$line")

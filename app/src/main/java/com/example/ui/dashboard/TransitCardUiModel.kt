@@ -1,7 +1,9 @@
 package com.example.ui.dashboard
 
+import androidx.compose.runtime.Immutable
 import com.example.data.database.TransitCardEntity
 
+@Immutable
 data class TransitCardUiModel(
     val entity: TransitCardEntity,
     val cardNumber: String,
@@ -26,6 +28,7 @@ data class TransitCardUiModel(
     val viajesList: List<TransitTripUiModel>
 )
 
+@Immutable
 data class TransitTripUiModel(
     val estacion: String,
     val fecha: String,

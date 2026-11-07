@@ -37,8 +37,8 @@ fun DashboardAutoUpdateHandler(
     // On app startup, clean old cache APKs and run a background update check
     LaunchedEffect(Unit) {
         AppUpdateManager.cleanOldUpdateApks(context)
-        // Short pause to allow initial startup network and repository loads to stabilize
-        delay(1500L)
+        // Staggered startup: wait ~8s so UI, alerts, and syncs complete smoothly
+        delay(8000L)
         appUpdateViewModel.checkForUpdate(silentIfUpToDate = true)
     }
 

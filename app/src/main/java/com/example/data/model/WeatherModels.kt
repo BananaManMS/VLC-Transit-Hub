@@ -1,5 +1,6 @@
 package com.example.data.model
 
+import androidx.compose.runtime.Immutable
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -50,6 +51,7 @@ data class ForecastHour(
     )
 }
 
+@Immutable
 data class WeatherData(
     val cityName: String = "Valencia",
     val currentTempCelsius: Int = 22,

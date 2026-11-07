@@ -132,6 +132,7 @@ class QuickVehicleTrackingService : Service() {
             ).apply {
                 description = getString(R.string.quick_track_alert_channel_desc)
                 enableVibration(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             notificationManager.createNotificationChannel(alertChannel)
         }
@@ -730,6 +731,7 @@ class QuickVehicleTrackingService : Service() {
                     .setFlag(Notification.FLAG_PROMOTED_ONGOING, true)
                     .setOnlyAlertOnce(true)
                     .setCategory(Notification.CATEGORY_NAVIGATION)
+                    .setVisibility(Notification.VISIBILITY_PUBLIC)
                     .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
                     .setContentIntent(contentPendingIntent)
                     .addAction(dismissAction)
@@ -752,9 +754,11 @@ class QuickVehicleTrackingService : Service() {
             .setSubText(chipText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText).setSummaryText(chipText))
             .setOngoing(true)
-            .setSortKey("z_quick_track")
+            .setGroup("com.example.transit.GROUP_QUICK_TRACK")
+            .setSortKey("!0_PRIMARY_LIVE_TRIP")
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setNotificationSilent()
@@ -807,7 +811,11 @@ class QuickVehicleTrackingService : Service() {
             .setContentTitle(title)
             .setContentText(desc)
             .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setGroup("com.example.transit.GROUP_QUICK_TRACK")
+            .setSortKey("!1_ALERT")
+            .setTimeoutAfter(10000L)
             .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)

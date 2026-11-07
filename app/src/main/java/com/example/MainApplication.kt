@@ -28,8 +28,10 @@ class MainApplication : Application() {
         // Clean any leftover update APK files from previous installs
         com.example.util.AppUpdateManager.cleanOldUpdateApks(this)
         
-        com.example.util.StartupProfiler.log("MainApp", "scheduleDailyUpdateWorker")
-        scheduleDailyUpdateWorker()
+        applicationScope.launch(Dispatchers.IO) {
+            com.example.util.StartupProfiler.log("MainApp", "scheduleDailyUpdateWorker")
+            scheduleDailyUpdateWorker()
+        }
         
         // Trigger an initial async sync on startup
         applicationScope.launch {
@@ -43,9 +45,10 @@ class MainApplication : Application() {
             }
         }
 
-        // Proactively pre-warm GeoJSON map line overlays and station footprints in background
-        applicationScope.launch {
+        // Proactively pre-warm GeoJSON map line overlays and station footprints in background (deferred by 4s to prioritize initial UI)
+        applicationScope.launch(Dispatchers.IO) {
             try {
+                kotlinx.coroutines.delay(4000L)
                 com.example.ui.map.components.MetroMapOverlayLoader.ensureLoaded(this@MainApplication)
                 com.example.ui.map.components.CercaniasMapOverlayLoader.ensureLoaded(this@MainApplication)
                 com.example.ui.map.components.MetroStationFootprintsOverlayManager.preloadGeoJson(this@MainApplication)

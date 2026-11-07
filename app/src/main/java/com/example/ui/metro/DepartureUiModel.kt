@@ -1,5 +1,6 @@
 package com.example.ui.metro
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import com.example.ui.dashboard.AppLanguage
@@ -9,6 +10,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
 
+@Immutable
 data class DepartureUiModel(
     val id: String,
     val lineId: String,

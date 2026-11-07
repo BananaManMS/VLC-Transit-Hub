@@ -151,7 +151,10 @@ fun MetroScheduledDeparturesSheet(
                         .heightIn(max = 440.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(scheduledDepartures) { item ->
+                    items(
+                        items = scheduledDepartures,
+                        key = { "${it.line}_${it.destination}_${it.departureTime}_${it.trainServiceId}" }
+                    ) { item ->
                         ScheduledDepartureRow(
                             item = item,
                             appLanguage = appLanguage,

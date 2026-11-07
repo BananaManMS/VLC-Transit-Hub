@@ -226,9 +226,9 @@ fun rememberGoogleMapTransitRoutes(
                     EmtMapOverlayLoader.ensureLoaded(context)
                     val polylines = mutableListOf<GoogleMapPolyline>()
                     val polyWidth = when (busPolyCategory) {
-                        0 -> 11f
-                        1 -> 15f
-                        else -> 18.5f
+                        0 -> 6f
+                        1 -> 9f
+                        else -> 12f
                     }
                     emtLines.forEach { lineRef ->
                         val shapes = EmtMapOverlayLoader.getShapesForLine(
@@ -283,9 +283,9 @@ fun rememberGoogleMapTransitRoutes(
                         else -> selectedMetrobusShapes
                     }
                     val polyWidth = when (busPolyCategory) {
-                        0 -> 11f
-                        1 -> 15f
-                        else -> 18.5f
+                        0 -> 6f
+                        1 -> 9f
+                        else -> 12f
                     }
                     val mbColor = Color(AndroidColor.parseColor("#F97316"))
                     val polylines = filteredShapes.map { (key, points) ->
@@ -332,9 +332,9 @@ fun rememberGoogleMapTransitRoutes(
                         else -> shapesMap
                     }
                     val polyWidth = when (busPolyCategory) {
-                        0 -> 11f
-                        1 -> 15f
-                        else -> 18.5f
+                        0 -> 6f
+                        1 -> 9f
+                        else -> 12f
                     }
                     val mbColor = Color(AndroidColor.parseColor("#F97316"))
                     val polylines = filteredShapes.map { (key, points) ->

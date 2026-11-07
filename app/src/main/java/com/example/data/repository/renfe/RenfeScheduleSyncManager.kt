@@ -6,6 +6,8 @@ import com.example.data.database.AppDatabase
 import com.example.data.database.CercaniasStationEntity
 import com.example.data.database.RenfeScheduleItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.File
@@ -259,54 +261,60 @@ class RenfeScheduleSyncManager(
     }
 
     suspend fun initDatabaseFromAssetsIfNeeded() = withContext(Dispatchers.IO) {
-        try {
-            val currentAssetsVersion = database.preferenceDao().getPreference("cercanias_assets_version")?.value ?: "0"
-            if (currentAssetsVersion != "19") {
-                try {
-                    if (localScheduleFile.exists()) {
-                        localScheduleFile.delete()
-                    }
-                } catch (e: Exception) {}
-                try {
-                    stationDao.deleteAllStations()
-                } catch (e: Exception) {}
-                database.preferenceDao().insertPreference(
-                    com.example.data.database.PreferenceEntity("cercanias_assets_version", "19")
-                )
+        if (isAssetsInitCompleted) return@withContext
+        initMutex.withLock {
+            if (isAssetsInitCompleted) return@withLock
+            try {
+                val currentAssetsVersion = database.preferenceDao().getPreference("cercanias_assets_version")?.value ?: "0"
+                if (currentAssetsVersion != "19") {
+                    try {
+                        if (localScheduleFile.exists()) {
+                            localScheduleFile.delete()
+                        }
+                    } catch (e: Exception) {}
+                    try {
+                        stationDao.deleteAllStations()
+                    } catch (e: Exception) {}
+                    database.preferenceDao().insertPreference(
+                        com.example.data.database.PreferenceEntity("cercanias_assets_version", "19")
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("RenfeScheduleSyncManager", "Error checking/updating cercanias assets version preference", e)
             }
-        } catch (e: Exception) {
-            Log.e("RenfeScheduleSyncManager", "Error checking/updating cercanias assets version preference", e)
-        }
 
-        val jsonString = getScheduleJsonString()
-        if (jsonString.isBlank()) {
-            Log.e("RenfeScheduleSyncManager", "JSON file is empty")
-            return@withContext
-        }
-        try {
-            val jsonArray = JSONArray(jsonString)
-            val count = stationDao.getStationCount()
-            val existingStations = try { stationDao.getAllStations() } catch (e: Exception) { emptyList() }
-            val hasMojibake = existingStations.any { it.nombre.contains("ã") }
-            val hasTorreblanca = existingStations.any { it.nombre.contains("Torreblanca del Sol") }
-            val hasOldAlcudia = existingStations.any { it.nombre.equals("l'Alcudia", ignoreCase = true) }
-            val hasUnnormalizedStations = existingStations.any {
-                it.nombre.contains("Estació del Nord") ||
-                it.nombre.contains("Estacio del Nord") ||
-                it.nombre == "València Sant Isidre" ||
-                it.nombre == "València-Sant Isidre" ||
-                it.nombre == "València Cabanyal" ||
-                it.nombre == "València-Cabanyal" ||
-                it.nombre == "València-La Font de Sant Lluís" ||
-                it.nombre == "Valencia-La Font de Sant Lluis"
+            val jsonString = getScheduleJsonString()
+            if (jsonString.isBlank()) {
+                Log.e("RenfeScheduleSyncManager", "JSON file is empty")
+                isAssetsInitCompleted = true
+                return@withLock
             }
-            val hasEmptyHorarios = existingStations.isEmpty() || existingStations.any { it.horarios.isEmpty() }
-            if (count != jsonArray.length() || count == 0 || hasMojibake || hasTorreblanca || hasOldAlcudia || hasUnnormalizedStations || hasEmptyHorarios) {
-                loadAndSaveScheduleJson(jsonArray)
-                buildTripDestinationMapFromAssets()
+            try {
+                val jsonArray = JSONArray(jsonString)
+                val count = stationDao.getStationCount()
+                val existingStations = try { stationDao.getAllStations() } catch (e: Exception) { emptyList() }
+                val hasMojibake = existingStations.any { it.nombre.contains("ã") }
+                val hasTorreblanca = existingStations.any { it.nombre.contains("Torreblanca del Sol") }
+                val hasOldAlcudia = existingStations.any { it.nombre.equals("l'Alcudia", ignoreCase = true) }
+                val hasUnnormalizedStations = existingStations.any {
+                    it.nombre.contains("Estació del Nord") ||
+                    it.nombre.contains("Estacio del Nord") ||
+                    it.nombre == "València Sant Isidre" ||
+                    it.nombre == "València-Sant Isidre" ||
+                    it.nombre == "València Cabanyal" ||
+                    it.nombre == "València-Cabanyal" ||
+                    it.nombre == "València-La Font de Sant Lluís" ||
+                    it.nombre == "Valencia-La Font de Sant Lluis"
+                }
+                val hasEmptyHorarios = existingStations.isEmpty() || existingStations.any { it.horarios.isEmpty() }
+                if (count != jsonArray.length() || count == 0 || hasMojibake || hasTorreblanca || hasOldAlcudia || hasUnnormalizedStations || hasEmptyHorarios) {
+                    loadAndSaveScheduleJson(jsonArray)
+                    buildTripDestinationMapFromAssets()
+                }
+                isAssetsInitCompleted = true
+            } catch (e: Exception) {
+                Log.e("RenfeScheduleSyncManager", "Error initializing Cercanías database", e)
             }
-        } catch (e: Exception) {
-            Log.e("RenfeScheduleSyncManager", "Error initializing Cercanías database", e)
         }
     }
 
@@ -527,5 +535,11 @@ class RenfeScheduleSyncManager(
         stations.forEach { map[it.stop_id] = it.nombre }
         stationNameMap = map
         return@withContext map
+    }
+
+    companion object {
+        private val initMutex = Mutex()
+        @Volatile
+        private var isAssetsInitCompleted = false
     }
 }

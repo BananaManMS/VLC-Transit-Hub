@@ -1,5 +1,8 @@
 package com.example.ui.cercanias
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class CercaniasDeparture(
     val routeId: String,
     val destination: String,
@@ -28,6 +31,7 @@ data class CercaniasDeparture(
     val formattedDestination: String = ""
 )
 
+@Immutable
 data class CercaniasAlert(
     val id: String,
     val headerEs: String,
@@ -40,6 +44,7 @@ data class CercaniasAlert(
     val timestamp: Long = 0L
 )
 
+@Immutable
 data class LiveVehicleInfo(
     val tripId: String,
     val routeId: String,
@@ -60,6 +65,7 @@ data class LiveVehicleInfo(
     val destinationName: String = ""
 )
 
+@Immutable
 data class ScheduledDeparture(
     val line: String,
     val destination: String,

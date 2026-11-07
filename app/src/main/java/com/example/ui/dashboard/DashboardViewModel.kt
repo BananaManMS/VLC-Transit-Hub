@@ -664,17 +664,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var clockJob: Job? = null
 
-    fun checkForRemoteAnnouncements() {
+    fun checkForRemoteAnnouncements(force: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
-            val list = remoteAnnouncementRepository.fetchActiveAnnouncements()
+            val list = remoteAnnouncementRepository.fetchActiveAnnouncements(force = force)
             _remoteAnnouncements.value = list
         }
     }
 
-    fun loadAllActiveAnnouncements() {
+    fun loadAllActiveAnnouncements(force: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             _isAnnouncementsLoading.value = true
-            val list = remoteAnnouncementRepository.fetchAllAnnouncements()
+            val list = remoteAnnouncementRepository.fetchAllAnnouncements(force = force)
             _allActiveAnnouncements.value = list
             _isAnnouncementsLoading.value = false
         }
@@ -692,10 +692,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     init {
-        // Automatically check for remote announcements on startup
-        checkForRemoteAnnouncements()
-        loadAllActiveAnnouncements()
-
         // Automatically sync local Android Calendar events if permission is granted
         syncGoogleCalendarEvents()
 
@@ -788,6 +784,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         try {
                             repository.savePreference("cached_weather_json", gson.toJson(weather))
                             repository.savePreference("cached_weather_timestamp", System.currentTimeMillis().toString())
+                            val currentLoc = _lastLocation.value
+                            if (currentLoc != null) {
+                                repository.savePreference("cached_weather_lat", currentLoc.first.toString())
+                                repository.savePreference("cached_weather_lon", currentLoc.second.toString())
+                            }
                         } catch (_: Exception) {}
                     }
                 }
@@ -795,22 +796,34 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 Log.w("DashboardViewModel", "Background weather or location fetch failed or timed out: ${e.message}")
             }
 
-            // Phase 2: Deferred alerts loading after first frame render (1.5s delay)
+            // Escalona el arranque secuencialmente respetando tiempos:
+            // 0-1 s: Solo UI y datos locales (ya resueltos arriba)
             viewModelScope.launch(Dispatchers.IO) {
-                delay(1500L)
+                // ~2 s: Alertas Metro/Renfe y avisos remotos
+                delay(2000L)
                 fetchAllDashboardAlerts()
-            }
+                checkForRemoteAnnouncements()
+                loadAllActiveAnnouncements()
 
-            // Periodic 24h/weekly data synchronization against GitHub (only if onboarding is already completed)
-            // Staggered by 2s to allow immediate frame rendering and weather cache resolution without network/disk contention
-            if (!_shouldShowOnboarding.value) {
-                try {
-                    delay(2000L)
-                    com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(getApplication())
-                    com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(getApplication())
-                    com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(getApplication())
-                } catch (e: Exception) {
-                    Log.w("DashboardViewModel", "Background transit sync failed: ${e.message}")
+                // ~4 s: EMT sync
+                delay(2000L)
+                if (!_shouldShowOnboarding.value) {
+                    try {
+                        com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(getApplication())
+                    } catch (e: Exception) {
+                        Log.w("DashboardViewModel", "Background EMT sync failed: ${e.message}")
+                    }
+                }
+
+                // ~6 s: Metrobús sync y Cercanías CSV
+                delay(2000L)
+                if (!_shouldShowOnboarding.value) {
+                    try {
+                        com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(getApplication())
+                        com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(getApplication())
+                    } catch (e: Exception) {
+                        Log.w("DashboardViewModel", "Background transit sync failed: ${e.message}")
+                    }
                 }
             }
         }
@@ -963,6 +976,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             val startTime = System.currentTimeMillis()
             _isRefreshing.value = true
+            checkForRemoteAnnouncements(force = true)
+            loadAllActiveAnnouncements(force = true)
             val currentLocation = if (_useGpsOnOpen.value) _lastLocation.value else null
             val newData = if (currentLocation != null) {
                 WeatherService.getWeatherDataByCoords(currentLocation.first, currentLocation.second, _weatherCity.value)
@@ -971,6 +986,14 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
             if (newData != null) {
                 _weatherData.value = newData
+                try {
+                    repository.savePreference("cached_weather_json", gson.toJson(newData))
+                    repository.savePreference("cached_weather_timestamp", System.currentTimeMillis().toString())
+                    if (currentLocation != null) {
+                        repository.savePreference("cached_weather_lat", currentLocation.first.toString())
+                        repository.savePreference("cached_weather_lon", currentLocation.second.toString())
+                    }
+                } catch (_: Exception) {}
             }
             val elapsed = System.currentTimeMillis() - startTime
             if (elapsed < 400L) {
@@ -1022,6 +1045,25 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             repository.savePreference("last_latitude", latitude.toString())
             repository.savePreference("last_longitude", longitude.toString())
+
+            val cachedTimestamp = repository.getPreference("cached_weather_timestamp", "0").toLongOrNull() ?: 0L
+            val isCacheExpired = (System.currentTimeMillis() - cachedTimestamp) > 30 * 60 * 1000L // 30 minutes
+
+            val lastWeatherLat = repository.getPreference("cached_weather_lat", "").toDoubleOrNull()
+            val lastWeatherLon = repository.getPreference("cached_weather_lon", "").toDoubleOrNull()
+            val distanceMovedMeters = if (lastWeatherLat != null && lastWeatherLon != null) {
+                val results = FloatArray(1)
+                android.location.Location.distanceBetween(lastWeatherLat, lastWeatherLon, latitude, longitude, results)
+                results[0].toDouble()
+            } else {
+                Double.MAX_VALUE
+            }
+
+            // Si los datos ya existen en memoria, no han caducado (30 min) y no se ha movido más de ~5 km, omitimos la consulta
+            if (_weatherData.value != null && !isCacheExpired && distanceMovedMeters < 5000.0) {
+                return@launch
+            }
+
             try {
                 val geocoder = android.location.Geocoder(context, Locale.getDefault())
                 var cityName: String? = null
@@ -1051,6 +1093,12 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 val fetchedData = WeatherService.getWeatherDataByCoords(latitude, longitude, finalCity)
                 if (fetchedData != null) {
                     _weatherData.value = fetchedData
+                    try {
+                        repository.savePreference("cached_weather_json", gson.toJson(fetchedData))
+                        repository.savePreference("cached_weather_timestamp", System.currentTimeMillis().toString())
+                        repository.savePreference("cached_weather_lat", latitude.toString())
+                        repository.savePreference("cached_weather_lon", longitude.toString())
+                    } catch (_: Exception) {}
                 }
                 repository.savePreference("weather_city", finalCity)
             } catch (e: Exception) {

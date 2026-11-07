@@ -336,7 +336,7 @@ fun CercaniasDeparturesTab(
                     }
                 }
 
-                items(availableLines) { line ->
+                items(availableLines, key = { it }) { line ->
                     val isSelected = selectedLineFilters.contains(line)
                     val isAnySelected = selectedLineFilters.isNotEmpty()
                     val alpha = if (isAnySelected && !isSelected) 0.38f else 1.0f
