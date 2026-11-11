@@ -21,7 +21,9 @@ data class UnifiedTransitDeparture(
     val operator: TransitOperator,
     val isDiverted: Boolean = false,
     val divertedMessage: String? = null,
-    val occupancy: String = ""
+    val occupancy: String = "",
+    val isTomorrow: Boolean = false,
+    val dayLabel: String = ""
 )
 
 data class UnifiedTransitStop(
@@ -49,7 +51,9 @@ fun EmtBusTime.toUnifiedDeparture(index: Int = 0): UnifiedTransitDeparture {
         operator = TransitOperator.EMT,
         isDiverted = isDiverted,
         divertedMessage = divertedMessage,
-        occupancy = ""
+        occupancy = "",
+        isTomorrow = isTomorrow,
+        dayLabel = dayLabel
     )
 }
 
@@ -63,7 +67,9 @@ fun MetrobusDepartureUiModel.toUnifiedDeparture(index: Int = 0): UnifiedTransitD
         formattedEstimatedTime = departureTime.trim(),
         isRealTime = isRealTime,
         operator = TransitOperator.METROBUS,
-        occupancy = ocupacion
+        occupancy = ocupacion,
+        isTomorrow = isTomorrow,
+        dayLabel = dayLabel
     )
 }
 

@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
@@ -145,6 +146,12 @@ fun MetroScheduledDeparturesSheet(
                     )
                 }
             } else {
+                var visibleCount by remember(scheduledDepartures) { mutableIntStateOf(25) }
+                val displayedDepartures = scheduledDepartures.take(visibleCount)
+                val firstTomorrowIndex = remember(displayedDepartures) {
+                    displayedDepartures.indexOfFirst { it.isTomorrow }
+                }
+
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -152,9 +159,20 @@ fun MetroScheduledDeparturesSheet(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(
-                        items = scheduledDepartures,
-                        key = { "${it.line}_${it.destination}_${it.departureTime}_${it.trainServiceId}" }
-                    ) { item ->
+                        count = displayedDepartures.size,
+                        key = { idx ->
+                            val it = displayedDepartures[idx]
+                            "${it.line}_${it.destination}_${it.departureTime}_${it.trainServiceId}_${it.isTomorrow}_$idx"
+                        }
+                    ) { idx ->
+                        if (idx == firstTomorrowIndex) {
+                            val tomorrowLabel = displayedDepartures[idx].dayLabel.ifBlank { "Mañana" }
+                            MetroScheduledDayDivider(
+                                label = tomorrowLabel,
+                                isDarkMode = isDarkMode
+                            )
+                        }
+                        val item = displayedDepartures[idx]
                         ScheduledDepartureRow(
                             item = item,
                             appLanguage = appLanguage,
@@ -167,9 +185,84 @@ fun MetroScheduledDeparturesSheet(
                             } else null
                         )
                     }
+
+                    if (visibleCount < scheduledDepartures.size) {
+                        item(key = "metro_load_more_btn") {
+                            TextButton(
+                                onClick = {
+                                    visibleCount = (visibleCount + 25).coerceAtMost(scheduledDepartures.size)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("metro_load_more_scheduled_btn")
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "Cargar más salidas (${scheduledDepartures.size - visibleCount} restantes)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun MetroScheduledDayDivider(
+    label: String,
+    isDarkMode: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val dividerColor = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E7EB)
+    val badgeBg = if (isDarkMode) Color(0xFF262628) else Color(0xFFF1F5F9)
+    val textColor = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = dividerColor,
+            thickness = 1.dp
+        )
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = badgeBg,
+            modifier = Modifier.padding(horizontal = 10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Event,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = textColor
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = textColor
+                )
+            }
+        }
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = dividerColor,
+            thickness = 1.dp
+        )
     }
 }
 
@@ -210,7 +303,7 @@ fun MetroScheduledSwipePrompt(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "Consulta el horario teórico completo para hoy",
+                    text = "Consulta el horario teórico completo para hoy y mañana",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

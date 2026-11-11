@@ -35,5 +35,7 @@ data class EmtBusTime(
     val secondsRemaining: Int = 0,
     val isRealTime: Boolean = true,
     val isDiverted: Boolean = false,
-    val divertedMessage: String = ""
+    val divertedMessage: String = "",
+    val isTomorrow: Boolean = false,
+    val dayLabel: String = ""
 )

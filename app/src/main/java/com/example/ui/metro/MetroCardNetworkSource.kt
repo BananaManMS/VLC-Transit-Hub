@@ -59,7 +59,6 @@ object MetroCardNetworkSource {
             .url(url)
             .post(requestBody)
             .addHeader("X-App-Secret", apiSecret)
-            .addHeader("X-API-Secret", apiSecret)
             .addHeader("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
             .build()
 
@@ -78,7 +77,6 @@ object MetroCardNetworkSource {
             val getRequest = Request.Builder()
                 .url(getUrl)
                 .addHeader("X-App-Secret", apiSecret)
-                .addHeader("X-API-Secret", apiSecret)
                 .addHeader("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
                 .build()
 

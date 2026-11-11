@@ -151,6 +151,15 @@ fun DashboardHomeTab(
     val favoriteMetrobusStops by (busViewModel?.favoriteMetrobusStops ?: dashboardViewModel.favoriteMetrobusStops).collectAsState()
     val metrobusStopAliases by (busViewModel?.metrobusStopAliases ?: dashboardViewModel.metrobusStopAliases).collectAsState()
     val favoriteTransitModes by dashboardViewModel.favoriteTransitModes.collectAsState()
+    val habitualLines by dashboardViewModel.habitualLines.collectAsState()
+    var showHabitualLinesSheet by remember { mutableStateOf(false) }
+    var availableLinesGrouped by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+
+    LaunchedEffect(showHabitualLinesSheet) {
+        if (showHabitualLinesSheet) {
+            availableLinesGrouped = dashboardViewModel.getAvailableLinesGrouped()
+        }
+    }
 
     val showMetroNearby = favoriteTransitModes.isEmpty() || favoriteTransitModes.contains("METRO")
     val showCercaniasNearby = favoriteTransitModes.isEmpty() || favoriteTransitModes.contains("CERCANIAS")
@@ -438,6 +447,7 @@ fun DashboardHomeTab(
                                 busStopAliases = busStopAliases,
                                 nearbyMetrobusStops = if (showMetrobusNearby) nearbyMetrobusStops else emptyList(),
                                 metrobusStopAliases = metrobusStopAliases,
+                                habitualLines = habitualLines,
                                 refLat = refLat,
                                 refLon = refLon,
                                 onMetroStationClick = { stationId ->
@@ -460,6 +470,7 @@ fun DashboardHomeTab(
                                     busViewModel?.selectMetrobusStopFromEntity(metrobusStop)
                                     onNavigateToTab(DashboardTab.Bus, 1)
                                 },
+                                onOpenHabitualLines = { showHabitualLinesSheet = true },
                                 onRequestLocationPermission = onRequestLocationPermission
                             )
 
@@ -532,6 +543,7 @@ fun DashboardHomeTab(
                         busStopAliases = busStopAliases,
                         nearbyMetrobusStops = if (showMetrobusNearby) nearbyMetrobusStops else emptyList(),
                         metrobusStopAliases = metrobusStopAliases,
+                        habitualLines = habitualLines,
                         refLat = refLat,
                         refLon = refLon,
                         onMetroStationClick = { stationId ->
@@ -554,6 +566,7 @@ fun DashboardHomeTab(
                             busViewModel?.selectMetrobusStopFromEntity(metrobusStop)
                             onNavigateToTab(DashboardTab.Bus, 1)
                         },
+                        onOpenHabitualLines = { showHabitualLinesSheet = true },
                         onRequestLocationPermission = onRequestLocationPermission
                     )
 
@@ -689,6 +702,17 @@ fun DashboardHomeTab(
             metroViewModel = targetMetroVm,
             onDismiss = { showAddCardDialog = false },
             onCardAdded = { showAddCardDialog = false }
+        )
+    }
+
+    // Modal para configurar líneas habituales
+    if (showHabitualLinesSheet) {
+        HabitualLinesSheet(
+            habitualLines = habitualLines,
+            availableLinesGrouped = availableLinesGrouped,
+            isDarkMode = isDarkMode,
+            onToggleLine = { line -> dashboardViewModel.toggleHabitualLine(line) },
+            onDismiss = { showHabitualLinesSheet = false }
         )
     }
 

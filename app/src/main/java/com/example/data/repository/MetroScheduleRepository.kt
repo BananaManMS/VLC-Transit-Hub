@@ -163,7 +163,7 @@ class MetroScheduleRepository private constructor(private val context: Context) 
      */
     suspend fun getScheduledDepartures(
         stationWebId: Int,
-        limit: Int = 500,
+        limit: Int = 1000,
         fromMinutesOfDay: Int? = null,
         toMinutesOfDay: Int? = null,
         lineFilter: String? = null
@@ -176,6 +176,7 @@ class MetroScheduleRepository private constructor(private val context: Context) 
         val currentMin = fromMinutesOfDay ?: (currentHour * 60 + calendar.get(Calendar.MINUTE))
         val activeDateIdx = getActiveDateIndex()
         val prevDateIdx = getPreviousDateIndex()
+        val nextDateIdx = getNextDateIndex()
 
         val normalizedLineFilter = lineFilter?.replace("L", "", ignoreCase = true)?.trim()
             ?.takeIf { it.isNotBlank() && !it.equals("ALL", ignoreCase = true) }
@@ -213,6 +214,8 @@ class MetroScheduleRepository private constructor(private val context: Context) 
                 val origName = webIdToNameMap[origWebId] ?: "Estación $origWebId"
 
                 var effectiveMin: Int? = null
+                var isTomorrow = false
+                var dayLabel = "Hoy"
 
                 if (currentHour < 6) {
                     // Early morning query (00:00 - 05:59):
@@ -221,17 +224,42 @@ class MetroScheduleRepository private constructor(private val context: Context) 
                         val effTodayMin = rawMin - 1440
                         if (effTodayMin >= currentMin - 2) {
                             effectiveMin = effTodayMin
+                            isTomorrow = false
+                            dayLabel = "Esta noche"
                         }
-                    } else if (dateIdx == activeDateIdx && rawMin < 1440) {
-                        // 2) Today's morning departures (only diurnals starting today, not tomorrow's late night trains)
-                        if (rawMin >= currentMin - 2) {
+                    } else if (dateIdx == activeDateIdx) {
+                        if (rawMin < 1440) {
+                            // 2) Today's morning/daytime departures (diurnals starting today)
+                            if (rawMin >= currentMin - 2) {
+                                effectiveMin = rawMin
+                                isTomorrow = false
+                                dayLabel = "Hoy"
+                            }
+                        } else {
+                            // 3) Today's late-night departures (after midnight tonight)
                             effectiveMin = rawMin
+                            isTomorrow = false
+                            dayLabel = "Esta noche"
                         }
+                    } else if (nextDateIdx != null && dateIdx == nextDateIdx) {
+                        // 4) Tomorrow's departures
+                        effectiveMin = 1440 + rawMin
+                        isTomorrow = true
+                        dayLabel = "Mañana"
                     }
                 } else {
                     // Daytime / evening query (06:00 - 23:59)
-                    if (dateIdx == activeDateIdx && rawMin >= currentMin - 2) {
-                        effectiveMin = rawMin
+                    if (dateIdx == activeDateIdx) {
+                        if (rawMin >= currentMin - 2) {
+                            effectiveMin = rawMin
+                            isTomorrow = false
+                            dayLabel = if (rawMin >= 1440) "Esta noche" else "Hoy"
+                        }
+                    } else if (nextDateIdx != null && dateIdx == nextDateIdx) {
+                        // Tomorrow's departures (daytime & night)
+                        effectiveMin = 1440 + rawMin
+                        isTomorrow = true
+                        dayLabel = "Mañana"
                     }
                 }
 
@@ -255,7 +283,9 @@ class MetroScheduleRepository private constructor(private val context: Context) 
                             originName = origName,
                             destinationWebId = destWebId,
                             destinationName = destName,
-                            trainServiceId = trainServiceId
+                            trainServiceId = trainServiceId,
+                            isTomorrow = isTomorrow,
+                            dayLabel = dayLabel
                         )
                     )
                 }
@@ -464,6 +494,21 @@ class MetroScheduleRepository private constructor(private val context: Context) 
 
         val activeIdx = getActiveDateIndex()
         return if (activeIdx > 0) activeIdx - 1 else null
+    }
+
+    fun getNextDateIndex(): Int? {
+        if (datesList.isEmpty()) return null
+        val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).apply {
+            timeZone = TimeZone.getTimeZone("Europe/Madrid")
+        }
+        val cal = Calendar.getInstance(TimeZone.getTimeZone("Europe/Madrid"))
+        cal.add(Calendar.DAY_OF_YEAR, 1)
+        val tomorrowStr = sdf.format(cal.time)
+        val idx = datesList.indexOf(tomorrowStr)
+        if (idx >= 0) return idx
+
+        val activeIdx = getActiveDateIndex()
+        return if (activeIdx + 1 < datesList.size) activeIdx + 1 else null
     }
 
     private fun loadScheduleData() {

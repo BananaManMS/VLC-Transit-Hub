@@ -62,7 +62,6 @@ class MetrobusScheduledRepository(private val context: Context) {
                 val request = Request.Builder()
                     .url(url)
                     .addHeader("X-App-Secret", API_SECRET)
-                    .addHeader("X-API-Secret", API_SECRET)
                     .build()
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
@@ -92,55 +91,70 @@ class MetrobusScheduledRepository(private val context: Context) {
                                     val normalizedHour = hourInt % 24
                                     val formattedTime = String.format(Locale.ROOT, "%02d:%02d", normalizedHour, minuteInt)
 
-                                    val diffMin: Int = if (currentHour < 6) {
+                                    val addDeparture = { dMin: Int, isTom: Boolean, dLabel: String ->
+                                        if (dMin >= -2) {
+                                            val safeDiffMin = dMin.coerceAtLeast(0)
+                                            val secondsRemaining = (safeDiffMin * 60) - currentSecond
+                                            list.add(
+                                                MetrobusDepartureUiModel(
+                                                    lineCode = lineCode,
+                                                    lineName = "Línea $lineCode",
+                                                    destination = direction,
+                                                    minutesRemaining = safeDiffMin,
+                                                    timeLabel = formattedTime,
+                                                    departureTime = formattedTime,
+                                                    routeColor = "#FBC02D",
+                                                    isRealTime = false,
+                                                    agencyName = "Metrobús",
+                                                    secondsRemaining = secondsRemaining.coerceAtLeast(0),
+                                                    isTomorrow = isTom,
+                                                    dayLabel = dLabel
+                                                )
+                                            )
+                                        }
+                                    }
+
+                                    if (currentHour < 6) {
                                         // Early morning query (00:00 - 05:59):
                                         if (hourInt >= 24) {
                                             // Late night service from yesterday's service day (e.g. 24:30 -> 00:30, 25:15 -> 01:15, 27:30 -> 03:30)
                                             val effTodayMin = (hourInt - 24) * 60 + minuteInt
-                                            effTodayMin - currentTotalMin
+                                            addDeparture(effTodayMin - currentTotalMin, false, "Esta noche")
                                         } else if (hourInt < 6) {
                                             // Early morning departures of today (00:00 - 05:59)
                                             val effTodayMin = hourInt * 60 + minuteInt
-                                            effTodayMin - currentTotalMin
+                                            addDeparture(effTodayMin - currentTotalMin, false, "Hoy")
+                                            // Tomorrow's early morning
+                                            addDeparture((1440 + effTodayMin) - currentTotalMin, true, "Mañana")
                                         } else {
                                             // Departures later today (06:00 - 23:59)
                                             val effTodayMin = hourInt * 60 + minuteInt
-                                            effTodayMin - currentTotalMin
+                                            addDeparture(effTodayMin - currentTotalMin, false, "Hoy")
+                                            // Tomorrow's daytime
+                                            addDeparture((1440 + effTodayMin) - currentTotalMin, true, "Mañana")
                                         }
                                     } else {
                                         // Daytime / evening query (06:00 - 23:59):
                                         if (hourInt >= 24) {
                                             // Late night service tonight after midnight (e.g. 24:15, 25:00)
                                             val depTotalMin = hourInt * 60 + minuteInt
-                                            depTotalMin - currentTotalMin
+                                            addDeparture(depTotalMin - currentTotalMin, false, "Esta noche")
                                         } else if (currentHour >= 20 && hourInt < 6) {
                                             // Late night departures after midnight encoded as 0, 1, 2...
                                             val depTotalMin = (hourInt + 24) * 60 + minuteInt
-                                            depTotalMin - currentTotalMin
+                                            addDeparture(depTotalMin - currentTotalMin, false, "Esta noche")
                                         } else {
-                                            val depTotalMin = hourInt * 60 + minuteInt
-                                            depTotalMin - currentTotalMin
+                                            val depTodayMin = hourInt * 60 + minuteInt
+                                            if (depTodayMin >= currentTotalMin - 2) {
+                                                // Today's upcoming departure
+                                                addDeparture(depTodayMin - currentTotalMin, false, "Hoy")
+                                                // Also tomorrow's scheduled departure for the same hour
+                                                addDeparture((1440 + depTodayMin) - currentTotalMin, true, "Mañana")
+                                            } else {
+                                                // Has already passed today -> This is tomorrow's scheduled departure
+                                                addDeparture((1440 + depTodayMin) - currentTotalMin, true, "Mañana")
+                                            }
                                         }
-                                    }
-
-                                    if (diffMin >= -2) {
-                                        val safeDiffMin = diffMin.coerceAtLeast(0)
-                                        val secondsRemaining = (safeDiffMin * 60) - currentSecond
-
-                                        list.add(
-                                            MetrobusDepartureUiModel(
-                                                lineCode = lineCode,
-                                                lineName = "Línea $lineCode",
-                                                destination = direction,
-                                                minutesRemaining = safeDiffMin,
-                                                timeLabel = formattedTime,
-                                                departureTime = formattedTime,
-                                                routeColor = "#FBC02D",
-                                                isRealTime = false,
-                                                agencyName = "Metrobús",
-                                                secondsRemaining = secondsRemaining.coerceAtLeast(0)
-                                            )
-                                        )
                                     }
                                 }
                             }
@@ -153,7 +167,7 @@ class MetrobusScheduledRepository(private val context: Context) {
                 Log.w(TAG, "Error fetching scheduled departures from remote API for stop $stopId: ${e.message}")
             }
             return list
-                .distinctBy { "${it.lineCode}__${it.destination}__${it.departureTime}" }
+                .distinctBy { "${it.lineCode}__${it.destination}__${it.departureTime}__${it.isTomorrow}" }
                 .sortedBy { it.minutesRemaining }
         }
     }

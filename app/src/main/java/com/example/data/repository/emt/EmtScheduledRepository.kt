@@ -139,6 +139,25 @@ class EmtScheduledRepository(private val context: Context) {
                     else -> 1
                 }
 
+                val calTomorrow = Calendar.getInstance(MADRID_ZONE).apply {
+                    timeInMillis = cal.timeInMillis
+                    add(Calendar.DAY_OF_YEAR, 1)
+                }
+                val tomorrowYmd = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
+                    timeZone = MADRID_ZONE
+                }.format(calTomorrow.time)
+
+                val tomorrowIsoDay = when (calTomorrow.get(Calendar.DAY_OF_WEEK)) {
+                    Calendar.MONDAY -> 1
+                    Calendar.TUESDAY -> 2
+                    Calendar.WEDNESDAY -> 3
+                    Calendar.THURSDAY -> 4
+                    Calendar.FRIDAY -> 5
+                    Calendar.SATURDAY -> 6
+                    Calendar.SUNDAY -> 7
+                    else -> 1
+                }
+
                 val currentHour = cal.get(Calendar.HOUR_OF_DAY)
                 val currentMinuteOfDay = currentHour * 60 + cal.get(Calendar.MINUTE)
                 val currentSecond = cal.get(Calendar.SECOND)
@@ -166,7 +185,9 @@ class EmtScheduledRepository(private val context: Context) {
                     val dest: String,
                     val diffMinutes: Int,
                     val secondsRemaining: Int,
-                    val formattedTime: String
+                    val formattedTime: String,
+                    val isTomorrow: Boolean = false,
+                    val dayLabel: String = "Hoy"
                 )
                 val candidates = mutableListOf<EmtScheduledCandidate>()
 
@@ -178,7 +199,8 @@ class EmtScheduledRepository(private val context: Context) {
 
                     val isYesterday = isApplicable(schObj, yesterdayYmd, yesterdayIsoDay)
                     val isToday = isApplicable(schObj, todayYmd, todayIsoDay)
-                    if (!isYesterday && !isToday) continue
+                    val isTomorrow = isApplicable(schObj, tomorrowYmd, tomorrowIsoDay)
+                    if (!isYesterday && !isToday && !isTomorrow) continue
 
                     val timesArr = schObj.optJSONArray("times") ?: JSONArray()
 
@@ -202,23 +224,26 @@ class EmtScheduledRepository(private val context: Context) {
                                                 dest = dest,
                                                 diffMinutes = diffMin,
                                                 secondsRemaining = sec.coerceAtLeast(0),
-                                                formattedTime = formatted
+                                                formattedTime = formatted,
+                                                isTomorrow = false,
+                                                dayLabel = "Esta noche"
                                             )
                                         )
                                     }
                                 }
                             }
                         }
-                        // 2) Today's morning departures starting today (rawMin < 1440)
+                        // 2) Today's morning departures starting today (rawMin < 1440) & tonight
                         if (isToday) {
                             for (t in 0 until timesArr.length()) {
                                 val rawMin = timesArr.optInt(t, -1)
-                                if (rawMin in 0 until 1440) {
+                                if (rawMin >= 0) {
                                     if (rawMin >= currentMinuteOfDay - 2) {
                                         val diffMin = rawMin - currentMinuteOfDay
                                         val sec = (diffMin * 60) - currentSecond
-                                        val hh = (rawMin / 60) % 24
-                                        val mm = rawMin % 60
+                                        val effMin = if (rawMin >= 1440) rawMin - 1440 else rawMin
+                                        val hh = (effMin / 60) % 24
+                                        val mm = effMin % 60
                                         val formatted = String.format(Locale.ROOT, "%02d:%02d", hh, mm)
                                         candidates.add(
                                             EmtScheduledCandidate(
@@ -226,10 +251,37 @@ class EmtScheduledRepository(private val context: Context) {
                                                 dest = dest,
                                                 diffMinutes = diffMin,
                                                 secondsRemaining = sec.coerceAtLeast(0),
-                                                formattedTime = formatted
+                                                formattedTime = formatted,
+                                                isTomorrow = false,
+                                                dayLabel = if (rawMin >= 1440) "Esta noche" else "Hoy"
                                             )
                                         )
                                     }
+                                }
+                            }
+                        }
+                        // 3) Tomorrow's departures
+                        if (isTomorrow) {
+                            for (t in 0 until timesArr.length()) {
+                                val rawMin = timesArr.optInt(t, -1)
+                                if (rawMin >= 0) {
+                                    val diffMin = (1440 + rawMin) - currentMinuteOfDay
+                                    val sec = (diffMin * 60) - currentSecond
+                                    val effMin = if (rawMin >= 1440) rawMin - 1440 else rawMin
+                                    val hh = (effMin / 60) % 24
+                                    val mm = effMin % 60
+                                    val formatted = String.format(Locale.ROOT, "%02d:%02d", hh, mm)
+                                    candidates.add(
+                                        EmtScheduledCandidate(
+                                            line = line,
+                                            dest = dest,
+                                            diffMinutes = diffMin,
+                                            secondsRemaining = sec.coerceAtLeast(0),
+                                            formattedTime = formatted,
+                                            isTomorrow = true,
+                                            dayLabel = "Mañana"
+                                        )
+                                    )
                                 }
                             }
                         }
@@ -251,7 +303,34 @@ class EmtScheduledRepository(private val context: Context) {
                                             dest = dest,
                                             diffMinutes = diffMin,
                                             secondsRemaining = sec.coerceAtLeast(0),
-                                            formattedTime = formatted
+                                            formattedTime = formatted,
+                                            isTomorrow = false,
+                                            dayLabel = if (rawMin >= 1440) "Esta noche" else "Hoy"
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        // Tomorrow's departures
+                        if (isTomorrow) {
+                            for (t in 0 until timesArr.length()) {
+                                val rawMin = timesArr.optInt(t, -1)
+                                if (rawMin >= 0) {
+                                    val diffMin = (1440 + rawMin) - currentMinuteOfDay
+                                    val sec = (diffMin * 60) - currentSecond
+                                    val effMin = if (rawMin >= 1440) rawMin - 1440 else rawMin
+                                    val hh = (effMin / 60) % 24
+                                    val mm = effMin % 60
+                                    val formatted = String.format(Locale.ROOT, "%02d:%02d", hh, mm)
+                                    candidates.add(
+                                        EmtScheduledCandidate(
+                                            line = line,
+                                            dest = dest,
+                                            diffMinutes = diffMin,
+                                            secondsRemaining = sec.coerceAtLeast(0),
+                                            formattedTime = formatted,
+                                            isTomorrow = true,
+                                            dayLabel = "Mañana"
                                         )
                                     )
                                 }
@@ -261,7 +340,7 @@ class EmtScheduledRepository(private val context: Context) {
                 }
 
                 val uniqueCandidates = candidates
-                    .distinctBy { "${it.line}__${it.dest}__${it.formattedTime}" }
+                    .distinctBy { "${it.line}__${it.dest}__${it.formattedTime}__${it.isTomorrow}" }
                     .sortedWith(compareBy({ it.diffMinutes }, { it.line }))
 
                 val grouped = uniqueCandidates.groupBy { "${it.line}__${it.dest}" }
@@ -274,7 +353,9 @@ class EmtScheduledRepository(private val context: Context) {
                                 minutos = if (cand.diffMinutes <= 0) "1" else cand.diffMinutes.toString(),
                                 horaLlegada = cand.formattedTime,
                                 secondsRemaining = cand.secondsRemaining,
-                                isRealTime = false
+                                isRealTime = false,
+                                isTomorrow = cand.isTomorrow,
+                                dayLabel = cand.dayLabel
                             )
                         )
                     }

@@ -39,7 +39,9 @@ data class MetroScheduledDeparture(
     val originName: String = "",
     val originWebId: Int? = null,
     val destinationWebId: Int? = null,
-    val trainServiceId: Int = 0
+    val trainServiceId: Int = 0,
+    val isTomorrow: Boolean = false,
+    val dayLabel: String = ""
 )
 
 data class MetroScheduledStopPass(

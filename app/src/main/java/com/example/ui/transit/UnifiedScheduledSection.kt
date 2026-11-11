@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.WifiOff
@@ -22,6 +23,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -231,15 +233,96 @@ fun UnifiedScheduledSection(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    var hasDrawnTomorrowDivider = false
                     displayedDepartures.forEach { departure ->
+                        if (departure.isTomorrow && !hasDrawnTomorrowDivider) {
+                            hasDrawnTomorrowDivider = true
+                            UnifiedScheduledDayDivider(
+                                label = departure.dayLabel.ifBlank { "Mañana" },
+                                isDarkMode = isDarkMode
+                            )
+                        }
                         UnifiedTransitDepartureCard(
                             departure = departure,
                             isDarkMode = isDarkMode,
                             appLanguage = appLanguage
                         )
                     }
+
+                    if (visibleCount < scheduledDepartures.size) {
+                        TextButton(
+                            onClick = {
+                                visibleCount = (visibleCount + 20).coerceAtMost(scheduledDepartures.size)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("unified_load_more_scheduled_btn")
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "Cargar más salidas (${scheduledDepartures.size - visibleCount} restantes)",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = accentColor
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun UnifiedScheduledDayDivider(
+    label: String,
+    isDarkMode: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val dividerColor = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E7EB)
+    val badgeBg = if (isDarkMode) Color(0xFF262628) else Color(0xFFF1F5F9)
+    val textColor = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF475569)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = dividerColor,
+            thickness = 1.dp
+        )
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = badgeBg,
+            modifier = Modifier.padding(horizontal = 10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Event,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = textColor
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = textColor
+                )
+            }
+        }
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = dividerColor,
+            thickness = 1.dp
+        )
     }
 }

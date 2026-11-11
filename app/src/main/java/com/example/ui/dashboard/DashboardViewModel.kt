@@ -13,6 +13,7 @@ import com.example.util.LocationUtils
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -245,6 +246,57 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
     private val _appLanguage = MutableStateFlow(initialLanguage)
     val appLanguage = _appLanguage.asStateFlow()
+
+    private val initialHabitualStr = repository.getPreferenceSync("habitual_lines", "")
+    private val _habitualLines = MutableStateFlow<Set<String>>(
+        initialHabitualStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    )
+    val habitualLines: StateFlow<Set<String>> = _habitualLines.asStateFlow()
+
+    fun toggleHabitualLine(lineCode: String) {
+        val clean = lineCode.trim()
+        if (clean.isBlank()) return
+        val current = _habitualLines.value.toMutableSet()
+        if (current.contains(clean)) {
+            current.remove(clean)
+        } else {
+            current.add(clean)
+        }
+        _habitualLines.value = current
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.savePreference("habitual_lines", current.joinToString(","))
+        }
+    }
+
+    suspend fun getAvailableLinesGrouped(): Map<String, List<String>> = withContext(Dispatchers.IO) {
+        val metroLines = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+        val cercaniasLines = listOf("C1", "C2", "C3", "C5", "C6")
+
+        val emtStops = try { database.geoportalStopDao().getAllActiveStops() } catch (_: Exception) { emptyList() }
+        val emtLines = emtStops
+            .mapNotNull { it.lineas }
+            .flatMap { it.split(",") }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .sortedWith(compareBy({ it.toIntOrNull() ?: Int.MAX_VALUE }, { it }))
+
+        val metrobusStops = try { database.metrobusStopDao().getAllActiveStops() } catch (_: Exception) { emptyList() }
+        val metrobusLines = metrobusStops
+            .map { it.lineas }
+            .flatMap { it.split(",") }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .sortedWith(compareBy({ it.replace("L", "", ignoreCase = true).toIntOrNull() ?: Int.MAX_VALUE }, { it }))
+
+        mapOf(
+            "Metro" to metroLines,
+            "Cercanías" to cercaniasLines,
+            "EMT" to emtLines,
+            "Metrobús" to metrobusLines
+        )
+    }
 
     val mapEngine: StateFlow<MapEngine> = repository.getPreferenceFlow(
         "map_engine",

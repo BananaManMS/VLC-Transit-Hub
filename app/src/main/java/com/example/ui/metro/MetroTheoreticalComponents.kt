@@ -13,7 +13,10 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -299,11 +302,22 @@ fun MetroInlineTheoreticalSection(
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
                 } else {
+                    var visibleCount by remember(inlineTheoreticalDepartures) { mutableIntStateOf(15) }
+                    val displayed = inlineTheoreticalDepartures.take(visibleCount)
+                    var hasDrawnTomorrowDivider = false
+
                     Column(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        inlineTheoreticalDepartures.forEach { item ->
+                        displayed.forEach { item ->
+                            if (item.isTomorrow && !hasDrawnTomorrowDivider) {
+                                hasDrawnTomorrowDivider = true
+                                MetroScheduledDayDivider(
+                                    label = item.dayLabel.ifBlank { "Mañana" },
+                                    isDarkMode = isDarkMode
+                                )
+                            }
                             MetroScheduledDepartureCard(
                                 item = item,
                                 appLanguage = appLanguage,
@@ -313,6 +327,25 @@ fun MetroInlineTheoreticalSection(
                                     { onDepartureLongClick(item) }
                                 } else null
                             )
+                        }
+
+                        if (visibleCount < inlineTheoreticalDepartures.size) {
+                            TextButton(
+                                onClick = {
+                                    visibleCount = (visibleCount + 20).coerceAtMost(inlineTheoreticalDepartures.size)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("inline_load_more_scheduled_btn")
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "Cargar más salidas (${inlineTheoreticalDepartures.size - visibleCount} restantes)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                     }
                 }

@@ -238,7 +238,6 @@ class MetrobusRepository(
             val request = Request.Builder()
                 .url(url)
                 .addHeader("X-App-Secret", API_SECRET)
-                .addHeader("X-API-Secret", API_SECRET)
                 .build()
             val response = client.newCall(request).execute()
             if (response.isSuccessful) {

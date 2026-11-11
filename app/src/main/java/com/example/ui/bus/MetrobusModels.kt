@@ -24,7 +24,9 @@ data class MetrobusDepartureUiModel(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val tripId: String = "",
-    val secondsRemaining: Int = 0
+    val secondsRemaining: Int = 0,
+    val isTomorrow: Boolean = false,
+    val dayLabel: String = ""
 )
 
 data class MetrobusLineInfo(
