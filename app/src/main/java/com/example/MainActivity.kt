@@ -40,7 +40,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         com.example.util.StartupProfiler.log("MainActivity", "onCreate started")
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
         // Initialize global uncaught exception interceptor
         CrashCatcher.init(applicationContext)
 
@@ -48,6 +48,19 @@ class MainActivity : ComponentActivity() {
         
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        splashScreen.setKeepOnScreenCondition {
+            !dashboardViewModel.isNearbyContextReady.value &&
+                !dashboardViewModel.hasPlayedLaunchFinishAnimation.value
+        }
+        splashScreen.setOnExitAnimationListener { splashScreenView ->
+            com.example.ui.dashboard.runSumaSplashExitAnimation(
+                splashScreenView = splashScreenView,
+                hasAlreadyPlayed = dashboardViewModel.hasPlayedLaunchFinishAnimation.value,
+                onStarted = { dashboardViewModel.markLaunchFinishAnimationPlayed() }
+            )
+        }
+
         com.example.util.StartupProfiler.log("MainActivity", "setContent starting")
         setContent {
             val isDark by dashboardViewModel.isDarkMode.collectAsState()

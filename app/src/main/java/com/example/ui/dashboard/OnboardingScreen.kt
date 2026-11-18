@@ -1,16 +1,56 @@
 package com.example.ui.dashboard
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.annotation.DrawableRes
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -19,67 +59,111 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.AddCard
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.PedalBike
+import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.ui.cercanias.CercaniasViewModel
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.R
 import com.example.ui.metro.MetroViewModel
-import com.example.data.database.TransitCardEntity
 import com.example.ui.metro.cards.AddTransitCardWizardDialog
-import com.example.ui.metro.cards.CardDisplayFormat
-import com.example.ui.metro.cards.UnifiedTransitCardView
+import com.example.ui.theme.SpaceGroteskFontFamily
 import com.example.util.LocationUtils
+import com.example.util.MetrobusLineColorResolver
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+private const val ONBOARDING_PAGES = 3
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun OnboardingScreen(
-    cercaniasViewModel: CercaniasViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
-    metroViewModel: MetroViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     viewModel: DashboardViewModel,
     onConfigureStations: () -> Unit,
     onConfigureCercaniasStations: () -> Unit,
     onLaunchLocationPermission: () -> Unit,
+    onLaunchNotificationPermission: () -> Unit,
+    hasActiveModalDialog: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(pageCount = { 5 })
+    val pagerState = rememberPagerState(pageCount = { ONBOARDING_PAGES })
+
     val isDarkMode by viewModel.isDarkMode.collectAsState()
-    val favoriteStations by metroViewModel.favoriteStations.collectAsState()
-    val cercaniasFavoriteStations by cercaniasViewModel.cercaniasFavoriteStations.collectAsState()
-    val transitCards by metroViewModel.transitCardsFlow.collectAsState()
     val appLanguage by viewModel.appLanguage.collectAsState()
-    val context = LocalContext.current
-
     val preferredModes by viewModel.favoriteTransitModes.collectAsState()
+    val favoriteMetroStations by viewModel.favoriteMetroStations.collectAsState()
+    val favoriteCercaniasStations by viewModel.favoriteCercaniasStations.collectAsState()
+    val transitCards by viewModel.transitCardsFlow.collectAsState()
+    val isTransitCatalogSyncing by viewModel.isTransitCatalogSyncing.collectAsState()
 
-    fun toggleMode(mode: String) {
-        viewModel.togglePreferredTransitMode(mode)
-    }
-
+    val context = LocalContext.current
     var showAddCardDialog by remember { mutableStateOf(false) }
 
-    // Check location permission state
-    var isLocationConnected by remember { mutableStateOf(LocationUtils.hasLocationPermission(context)) }
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var hasFineLocation by remember { mutableStateOf(LocationUtils.hasFineLocationPermission(context)) }
+    var hasOnlyCoarseLocation by remember { mutableStateOf(LocationUtils.hasOnlyCoarseLocationPermission(context)) }
+    var hasNotificationPermission by remember { mutableStateOf(isNotificationsGranted(context)) }
+
+    fun refreshPermissionStates() {
+        hasFineLocation = LocationUtils.hasFineLocationPermission(context)
+        hasOnlyCoarseLocation = LocationUtils.hasOnlyCoarseLocationPermission(context)
+        hasNotificationPermission = isNotificationsGranted(context)
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                isLocationConnected = LocationUtils.hasLocationPermission(context)
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshPermissionStates()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -87,1161 +171,1341 @@ fun OnboardingScreen(
     }
 
     LaunchedEffect(pagerState.currentPage) {
-        isLocationConnected = LocationUtils.hasLocationPermission(context)
+        refreshPermissionStates()
     }
 
-    val stepTitles = remember(appLanguage) {
-        if (appLanguage == AppLanguage.CA) {
-            listOf("Benvinguda", "Mitjans i parades", "Targetes", "Ajustos", "Resum")
+    BackHandler(enabled = !showAddCardDialog && !hasActiveModalDialog) {
+        if (pagerState.currentPage > 0) {
+            coroutineScope.launch {
+                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+            }
         } else {
-            listOf("Bienvenida", "Medios y paradas", "Tarjetas", "Ajustes", "Resumen")
+            viewModel.completeOnboarding()
         }
     }
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .windowInsetsPadding(WindowInsets.navigationBars),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Subtle background gradient atmosphere
-        Box(
+        // Shared Persistent Metro Line Visor Header
+        MetroLineVisorHeader(
+            pagerState = pagerState,
+            isTransitCatalogSyncing = isTransitCatalogSyncing,
+            onSelectStation = { targetPage ->
+                coroutineScope.launch {
+                    pagerState.animateScrollToPage(targetPage)
+                }
+            },
+            onSkip = { viewModel.completeOnboarding() },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(300.dp)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = if (isDarkMode) 0.15f else 0.08f),
-                            Color.Transparent
-                        )
-                    )
-                )
+                .widthIn(max = 580.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
         )
 
-        // Top Navigation & Step Indicator Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Step Pill
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .background(MaterialTheme.colorScheme.primary, CircleShape)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "${pagerState.currentPage + 1}/5 · ${stepTitles[pagerState.currentPage]}",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            // Close / Exit button
-            IconButton(
-                onClick = { viewModel.completeOnboarding() },
-                modifier = Modifier
-                    .size(36.dp)
-                    .testTag("onboarding_close_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = if (appLanguage == AppLanguage.CA) "Tancar" else "Cerrar",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // Pager with main onboarding steps
+        // Thumb-Zone Interactive Pager (anchored toward bottom so controls sit right above CTA)
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = 52.dp, bottom = 90.dp)
+                .weight(1f)
+                .fillMaxWidth()
         ) { page ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter
             ) {
+                val viewportHeight = maxHeight
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 580.dp)
+                        .verticalScroll(rememberScrollState())
+                        .defaultMinSize(minHeight = viewportHeight)
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.Bottom
                 ) {
                     when (page) {
-                        0 -> {
-                            // PASO 1: Bienvenida, Selector de Idioma y Funciones Clave
-                            // Segmented Language Switcher
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.padding(bottom = 20.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(3.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                AppLanguage.values().forEach { lang ->
-                                    val isSelected = appLanguage == lang
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(
-                                                if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
-                                            )
-                                            .clickable { viewModel.setAppLanguage(lang) }
-                                            .padding(horizontal = 20.dp, vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = if (lang == AppLanguage.ES) "Español" else "Valencià",
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            fontSize = 13.sp,
-                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            textAlign = TextAlign.Center
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Benvingut a VLC Transit" else "Bienvenido a VLC Transit",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA)
-                                "La teua guia integral de mobilitat metropolitana a València."
-                            else
-                                "Tu guía integral de movilidad metropolitana en Valencia.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        // Features Grid with high visual craft
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            FeatureHighlightRow(
-                                icon = Icons.Default.AltRoute,
-                                iconColor = Color(0xFF0284C7),
-                                title = if (appLanguage == AppLanguage.CA) "Xarxa unificada multimodal" else "Red unificada multimodal",
-                                description = if (appLanguage == AppLanguage.CA)
-                                    "Metrovalencia, EMT, Renfe Rodalia, Metrobús i Valenbisi connectats."
-                                else
-                                    "Metrovalencia, EMT, Renfe Cercanías, Metrobús y Valenbisi conectados."
-                            )
-
-                            FeatureHighlightRow(
-                                icon = Icons.Default.NearMe,
-                                iconColor = Color(0xFF10B981),
-                                title = if (appLanguage == AppLanguage.CA) "Copilot i eixides en directe" else "Copiloto y salidas en vivo",
-                                description = if (appLanguage == AppLanguage.CA)
-                                    "Horaris en temps real i notificacions d'arribada pas a pas."
-                                else
-                                    "Horarios en tiempo real y notificaciones de transbordo paso a paso."
-                            )
-
-                            FeatureHighlightRow(
-                                icon = Icons.Default.CreditCard,
-                                iconColor = Color(0xFFF59E0B),
-                                title = if (appLanguage == AppLanguage.CA) "Lector NFC de targetes SUMA" else "Lector NFC de tarjetas SUMA",
-                                description = if (appLanguage == AppLanguage.CA)
-                                    "Consulta viatges restants, saldo i caducitat amb el mòbil."
-                                else
-                                    "Consulta viajes restantes, saldo y caducidad con el móvil."
-                            )
-
-                            FeatureHighlightRow(
-                                icon = Icons.Default.WarningAmber,
-                                iconColor = Color(0xFFEF4444),
-                                title = if (appLanguage == AppLanguage.CA) "Incidències i alertes" else "Incidencias y alertas",
-                                description = if (appLanguage == AppLanguage.CA)
-                                    "Avisos oficials d'interrupcions i retards al moment."
-                                else
-                                    "Avisos oficiales de interrupciones y retrasos al momento."
-                            )
-                        }
-                    }
-
-                    1 -> {
-                        // PASO 2: Medios y Paradas Favoritas
-                        Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(RoundedCornerShape(22.dp))
-                                .background(Color(0xFF0284C7).copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.DirectionsBus,
-                                contentDescription = null,
-                                tint = Color(0xFF0284C7),
-                                modifier = Modifier.size(38.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Mitjans i parades clau" else "Medios y paradas clave",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA)
-                                "Personalitza els transports habituals i les teues estacions favorites per a tindre eixides directes al Dashboard."
-                            else
-                                "Personaliza tus medios habituales y tus estaciones favoritas para tener salidas directas en el Dashboard.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        // Modes Selector Grid
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Medis de transport actius:" else "Medios de transporte activos:",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.align(Alignment.Start)
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            TransitModeTile(
-                                icon = Icons.Default.Subway,
-                                label = "Metro",
-                                color = Color(0xFFEF4444),
-                                isSelected = preferredModes.contains("METRO"),
-                                onClick = { toggleMode("METRO") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("onboarding_mode_metro")
-                            )
-                            TransitModeTile(
-                                icon = Icons.Default.DirectionsBus,
-                                label = "EMT Bus",
-                                color = Color(0xFF0284C7),
-                                isSelected = preferredModes.contains("EMT"),
-                                onClick = { toggleMode("EMT") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("onboarding_mode_emt")
-                            )
-                            TransitModeTile(
-                                icon = Icons.Default.DirectionsRailway,
-                                label = if (appLanguage == AppLanguage.CA) "Rodalia" else "Cercanías",
-                                color = Color(0xFF702B7B),
-                                isSelected = preferredModes.contains("CERCANIAS"),
-                                onClick = { toggleMode("CERCANIAS") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("onboarding_mode_cercanias")
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            TransitModeTile(
-                                icon = Icons.Default.PedalBike,
-                                label = "Valenbisi",
-                                color = Color(0xFF10B981),
-                                isSelected = preferredModes.contains("VALENBISI"),
-                                onClick = { toggleMode("VALENBISI") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("onboarding_mode_valenbisi")
-                            )
-                            TransitModeTile(
-                                icon = Icons.Default.AirportShuttle,
-                                label = "Metrobús",
-                                color = Color(0xFFF59E0B),
-                                isSelected = preferredModes.contains("METROBUS"),
-                                onClick = { toggleMode("METROBUS") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("onboarding_mode_metrobus")
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(22.dp))
-
-                        // Configure Stations Cards
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Estacions favorites:" else "Estaciones favoritas:",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.align(Alignment.Start)
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        StationConfigCard(
-                            icon = Icons.Default.Subway,
-                            iconColor = Color(0xFFEF4444),
-                            title = "Metrovalencia",
-                            count = favoriteStations.size,
-                            emptyText = if (appLanguage == AppLanguage.CA) "Cap estació triada" else "Ninguna estación elegida",
+                        0 -> WelcomeThumbControls(
                             appLanguage = appLanguage,
-                            testTag = "onboarding_btn_favorites",
-                            onClick = onConfigureStations
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        StationConfigCard(
-                            icon = Icons.Default.DirectionsRailway,
-                            iconColor = Color(0xFF702B7B),
-                            title = if (appLanguage == AppLanguage.CA) "Rodalia Renfe" else "Cercanías Renfe",
-                            count = cercaniasFavoriteStations.size,
-                            emptyText = if (appLanguage == AppLanguage.CA) "Cap estació triada" else "Ninguna estación elegida",
-                            appLanguage = appLanguage,
-                            testTag = "onboarding_btn_cercanias_favorites",
-                            onClick = onConfigureCercaniasStations
-                        )
-                    }
-
-                    2 -> {
-                        // PASO 3: Tarjetas de Transporte SUMA / Móbilis
-                        // Realistic SUMA Card Preview
-                        SumaCardGraphic(isDarkMode = isDarkMode)
-
-                        Spacer(modifier = Modifier.height(18.dp))
-
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Targetes de transport" else "Tarjetas de transporte",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA)
-                                "Afegeix la teua targeta física per NFC o codi numèric per a conéixer viatges restants, saldo i caducitat en temps real."
-                            else
-                                "Añade tu tarjeta física por NFC o código numérico para conocer viajes restantes, saldo y caducidad en tiempo real.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(18.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primaryContainer),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Nfc,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = if (appLanguage == AppLanguage.CA) "Lectura NFC i codi de suport" else "Lectura NFC y código de soporte",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.titleSmall
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Text(
-                                    text = if (appLanguage == AppLanguage.CA)
-                                        "Acosta la teua targeta a la part posterior del telèfon per a llegir el xip Mifare o escriu el codi de 10 dígits."
-                                    else
-                                        "Acerca tu tarjeta a la parte trasera del móvil para leer el chip Mifare o escribe el código de 10 dígitos.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    textAlign = TextAlign.Center,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                Button(
-                                    onClick = { showAddCardDialog = true },
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(imageVector = Icons.Default.AddCard, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(if (appLanguage == AppLanguage.CA) "Registrar targeta ara" else "Registrar tarjeta ahora")
-                                }
-
-                                if (transitCards.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = Color(0xFF10B981).copy(alpha = 0.15f)
-                                    ) {
-                                        Text(
-                                            text = "✓ ${transitCards.size} " + if (appLanguage == AppLanguage.CA) "targetes guardades" else "tarjetas guardadas",
-                                            color = Color(0xFF047857),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                        )
-                                    }
+                            isDarkMode = isDarkMode,
+                            onSelectLanguage = { viewModel.setAppLanguage(it) },
+                            onToggleDarkMode = { targetDark ->
+                                if (isDarkMode != targetDark) {
+                                    viewModel.toggleDarkMode()
                                 }
                             }
-                        }
-                    }
-
-                    3 -> {
-                        // PASO 4: Permisos y Personalización
-                        Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(RoundedCornerShape(22.dp))
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(38.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Permisos i aparença" else "Permisos y apariencia",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onBackground
                         )
 
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA)
-                                "Configura la ubicació per a trobar parades al teu voltant i tria el teu tema preferit."
-                            else
-                                "Configura la ubicación para encontrar paradas a tu alrededor y elige tu tema preferido.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        1 -> PermissionsThumbControls(
+                            isDarkMode = isDarkMode,
+                            hasFineLocation = hasFineLocation,
+                            hasOnlyCoarseLocation = hasOnlyCoarseLocation,
+                            hasNotificationPermission = hasNotificationPermission,
+                            onRequestLocation = onLaunchLocationPermission,
+                            onRequestNotifications = onLaunchNotificationPermission
                         )
 
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        // Location Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isLocationConnected) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFFEF4444).copy(alpha = 0.12f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.LocationOn,
-                                            contentDescription = null,
-                                            tint = if (isLocationConnected) Color(0xFF10B981) else Color(0xFFEF4444),
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = if (appLanguage == AppLanguage.CA) "Ubicació GPS" else "Ubicación GPS",
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.titleSmall
-                                        )
-                                        Text(
-                                            text = if (isLocationConnected) {
-                                                if (appLanguage == AppLanguage.CA) "Permís concedit · Estacions a prop actives" else "Permiso concedido · Estaciones cercanas activas"
-                                            } else {
-                                                if (appLanguage == AppLanguage.CA) "Requerit per a trobar parades i rutes en 1 toc" else "Requerido para paradas y rutas en 1 toque"
-                                            },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (isLocationConnected) Color(0xFF047857) else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                        2 -> NetworkSetupThumbControls(
+                            isDarkMode = isDarkMode,
+                            preferredModes = preferredModes,
+                            favoriteMetroCount = favoriteMetroStations.size,
+                            favoriteCercaniasCount = favoriteCercaniasStations.size,
+                            transitCardCount = transitCards.size,
+                            onToggleMode = { code ->
+                                val isCurrentlySelected = preferredModes.contains(code)
+                                if (isCurrentlySelected && preferredModes.size <= 1) {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.onboarding_min_one_mode),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                } else {
+                                    viewModel.togglePreferredTransitMode(code)
                                 }
-
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Button(
-                                    onClick = onLaunchLocationPermission,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("onboarding_btn_gps"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isLocationConnected) Color(0xFF10B981) else MaterialTheme.colorScheme.primary
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = if (isLocationConnected) Icons.Default.Check else Icons.Default.MyLocation,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        if (isLocationConnected) {
-                                            if (appLanguage == AppLanguage.CA) "Ubicació activada" else "Ubicación activada"
-                                        } else {
-                                            if (appLanguage == AppLanguage.CA) "Permetre ubicació" else "Permitir ubicación"
-                                        }
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Theme Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primaryContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (isDarkMode) Icons.Default.DarkMode else Icons.Default.LightMode,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = if (appLanguage == AppLanguage.CA) "Mode fosc" else "Modo oscuro",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.titleSmall
-                                    )
-                                    Text(
-                                        text = if (appLanguage == AppLanguage.CA)
-                                            if (isDarkMode) "Tema fosc activat" else "Tema clar activat"
-                                        else
-                                            if (isDarkMode) "Tema oscuro activado" else "Tema claro activado",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Switch(
-                                    checked = isDarkMode,
-                                    onCheckedChange = { viewModel.toggleDarkMode() },
-                                    modifier = Modifier.testTag("onboarding_dark_mode_switch")
-                                )
-                            }
-                        }
-                    }
-
-                    4 -> {
-                        // PASO 5: Resumen y Listo para Viajar
-                        Box(
-                            modifier = Modifier
-                                .size(76.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF10B981).copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = Color(0xFF10B981),
-                                modifier = Modifier.size(50.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA) "Tot llest per a viatjar!" else "¡Todo listo para moverte!",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onBackground
+                            },
+                            onConfigureMetro = onConfigureStations,
+                            onConfigureCercanias = onConfigureCercaniasStations,
+                            onAddTransitCard = { showAddCardDialog = true }
                         )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = if (appLanguage == AppLanguage.CA)
-                                "Ja pots consultar línies, horaris en viu, saldo SUMA i rutes multimodals."
-                            else
-                                "Ya puedes consultar líneas, horarios en vivo, saldo SUMA y rutas multimodales.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        // Mobility Boarding Pass Style Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                        ) {
-                            Column(modifier = Modifier.padding(18.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.ConfirmationNumber,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = if (appLanguage == AppLanguage.CA) "Passi de mobilitat València" else "Pase de movilidad Valencia",
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.titleSmall
-                                        )
-                                    }
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer
-                                    ) {
-                                        Text(
-                                            text = "ACTIU",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(14.dp))
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    SummaryRowItem(
-                                        icon = Icons.Default.Language,
-                                        title = if (appLanguage == AppLanguage.CA) "Idioma configurat" else "Idioma configurado",
-                                        value = if (appLanguage == AppLanguage.ES) "Español" else "Valencià"
-                                    )
-                                    SummaryRowItem(
-                                        icon = Icons.Default.AltRoute,
-                                        title = if (appLanguage == AppLanguage.CA) "Medis actius" else "Medios activos",
-                                        value = "${preferredModes.size} " + if (appLanguage == AppLanguage.CA) "transports" else "transportes"
-                                    )
-                                    SummaryRowItem(
-                                        icon = Icons.Default.Star,
-                                        title = if (appLanguage == AppLanguage.CA) "Estacions favorites" else "Estaciones favoritas",
-                                        value = "${favoriteStations.size + cercaniasFavoriteStations.size} " + if (appLanguage == AppLanguage.CA) "guardades" else "guardadas"
-                                    )
-                                    SummaryRowItem(
-                                        icon = Icons.Default.LocationOn,
-                                        title = if (appLanguage == AppLanguage.CA) "Ubicació GPS" else "Ubicación GPS",
-                                        value = if (isLocationConnected) "Activada" else (if (appLanguage == AppLanguage.CA) "Sense concedir" else "Sin conceder")
-                                    )
-                                    SummaryRowItem(
-                                        icon = Icons.Default.CreditCard,
-                                        title = if (appLanguage == AppLanguage.CA) "Targetes" else "Tarjetas",
-                                        value = "${transitCards.size} " + if (appLanguage == AppLanguage.CA) "registrades" else "registradas"
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        Button(
-                            onClick = { viewModel.completeOnboarding() },
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(54.dp)
-                                .testTag("onboarding_finish_button"),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            Text(
-                                text = androidx.compose.ui.res.stringResource(com.example.R.string.onboarding_start_traveling),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
-                        }
                     }
                 }
             }
         }
-        }
 
-        // Floating Bottom Navigation (Dots & Next/Prev Actions)
-        Surface(
+        // Ergonomic Bottom Navigation Row (directly beneath interactive thumb controls)
+        Row(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBars),
-            color = MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
-            tonalElevation = 6.dp,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+                .widthIn(max = 580.dp)
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(
+            if (pagerState.currentPage > 0) {
+                TextButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                        }
+                    },
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("onboarding_btn_prev")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.onboarding_back),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.width(48.dp))
+            }
+
+            val isLastPage = pagerState.currentPage == ONBOARDING_PAGES - 1
+            Button(
+                onClick = {
+                    if (isLastPage) {
+                        viewModel.completeOnboarding()
+                    } else {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                ),
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .defaultMinSize(minHeight = 52.dp)
+                    .testTag(if (isLastPage) "onboarding_finish_button" else "onboarding_btn_next")
             ) {
-                // Page Indicator Dots
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 10.dp)
-                ) {
-                    repeat(5) { index ->
-                        val isCurrent = pagerState.currentPage == index
-                        val animatedWidth by animateDpAsState(
-                            targetValue = if (isCurrent) 24.dp else 8.dp,
-                            animationSpec = spring(),
-                            label = "dot_width"
-                        )
-                        val dotColor = if (isCurrent) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
-                        }
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 3.dp)
-                                .height(8.dp)
-                                .width(animatedWidth)
-                                .background(dotColor, CircleShape)
-                        )
-                    }
-                }
-
-                // Action Buttons Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (pagerState.currentPage > 0) {
-                        TextButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
-                                }
-                            },
-                            modifier = Modifier.testTag("onboarding_btn_prev")
-                        ) {
-                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.onboarding_back), fontWeight = FontWeight.SemiBold)
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.width(60.dp))
-                    }
-
-                    if (pagerState.currentPage < 4) {
-                        TextButton(
-                            onClick = { viewModel.completeOnboarding() },
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            ),
-                            modifier = Modifier.testTag("onboarding_btn_skip")
-                        ) {
-                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.onboarding_skip))
-                        }
-
-                        Button(
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.testTag("onboarding_btn_next")
-                        ) {
-                            Text(androidx.compose.ui.res.stringResource(com.example.R.string.onboarding_next), fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.width(60.dp))
-                    }
-                }
+                Text(
+                    text = stringResource(
+                        if (isLastPage) R.string.onboarding_start_traveling else R.string.onboarding_next
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontFamily = SpaceGroteskFontFamily,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }
 
     if (showAddCardDialog) {
+        val lazyMetroVm: MetroViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
         AddTransitCardWizardDialog(
             appLanguage = appLanguage,
-            metroViewModel = metroViewModel,
+            metroViewModel = lazyMetroVm,
             onDismiss = { showAddCardDialog = false },
             onCardAdded = { showAddCardDialog = false }
         )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FeatureHighlightRow(
-    icon: ImageVector,
-    iconColor: Color,
-    title: String,
-    description: String
-) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(iconColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconColor,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TransitModeTile(
-    icon: ImageVector,
-    label: String,
-    color: Color,
-    isSelected: Boolean,
-    onClick: () -> Unit,
+private fun MetroLineVisorHeader(
+    pagerState: PagerState,
+    isTransitCatalogSyncing: Boolean,
+    onSelectStation: (Int) -> Unit,
+    onSkip: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        color = if (isSelected) color.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(
-            width = if (isSelected) 1.5.dp else 1.dp,
-            color = if (isSelected) color else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+    // Lightweight entrance draw (~700ms) while Phase 1 preloads local stops
+    val introReveal = remember { Animatable(0f) }
+    val headerAlpha = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        launch { headerAlpha.animateTo(1f, tween(durationMillis = 320, easing = FastOutSlowInEasing)) }
+        introReveal.animateTo(1f, tween(durationMillis = 700, easing = FastOutSlowInEasing))
+    }
+
+    val pulseTransition = rememberInfiniteTransition(label = "station_pulse")
+    val pulseScale by pulseTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.45f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
         ),
-        modifier = modifier
+        label = "pulse_scale"
+    )
+
+    val stationLabels = listOf(
+        stringResource(R.string.onboarding_station_welcome),
+        stringResource(R.string.onboarding_station_permissions),
+        stringResource(R.string.onboarding_station_network)
+    )
+    val stepTitle = when (pagerState.currentPage) {
+        0 -> stringResource(R.string.onboarding_welcome_title)
+        1 -> stringResource(R.string.onboarding_permissions_title)
+        else -> stringResource(R.string.onboarding_network_title)
+    }
+    val stepSubtitle = when (pagerState.currentPage) {
+        0 -> stringResource(R.string.onboarding_welcome_tagline)
+        1 -> stringResource(R.string.onboarding_permissions_sub)
+        else -> stringResource(R.string.onboarding_network_sub)
+    }
+
+    Surface(
+        modifier = modifier.alpha(headerAlpha.value),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF131313),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
     ) {
-        Column(
-            modifier = Modifier.padding(vertical = 12.dp, horizontal = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF2563EB).copy(alpha = 0.25f),
+                            Color.Transparent
+                        ),
+                        center = Offset(180f, 50f),
+                        radius = 780f
+                    )
+                )
+                .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
-            Box(
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                // Brand Pill + Sync Indicator + Skip
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF10B981))
+                        )
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontFamily = SpaceGroteskFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        AnimatedVisibility(
+                            visible = isTransitCatalogSyncing,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.White.copy(alpha = 0.08f))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(10.dp),
+                                    strokeWidth = 1.5.dp,
+                                    color = Color(0xFF93C5FD)
+                                )
+                                Text(
+                                    text = stringResource(R.string.onboarding_syncing_stops),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFFCBD5E1)
+                                )
+                            }
+                        }
+                    }
+
+                    TextButton(
+                        onClick = onSkip,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .defaultMinSize(minHeight = 36.dp)
+                            .testTag("onboarding_btn_skip")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.onboarding_skip),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
+                }
+
+                // Dynamic Step Title & 1-line Subtitle
+                AnimatedContent(
+                    targetState = pagerState.currentPage,
+                    transitionSpec = {
+                        fadeIn(tween(220)) togetherWith fadeOut(tween(160))
+                    },
+                    label = "visor_step_copy"
+                ) { _ ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = stepTitle,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontFamily = SpaceGroteskFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = stepSubtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFCBD5E1),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Metro Line Diagram Progress (completes smoothly from Station 1 -> 2 -> 3)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val pagerFraction = (
+                        (pagerState.currentPage + pagerState.currentPageOffsetFraction) /
+                            (ONBOARDING_PAGES - 1).toFloat()
+                        ).coerceIn(0f, 1f)
+                    val introFactor = introReveal.value
+
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(28.dp)
+                    ) {
+                        val y = size.height / 2f
+                        val edgeInset = 24.dp.toPx()
+                        val startX = edgeInset
+                        val endX = (size.width - edgeInset).coerceAtLeast(startX + 1f)
+                        val span = endX - startX
+
+                        // Base Metro Rail
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.16f),
+                            start = Offset(startX, y),
+                            end = Offset(endX, y),
+                            strokeWidth = 4.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+
+                        // Completed / Live-Interpolated Metro Track
+                        val activeEndX = if (pagerFraction <= 0.001f) {
+                            startX + (span * 0.06f * (1f - introFactor)) // subtle entry glide into Station 1
+                        } else {
+                            startX + span * pagerFraction * introFactor
+                        }
+                        if (pagerFraction > 0.001f) {
+                            drawLine(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color(0xFF38BDF8),
+                                        Color(0xFF60A5FA),
+                                        Color(0xFF10B981)
+                                    )
+                                ),
+                                start = Offset(startX, y),
+                                end = Offset(startX + span * pagerFraction, y),
+                                strokeWidth = 4.5.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        } else if (introFactor < 1f) {
+                            drawLine(
+                                color = Color(0xFF60A5FA).copy(alpha = 0.7f),
+                                start = Offset(startX, y),
+                                end = Offset(activeEndX, y),
+                                strokeWidth = 4.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
+
+                        // 3 Metro Station Nodes
+                        repeat(ONBOARDING_PAGES) { index ->
+                            val nodeFraction = index / (ONBOARDING_PAGES - 1).toFloat()
+                            val cx = startX + span * nodeFraction
+                            val isCurrent = index == pagerState.currentPage
+                            val isCompleted = index < pagerState.currentPage
+                            val revealAlpha = ((introFactor - index * 0.15f) / 0.35f).coerceIn(0.25f, 1f)
+
+                            when {
+                                isCurrent -> {
+                                    // Soft pulsing metro arrival halo
+                                    drawCircle(
+                                        color = Color(0xFF60A5FA).copy(alpha = 0.28f * revealAlpha),
+                                        radius = 10.dp.toPx() * pulseScale,
+                                        center = Offset(cx, y)
+                                    )
+                                    drawCircle(
+                                        color = Color.White,
+                                        radius = 7.dp.toPx(),
+                                        center = Offset(cx, y)
+                                    )
+                                    drawCircle(
+                                        color = Color(0xFF2563EB),
+                                        radius = 3.5.dp.toPx(),
+                                        center = Offset(cx, y)
+                                    )
+                                }
+
+                                isCompleted -> {
+                                    drawCircle(
+                                        color = Color(0xFF10B981),
+                                        radius = 6.5.dp.toPx(),
+                                        center = Offset(cx, y)
+                                    )
+                                    drawCircle(
+                                        color = Color.White,
+                                        radius = 2.5.dp.toPx(),
+                                        center = Offset(cx, y)
+                                    )
+                                }
+
+                                else -> {
+                                    drawCircle(
+                                        color = Color(0xFF1E293B),
+                                        radius = 6.dp.toPx(),
+                                        center = Offset(cx, y)
+                                    )
+                                    drawCircle(
+                                        color = Color.White.copy(alpha = 0.32f * revealAlpha),
+                                        radius = 6.dp.toPx(),
+                                        center = Offset(cx, y),
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.8.dp.toPx())
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Interactive Station Labels aligned under the 3 metro dots
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        stationLabels.forEachIndexed { index, label ->
+                            val isCurrent = index == pagerState.currentPage
+                            val isCompleted = index < pagerState.currentPage
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onSelectStation(index) }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                                contentAlignment = when (index) {
+                                    0 -> Alignment.CenterStart
+                                    ONBOARDING_PAGES - 1 -> Alignment.CenterEnd
+                                    else -> Alignment.Center
+                                }
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontFamily = SpaceGroteskFontFamily,
+                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                    color = when {
+                                        isCurrent -> Color.White
+                                        isCompleted -> Color(0xFF6EE7B7)
+                                        else -> Color(0xFF64748B)
+                                    },
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WelcomeThumbControls(
+    appLanguage: AppLanguage,
+    isDarkMode: Boolean,
+    onSelectLanguage: (AppLanguage) -> Unit,
+    onToggleDarkMode: (Boolean) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FeatureMicroChip(
+                icon = Icons.Default.Subway,
+                label = stringResource(R.string.onboarding_pill_live),
+                isDarkMode = isDarkMode
+            )
+            FeatureMicroChip(
+                icon = Icons.Default.DirectionsBus,
+                label = stringResource(R.string.onboarding_pill_routes),
+                isDarkMode = isDarkMode
+            )
+            FeatureMicroChip(
+                icon = Icons.Default.CreditCard,
+                label = stringResource(R.string.onboarding_pill_suma),
+                isDarkMode = isDarkMode
+            )
+        }
+
+        OnboardingGroupCard(isDarkMode = isDarkMode) {
+            // Language Row
+            Row(
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(if (isSelected) color.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = if (isSelected) color else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
+                OnboardingIconBadge(
+                    icon = Icons.Default.Language,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(
+                    text = stringResource(R.string.onboarding_language_label),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontFamily = SpaceGroteskFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                SegmentedTogglePill(
+                    isDarkMode = isDarkMode,
+                    firstLabel = "VAL",
+                    secondLabel = "ES",
+                    isFirstSelected = appLanguage == AppLanguage.CA,
+                    onSelectFirst = { onSelectLanguage(AppLanguage.CA) },
+                    onSelectSecond = { onSelectLanguage(AppLanguage.ES) },
+                    firstTag = "onboarding_lang_ca",
+                    secondTag = "onboarding_lang_es"
                 )
             }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 66.dp, end = 16.dp),
+                thickness = 0.8.dp,
+                color = onboardingDividerColor(isDarkMode)
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = if (isSelected) "✓" else "+",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isSelected) color else MaterialTheme.colorScheme.outline
-            )
+
+            // Theme Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OnboardingIconBadge(
+                    icon = if (isDarkMode) Icons.Default.DarkMode else Icons.Default.LightMode,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(
+                    text = stringResource(R.string.onboarding_theme_label),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontFamily = SpaceGroteskFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                SegmentedTogglePill(
+                    isDarkMode = isDarkMode,
+                    firstLabel = stringResource(R.string.onboarding_theme_light),
+                    secondLabel = stringResource(R.string.onboarding_theme_dark),
+                    isFirstSelected = !isDarkMode,
+                    onSelectFirst = { onToggleDarkMode(false) },
+                    onSelectSecond = { onToggleDarkMode(true) },
+                    firstTag = "onboarding_light_mode_btn",
+                    secondTag = "onboarding_dark_mode_switch"
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun StationConfigCard(
-    icon: ImageVector,
-    iconColor: Color,
-    title: String,
-    count: Int,
-    emptyText: String,
-    appLanguage: AppLanguage,
-    testTag: String,
-    onClick: () -> Unit
+private fun PermissionsThumbControls(
+    isDarkMode: Boolean,
+    hasFineLocation: Boolean,
+    hasOnlyCoarseLocation: Boolean,
+    hasNotificationPermission: Boolean,
+    onRequestLocation: () -> Unit,
+    onRequestNotifications: () -> Unit
 ) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(testTag)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(iconColor.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = iconColor,
-                        modifier = Modifier.size(20.dp)
+        val locationTint = when {
+            hasFineLocation -> Color(0xFF10B981)
+            hasOnlyCoarseLocation -> Color(0xFFF59E0B)
+            else -> MaterialTheme.colorScheme.primary
+        }
+        val locationSubtitle = when {
+            hasFineLocation -> stringResource(R.string.onboarding_location_granted_sub)
+            hasOnlyCoarseLocation -> stringResource(R.string.onboarding_location_coarse_sub)
+            else -> stringResource(R.string.onboarding_location_precise_sub)
+        }
+
+        OnboardingGroupCard(isDarkMode = isDarkMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (!hasFineLocation) {
+                            Modifier.clickable(onClick = onRequestLocation)
+                        } else Modifier
+                    )
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OnboardingIconBadge(
+                    icon = if (hasFineLocation) Icons.Default.MyLocation else Icons.Default.LocationOn,
+                    tint = locationTint
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.onboarding_location_precise_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = locationSubtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (hasFineLocation) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = title,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = if (count > 0) {
-                            "$count " + if (appLanguage == AppLanguage.CA) "seleccionades" else "seleccionadas"
-                        } else emptyText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (count > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                PermissionActionPill(
+                    isGranted = hasFineLocation,
+                    label = when {
+                        hasFineLocation -> stringResource(R.string.onboarding_action_active)
+                        hasOnlyCoarseLocation -> stringResource(R.string.onboarding_action_improve)
+                        else -> stringResource(R.string.onboarding_action_enable)
+                    },
+                    accentColor = if (hasOnlyCoarseLocation) Color(0xFFF59E0B) else MaterialTheme.colorScheme.primary,
+                    onClick = onRequestLocation,
+                    modifier = Modifier.testTag("onboarding_btn_gps")
+                )
             }
+        }
 
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (count > 0) (if (appLanguage == AppLanguage.CA) "Canviar" else "Cambiar") else (if (appLanguage == AppLanguage.CA) "Triar" else "Elegir"),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
+        OnboardingGroupCard(isDarkMode = isDarkMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (!hasNotificationPermission) {
+                            Modifier.clickable(onClick = onRequestNotifications)
+                        } else Modifier
                     )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(12.dp))
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OnboardingIconBadge(
+                    icon = Icons.Default.NotificationsActive,
+                    tint = if (hasNotificationPermission) Color(0xFF10B981) else Color(0xFF0284C7)
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.onboarding_notifications_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(
+                            if (hasNotificationPermission) R.string.onboarding_notifications_granted_sub
+                            else R.string.onboarding_notifications_sub
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (hasNotificationPermission) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
+                Spacer(modifier = Modifier.width(12.dp))
+                PermissionActionPill(
+                    isGranted = hasNotificationPermission,
+                    label = stringResource(
+                        if (hasNotificationPermission) R.string.onboarding_action_active
+                        else R.string.onboarding_action_enable
+                    ),
+                    accentColor = MaterialTheme.colorScheme.primary,
+                    onClick = onRequestNotifications,
+                    modifier = Modifier.testTag("onboarding_btn_notifications")
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SumaCardGraphic(isDarkMode: Boolean) {
-    val entity = TransitCardEntity(
-        cardNumber = "094852801234",
-        assignedName = "SUMA Zona AB",
-        defaultName = "Targeta SUMA",
-        cardType = "viajes",
-        remainingValue = "8 Viatges",
-        detailsJson = "{}"
-    )
-    val sampleCard = TransitCardUiModel(
-        entity = entity,
-        cardNumber = entity.cardNumber,
-        assignedName = entity.assignedName,
-        defaultName = entity.defaultName,
-        cardType = entity.cardType,
-        remainingValue = entity.remainingValue,
-        detailsJson = entity.detailsJson,
-        isFaded = false,
-        isManuallyInactive = false,
-        category = "SUMA",
-        title = "Targeta SUMA",
-        clase = "Títol Integrat",
-        operador = "ATMV",
-        zonas = "Zona AB",
-        ampliado = "No",
-        fechaCaducidad = "31/12/2026",
-        fechaRecarga = "01/01/2026",
-        isCurrentlyActive = true,
-        viajesList = emptyList()
-    )
+private fun NetworkSetupThumbControls(
+    isDarkMode: Boolean,
+    preferredModes: Set<String>,
+    favoriteMetroCount: Int,
+    favoriteCercaniasCount: Int,
+    transitCardCount: Int,
+    onToggleMode: (String) -> Unit,
+    onConfigureMetro: () -> Unit,
+    onConfigureCercanias: () -> Unit,
+    onAddTransitCard: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Unified Medios Activos Bento Card
+        OnboardingGroupCard(isDarkMode = isDarkMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OnboardingIconBadge(
+                    icon = Icons.Default.Layers,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = stringResource(R.string.onboarding_modes_section),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontFamily = SpaceGroteskFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = "${preferredModes.size}/5",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                    )
+                }
+            }
 
-    UnifiedTransitCardView(
-        card = sampleCard,
-        format = CardDisplayFormat.HERO,
-        modifier = Modifier.fillMaxWidth()
-    )
+            HorizontalDivider(
+                modifier = Modifier.fillMaxWidth(),
+                thickness = 0.8.dp,
+                color = onboardingDividerColor(isDarkMode)
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Row 1: Metro · EMT · Rodalia/Cercanías
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TransitModeBentoTile(
+                        iconDrawable = R.drawable.logo_metrovalencia,
+                        label = "Metro",
+                        brandColor = Color(0xFFEF4444),
+                        isSelected = preferredModes.contains("METRO"),
+                        isDarkMode = isDarkMode,
+                        onClick = { onToggleMode("METRO") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("onboarding_mode_metro")
+                    )
+                    TransitModeBentoTile(
+                        iconDrawable = R.drawable.logo_emt_valencia,
+                        label = "EMT",
+                        brandColor = Color(0xFF0284C7),
+                        isSelected = preferredModes.contains("EMT"),
+                        isDarkMode = isDarkMode,
+                        onClick = { onToggleMode("EMT") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("onboarding_mode_emt")
+                    )
+                    TransitModeBentoTile(
+                        iconDrawable = R.drawable.logo_cercanias,
+                        label = stringResource(R.string.onboarding_mode_cercanias),
+                        brandColor = Color(0xFF702B7B),
+                        isSelected = preferredModes.contains("CERCANIAS"),
+                        isDarkMode = isDarkMode,
+                        onClick = { onToggleMode("CERCANIAS") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("onboarding_mode_cercanias")
+                    )
+                }
+
+                // Row 2: Valenbisi · Metrobús
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TransitModeBentoTile(
+                        icon = Icons.Default.PedalBike,
+                        label = "Valenbisi",
+                        brandColor = Color(0xFF10B981),
+                        isSelected = preferredModes.contains("VALENBISI"),
+                        isDarkMode = isDarkMode,
+                        onClick = { onToggleMode("VALENBISI") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("onboarding_mode_valenbisi")
+                    )
+                    TransitModeBentoTile(
+                        iconDrawable = R.drawable.logo_metrobus,
+                        label = "Metrobús",
+                        brandColor = MetrobusLineColorResolver.BRAND_COLOR,
+                        isSelected = preferredModes.contains("METROBUS"),
+                        isDarkMode = isDarkMode,
+                        onClick = { onToggleMode("METROBUS") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("onboarding_mode_metrobus")
+                    )
+                }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = stringResource(R.string.onboarding_quick_setup_section),
+                style = MaterialTheme.typography.labelLarge,
+                fontFamily = SpaceGroteskFontFamily,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OnboardingGroupCard(isDarkMode = isDarkMode) {
+                QuickSetupRow(
+                    iconDrawable = R.drawable.logo_metrovalencia,
+                    iconTint = Color(0xFFE53935),
+                    title = "Metrovalencia",
+                    badgeText = if (favoriteMetroCount > 0) {
+                        stringResource(R.string.onboarding_selected_count, favoriteMetroCount)
+                    } else {
+                        stringResource(R.string.onboarding_action_choose)
+                    },
+                    isConfigured = favoriteMetroCount > 0,
+                    onClick = onConfigureMetro,
+                    modifier = Modifier.testTag("onboarding_btn_favorites")
+                )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 66.dp, end = 16.dp),
+                    thickness = 0.8.dp,
+                    color = onboardingDividerColor(isDarkMode)
+                )
+
+                QuickSetupRow(
+                    iconDrawable = R.drawable.logo_cercanias,
+                    iconTint = Color(0xFF702B7B),
+                    title = stringResource(R.string.cercanias_renfe_title),
+                    badgeText = if (favoriteCercaniasCount > 0) {
+                        stringResource(R.string.onboarding_selected_count, favoriteCercaniasCount)
+                    } else {
+                        stringResource(R.string.onboarding_action_choose)
+                    },
+                    isConfigured = favoriteCercaniasCount > 0,
+                    onClick = onConfigureCercanias,
+                    modifier = Modifier.testTag("onboarding_btn_cercanias_favorites")
+                )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 66.dp, end = 16.dp),
+                    thickness = 0.8.dp,
+                    color = onboardingDividerColor(isDarkMode)
+                )
+
+                QuickSetupRow(
+                    icon = Icons.Default.AddCard,
+                    iconTint = Color(0xFFF59E0B),
+                    title = stringResource(R.string.onboarding_card_suma_title),
+                    badgeText = if (transitCardCount > 0) {
+                        stringResource(R.string.onboarding_cards_count, transitCardCount)
+                    } else {
+                        stringResource(R.string.onboarding_action_add)
+                    },
+                    isConfigured = transitCardCount > 0,
+                    onClick = onAddTransitCard,
+                    modifier = Modifier.testTag("onboarding_btn_add_card")
+                )
+            }
+        }
+    }
 }
 
 @Composable
-private fun SummaryRowItem(
+private fun FeatureMicroChip(
     icon: ImageVector,
-    title: String,
-    value: String
+    label: String,
+    isDarkMode: Boolean
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (isDarkMode) Color(0xFF1E222B) else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            1.dp,
+            if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+        )
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(15.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = title,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = SpaceGroteskFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
+    }
+}
+
+@Composable
+private fun OnboardingGroupCard(
+    isDarkMode: Boolean,
+    content: @Composable () -> Unit
+) {
+    val containerColor = if (isDarkMode) Color(0xFF1E222B) else MaterialTheme.colorScheme.surface
+    val borderColor = if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(1.dp, borderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkMode) 0.dp else 1.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun OnboardingIconBadge(
+    icon: ImageVector,
+    tint: Color
+) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(tint.copy(alpha = 0.13f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(20.dp)
         )
+    }
+}
+
+@Composable
+private fun SegmentedTogglePill(
+    isDarkMode: Boolean,
+    firstLabel: String,
+    secondLabel: String,
+    isFirstSelected: Boolean,
+    onSelectFirst: () -> Unit,
+    onSelectSecond: () -> Unit,
+    firstTag: String,
+    secondTag: String
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (isDarkMode) Color(0xFF282F3E)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+            )
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .defaultMinSize(minHeight = 38.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(if (isFirstSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                .clickable(onClick = onSelectFirst)
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .testTag(firstTag),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = firstLabel,
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = SpaceGroteskFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = if (isFirstSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .defaultMinSize(minHeight = 38.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(if (!isFirstSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                .clickable(onClick = onSelectSecond)
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .testTag(secondTag),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = secondLabel,
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = SpaceGroteskFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = if (!isFirstSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun PermissionActionPill(
+    isGranted: Boolean,
+    label: String,
+    accentColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (isGranted) {
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFF10B981).copy(alpha = 0.14f),
+            modifier = modifier
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = Color(0xFF10B981),
+                    modifier = Modifier.size(15.dp)
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF10B981)
+                )
+            }
+        }
+    } else {
+        Button(
+            onClick = onClick,
+            shape = RoundedCornerShape(10.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+            modifier = modifier.defaultMinSize(minHeight = 44.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun TransitModeBentoTile(
+    label: String,
+    brandColor: Color,
+    isSelected: Boolean,
+    isDarkMode: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    @DrawableRes iconDrawable: Int? = null
+) {
+    val bgColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            brandColor.copy(alpha = if (isDarkMode) 0.18f else 0.10f)
+        } else {
+            if (isDarkMode) Color(0xFF151820) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        },
+        animationSpec = tween(durationMillis = 180),
+        label = "mode_tile_bg"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            brandColor.copy(alpha = 0.85f)
+        } else {
+            if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+        },
+        animationSpec = tween(durationMillis = 180),
+        label = "mode_tile_border"
+    )
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0.48f,
+        animationSpec = tween(durationMillis = 180),
+        label = "mode_tile_alpha"
+    )
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = bgColor,
+        border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, borderColor),
+        modifier = modifier.defaultMinSize(minHeight = 68.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 10.dp)
+        ) {
+            // Selection indicator dot in top-right corner
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .then(
+                        if (isSelected) {
+                            Modifier.background(brandColor)
+                        } else {
+                            Modifier.border(
+                                width = 1.2.dp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                shape = CircleShape
+                            )
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(11.dp)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.Center)
+                    .alpha(contentAlpha),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (iconDrawable != null) {
+                    Image(
+                        painter = painterResource(id = iconDrawable),
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp)
+                    )
+                } else if (icon != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(brandColor.copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = brandColor,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = SpaceGroteskFontFamily,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickSetupRow(
+    iconTint: Color,
+    title: String,
+    badgeText: String,
+    isConfigured: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    @DrawableRes iconDrawable: Int? = null
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 56.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (iconDrawable != null) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconTint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = iconDrawable),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        } else if (icon != null) {
+            OnboardingIconBadge(icon = icon, tint = iconTint)
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontFamily = SpaceGroteskFontFamily,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = if (isConfigured) {
+                Color(0xFF10B981).copy(alpha = 0.14f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+            }
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = badgeText,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isConfigured) Color(0xFF10B981) else MaterialTheme.colorScheme.primary
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = if (isConfigured) Color(0xFF10B981) else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(13.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun onboardingDividerColor(isDarkMode: Boolean): Color {
+    return if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+}
+
+private fun isNotificationsGranted(context: Context): Boolean {
+    return if (Build.VERSION.SDK_INT >= 33) {
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+    } else {
+        true
     }
 }

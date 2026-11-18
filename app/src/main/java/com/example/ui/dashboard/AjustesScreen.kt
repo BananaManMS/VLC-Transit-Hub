@@ -525,6 +525,8 @@ fun AjustesScreen(
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
+
+
             }
         }
 

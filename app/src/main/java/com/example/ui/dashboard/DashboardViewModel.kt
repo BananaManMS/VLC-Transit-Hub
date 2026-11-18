@@ -86,6 +86,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isNearbyContextReady = MutableStateFlow(false)
     val isNearbyContextReady: StateFlow<Boolean> = _isNearbyContextReady.asStateFlow()
 
+    private val _hasPlayedLaunchFinishAnimation = MutableStateFlow(false)
+    val hasPlayedLaunchFinishAnimation: StateFlow<Boolean> = _hasPlayedLaunchFinishAnimation.asStateFlow()
+
+    fun markLaunchFinishAnimationPlayed() {
+        _hasPlayedLaunchFinishAnimation.value = true
+    }
+
     private var nearbyComputeJob: Job? = null
 
     fun computeNearbyStops(
@@ -231,15 +238,22 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isUiReady = MutableStateFlow(true)
     val isUiReady = _isUiReady.asStateFlow()
 
+    private val systemDarkModeDefault: String
+        get() = if (
+            (getApplication<Application>().resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        ) "true" else "false"
+
     val isDarkMode: StateFlow<Boolean> = repository.getPreferenceFlow(
         "is_dark_mode",
-        repository.getPreferenceSync("is_dark_mode", "false")
+        repository.getPreferenceSync("is_dark_mode", systemDarkModeDefault)
     )
         .map { it.toBoolean() }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            initialValue = repository.getPreferenceSync("is_dark_mode", "false").toBoolean()
+            initialValue = repository.getPreferenceSync("is_dark_mode", systemDarkModeDefault).toBoolean()
         )
 
     private val initialLanguage: AppLanguage = try {
@@ -310,22 +324,22 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     val mapEngine: StateFlow<MapEngine> = repository.getPreferenceFlow(
         "map_engine",
-        repository.getPreferenceSync("map_engine", MapEngine.OSMDROID.name)
+        repository.getPreferenceSync("map_engine", MapEngine.GOOGLE_MAPS.name)
     )
         .map {
             try {
                 MapEngine.valueOf(it)
             } catch (_: Exception) {
-                MapEngine.OSMDROID
+                MapEngine.GOOGLE_MAPS
             }
         }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
             initialValue = try {
-                MapEngine.valueOf(repository.getPreferenceSync("map_engine", MapEngine.OSMDROID.name))
+                MapEngine.valueOf(repository.getPreferenceSync("map_engine", MapEngine.GOOGLE_MAPS.name))
             } catch (_: Exception) {
-                MapEngine.OSMDROID
+                MapEngine.GOOGLE_MAPS
             }
         )
 
@@ -732,8 +746,16 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     init {
+        syncApplicationNightModeIfNeeded()
         // Automatically sync local Android Calendar events if permission is granted
         syncGoogleCalendarEvents()
+
+        viewModelScope.launch {
+            delay(1200L)
+            if (!_isNearbyContextReady.value) {
+                _isNearbyContextReady.value = true
+            }
+        }
 
         viewModelScope.launch(Dispatchers.IO) {
             // 0. Instant local DB calendar defaults (preferences already loaded synchronously via SharedPreferences)
@@ -854,59 +876,74 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
 
-            // 3. Phase 3 (~2.8s): Consolidated GitHub ETag update checks (HTTP 304 fast-path when unchanged)
+            // 3. Phase 3: Consolidated GitHub ETag update checks (HTTP 304 fast-path when unchanged).
+            // During Onboarding, start right after the brief ~750ms entrance animation so station pickers stay fresh.
             viewModelScope.launch(Dispatchers.IO) {
-                delay(2800L)
-                if (!_shouldShowOnboarding.value) {
-                    syncRemoteTransitDataInBackground()
-                }
+                delay(if (_shouldShowOnboarding.value) 950L else 2800L)
+                syncRemoteTransitDataInBackground()
             }
         }
 
         startClock()
     }
 
+    private val _isTransitCatalogSyncing = MutableStateFlow(false)
+    val isTransitCatalogSyncing: StateFlow<Boolean> = _isTransitCatalogSyncing.asStateFlow()
+    private val transitSyncMutex = kotlinx.coroutines.sync.Mutex()
+    @Volatile
+    private var hasSyncedRemoteTransitThisSession = false
+
     private suspend fun syncRemoteTransitDataInBackground() {
-        val app = getApplication<Application>()
-        com.example.util.StartupProfiler.log("DashboardVM", "Phase 3 starting GitHub ETag schedule/data checks")
-        kotlinx.coroutines.coroutineScope {
-            launch {
-                try {
-                    com.example.data.repository.MetroScheduleRepository.getInstance(app).syncScheduleFromRemoteIfNeeded()
-                } catch (e: Exception) {
-                    Log.w("DashboardViewModel", "Background Metro schedule sync failed: ${e.message}")
+        if (hasSyncedRemoteTransitThisSession) return
+        if (!transitSyncMutex.tryLock()) return
+        try {
+            if (hasSyncedRemoteTransitThisSession) return
+            _isTransitCatalogSyncing.value = true
+            val app = getApplication<Application>()
+            com.example.util.StartupProfiler.log("DashboardVM", "Phase 3 starting GitHub ETag schedule/data checks")
+            kotlinx.coroutines.coroutineScope {
+                launch {
+                    try {
+                        com.example.data.repository.MetroScheduleRepository.getInstance(app).syncScheduleFromRemoteIfNeeded()
+                    } catch (e: Exception) {
+                        Log.w("DashboardViewModel", "Background Metro schedule sync failed: ${e.message}")
+                    }
+                }
+                launch {
+                    try {
+                        com.example.data.repository.renfe.RenfeRepository(app, database).syncScheduleFromRemoteIfNeeded()
+                    } catch (e: Exception) {
+                        Log.w("DashboardViewModel", "Background Renfe schedule sync failed: ${e.message}")
+                    }
+                }
+                launch {
+                    try {
+                        com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(app)
+                    } catch (e: Exception) {
+                        Log.w("DashboardViewModel", "Background EMT sync failed: ${e.message}")
+                    }
+                }
+                launch {
+                    try {
+                        com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(app)
+                    } catch (e: Exception) {
+                        Log.w("DashboardViewModel", "Background Metrobús sync failed: ${e.message}")
+                    }
+                }
+                launch {
+                    try {
+                        com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(app)
+                    } catch (e: Exception) {
+                        Log.w("DashboardViewModel", "Background Cercanías CSV sync failed: ${e.message}")
+                    }
                 }
             }
-            launch {
-                try {
-                    com.example.data.repository.renfe.RenfeRepository(app, database).syncScheduleFromRemoteIfNeeded()
-                } catch (e: Exception) {
-                    Log.w("DashboardViewModel", "Background Renfe schedule sync failed: ${e.message}")
-                }
-            }
-            launch {
-                try {
-                    com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(app)
-                } catch (e: Exception) {
-                    Log.w("DashboardViewModel", "Background EMT sync failed: ${e.message}")
-                }
-            }
-            launch {
-                try {
-                    com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(app)
-                } catch (e: Exception) {
-                    Log.w("DashboardViewModel", "Background Metrobús sync failed: ${e.message}")
-                }
-            }
-            launch {
-                try {
-                    com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(app)
-                } catch (e: Exception) {
-                    Log.w("DashboardViewModel", "Background Cercanías CSV sync failed: ${e.message}")
-                }
-            }
+            hasSyncedRemoteTransitThisSession = true
+            com.example.util.StartupProfiler.log("DashboardVM", "Phase 3 GitHub ETag checks finished")
+        } finally {
+            _isTransitCatalogSyncing.value = false
+            transitSyncMutex.unlock()
         }
-        com.example.util.StartupProfiler.log("DashboardVM", "Phase 3 GitHub ETag checks finished")
     }
 
     fun fetchAllDashboardAlerts(force: Boolean = false) {
@@ -976,10 +1013,31 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    private fun syncApplicationNightModeIfNeeded(explicitDark: Boolean? = null) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            try {
+                val uiModeManager = getApplication<Application>()
+                    .getSystemService(android.content.Context.UI_MODE_SERVICE) as? android.app.UiModeManager
+                if (uiModeManager != null) {
+                    val saved = repository.getPreferenceSync("is_dark_mode", "")
+                    val mode = when {
+                        explicitDark == true || (explicitDark == null && saved == "true") ->
+                            android.app.UiModeManager.MODE_NIGHT_YES
+                        explicitDark == false || (explicitDark == null && saved == "false") ->
+                            android.app.UiModeManager.MODE_NIGHT_NO
+                        else -> android.app.UiModeManager.MODE_NIGHT_AUTO
+                    }
+                    uiModeManager.setApplicationNightMode(mode)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     fun toggleDarkMode() {
         viewModelScope.launch {
             val next = !isDarkMode.value
             repository.savePreference("is_dark_mode", next.toString())
+            syncApplicationNightModeIfNeeded(explicitDark = next)
         }
     }
 
@@ -1010,10 +1068,12 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             fetchAllDashboardAlerts()
             checkForRemoteAnnouncements()
             loadAllActiveAnnouncements()
-            try {
-                syncRemoteTransitDataInBackground()
-            } catch (e: Exception) {
-                Log.w("DashboardViewModel", "Deferred transit sync failed: ${e.message}")
+            if (!hasSyncedRemoteTransitThisSession) {
+                try {
+                    syncRemoteTransitDataInBackground()
+                } catch (e: Exception) {
+                    Log.w("DashboardViewModel", "Deferred transit sync failed: ${e.message}")
+                }
             }
             val loc = _lastLocation.value
             if (loc != null) {
@@ -1035,6 +1095,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun restartOnboarding() {
         _shouldShowOnboarding.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.savePreference("has_completed_onboarding", "false")
+        }
     }
 
     fun refreshAll() {

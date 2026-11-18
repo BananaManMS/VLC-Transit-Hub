@@ -187,18 +187,21 @@ fun DashboardScreen(
     }
 
     var isAppInForeground by remember { mutableStateOf(false) }
+    var hasAutoPromptedNotifications by remember { mutableStateOf(false) }
+    val currentShouldShowOnboarding by androidx.compose.runtime.rememberUpdatedState(shouldShowOnboarding)
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 isAppInForeground = true
                 viewModel.refreshRealTimeTripStatus()
-                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                if (!currentShouldShowOnboarding && !hasAutoPromptedNotifications && android.os.Build.VERSION.SDK_INT >= 33) {
                     val hasNotifPerm = androidx.core.content.ContextCompat.checkSelfPermission(
                         context,
                         android.Manifest.permission.POST_NOTIFICATIONS
                     ) == android.content.pm.PackageManager.PERMISSION_GRANTED
                     if (!hasNotifPerm) {
+                        hasAutoPromptedNotifications = true
                         notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                     }
                 }
@@ -242,11 +245,7 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
             if (shouldShowOnboarding) {
-                val metroVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
-                val cercaniasVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.cercanias.CercaniasViewModel>()
                 OnboardingScreen(
-                    cercaniasViewModel = cercaniasVm,
-                    metroViewModel = metroVm,
                     viewModel = viewModel,
                     onConfigureStations = { showStationConfigDialog = true },
                     onConfigureCercaniasStations = { showCercaniasStationConfigDialog = true },
@@ -257,7 +256,14 @@ fun DashboardScreen(
                                 android.Manifest.permission.ACCESS_COARSE_LOCATION
                             )
                         )
-                    }
+                    },
+                    onLaunchNotificationPermission = {
+                        if (android.os.Build.VERSION.SDK_INT >= 33) {
+                            hasAutoPromptedNotifications = true
+                            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    },
+                    hasActiveModalDialog = showStationConfigDialog || showCercaniasStationConfigDialog
                 )
             } else {
                 Scaffold(
@@ -769,12 +775,7 @@ fun DashboardScreen(
             } // closes Scaffold
             } // closes else (onboarding conditional)
 
-        // Back navigation handling for Onboarding
-        if (shouldShowOnboarding) {
-            BackHandler {
-                viewModel.completeOnboarding()
-            }
-        }
+        // Back navigation for dialogs (Onboarding BackHandler lives inside OnboardingScreen)
 
         // Back navigation handling for dialogs
         if (showAddDialog) {
@@ -898,6 +899,16 @@ fun DashboardScreen(
         val cercaniasDialogVm = if (showCercaniasStationConfigDialog) {
             androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.cercanias.CercaniasViewModel>()
         } else null
+
+        LaunchedEffect(metroSearchVm, cercaniasDialogVm, lastLocation) {
+            lastLocation?.let { (lat, lon) ->
+                metroSearchVm?.setLocation(android.location.Location("gps").apply {
+                    latitude = lat
+                    longitude = lon
+                })
+                cercaniasDialogVm?.updateLocation(lat, lon)
+            }
+        }
 
         val metroSearchQuery by (metroSearchVm?.metroSearchQuery ?: remember { kotlinx.coroutines.flow.MutableStateFlow("") }).collectAsState()
         val filteredStations by (metroSearchVm?.searchedStations ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<MetroStation>()) }).collectAsState()

@@ -26,36 +26,43 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     private val renfeRepository = RenfeRepository(application, database)
     private val renfeAlertsRepository = com.example.data.repository.renfe.RenfeAlertsRepository(application, database)
 
+    private val systemDarkModeDefault: String
+        get() = if (
+            (getApplication<Application>().resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        ) "true" else "false"
+
     // UI state flows
     val isDarkMode: StateFlow<Boolean> = repository.getPreferenceFlow(
         "is_dark_mode",
-        repository.getPreferenceSync("is_dark_mode", "false")
+        repository.getPreferenceSync("is_dark_mode", systemDarkModeDefault)
     )
         .map { it.toBoolean() }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            initialValue = repository.getPreferenceSync("is_dark_mode", "false").toBoolean()
+            initialValue = repository.getPreferenceSync("is_dark_mode", systemDarkModeDefault).toBoolean()
         )
 
     val mapEngine: StateFlow<com.example.ui.map.MapEngine> = repository.getPreferenceFlow(
         "map_engine",
-        repository.getPreferenceSync("map_engine", com.example.ui.map.MapEngine.OSMDROID.name)
+        repository.getPreferenceSync("map_engine", com.example.ui.map.MapEngine.GOOGLE_MAPS.name)
     )
         .map {
             try {
                 com.example.ui.map.MapEngine.valueOf(it)
             } catch (e: Exception) {
-                com.example.ui.map.MapEngine.OSMDROID
+                com.example.ui.map.MapEngine.GOOGLE_MAPS
             }
         }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
             initialValue = try {
-                com.example.ui.map.MapEngine.valueOf(repository.getPreferenceSync("map_engine", com.example.ui.map.MapEngine.OSMDROID.name))
+                com.example.ui.map.MapEngine.valueOf(repository.getPreferenceSync("map_engine", com.example.ui.map.MapEngine.GOOGLE_MAPS.name))
             } catch (e: Exception) {
-                com.example.ui.map.MapEngine.OSMDROID
+                com.example.ui.map.MapEngine.GOOGLE_MAPS
             }
         )
 
