@@ -22,6 +22,86 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.osmdroid.util.GeoPoint
+import java.util.EnumMap
+import java.util.IdentityHashMap
+
+private object GoogleMapPolylineConversionCache {
+    private val COLOR_EMT_RED = Color(0xFFE52320)
+    private val COLOR_MB_ORANGE = Color(0xFFF97316)
+
+    val emtColor: Color get() = COLOR_EMT_RED
+    val mbColor: Color get() = COLOR_MB_ORANGE
+
+    val sharedHttpClient: okhttp3.OkHttpClient by lazy { okhttp3.OkHttpClient() }
+
+    @Volatile
+    private var cachedMetroSetsRef: MetroMapOverlayLoader.PolylineSets? = null
+    @Volatile
+    private var cachedMetroByZoom: Map<MetroMapOverlayLoader.ZoomCategory, List<GoogleMapPolyline>> = emptyMap()
+
+    @Volatile
+    private var cachedCercaniasSetsRef: MetroMapOverlayLoader.PolylineSets? = null
+    @Volatile
+    private var cachedCercaniasByZoom: Map<MetroMapOverlayLoader.ZoomCategory, List<GoogleMapPolyline>> = emptyMap()
+
+    fun getOrConvertMetroPolylines(
+        sets: MetroMapOverlayLoader.PolylineSets,
+        zoomCategory: MetroMapOverlayLoader.ZoomCategory
+    ): List<GoogleMapPolyline> {
+        if (cachedMetroSetsRef !== sets) {
+            synchronized(this) {
+                if (cachedMetroSetsRef !== sets) {
+                    cachedMetroByZoom = buildZoomMap(sets)
+                    cachedMetroSetsRef = sets
+                }
+            }
+        }
+        return cachedMetroByZoom[zoomCategory] ?: emptyList()
+    }
+
+    fun getOrConvertCercaniasPolylines(
+        sets: MetroMapOverlayLoader.PolylineSets,
+        zoomCategory: MetroMapOverlayLoader.ZoomCategory
+    ): List<GoogleMapPolyline> {
+        if (cachedCercaniasSetsRef !== sets) {
+            synchronized(this) {
+                if (cachedCercaniasSetsRef !== sets) {
+                    cachedCercaniasByZoom = buildZoomMap(sets)
+                    cachedCercaniasSetsRef = sets
+                }
+            }
+        }
+        return cachedCercaniasByZoom[zoomCategory] ?: emptyList()
+    }
+
+    private fun buildZoomMap(
+        sets: MetroMapOverlayLoader.PolylineSets
+    ): Map<MetroMapOverlayLoader.ZoomCategory, List<GoogleMapPolyline>> {
+        // Deduplicate GeoPoint -> LatLng conversions whenever zoom categories share the same list reference
+        val pointListCache = IdentityHashMap<List<GeoPoint>, List<LatLng>>()
+        fun convertRawList(rawList: List<MetroMapOverlayLoader.RawPolyline>): List<GoogleMapPolyline> {
+            return rawList.map { raw ->
+                val latLngs = pointListCache[raw.points] ?: raw.points.map {
+                    LatLng(it.latitude, it.longitude)
+                }.also { pointListCache[raw.points] = it }
+                GoogleMapPolyline(
+                    points = latLngs,
+                    color = Color(raw.color),
+                    width = raw.strokeWidth,
+                    lineRef = raw.lineRef
+                )
+            }
+        }
+
+        val map = EnumMap<MetroMapOverlayLoader.ZoomCategory, List<GoogleMapPolyline>>(
+            MetroMapOverlayLoader.ZoomCategory::class.java
+        )
+        map[MetroMapOverlayLoader.ZoomCategory.FAR] = convertRawList(sets.highResFar.ifEmpty { sets.lowResFar })
+        map[MetroMapOverlayLoader.ZoomCategory.MEDIUM] = convertRawList(sets.highResMedium.ifEmpty { sets.lowResMedium })
+        map[MetroMapOverlayLoader.ZoomCategory.CLOSE] = convertRawList(sets.highResClose.ifEmpty { sets.lowResClose })
+        return map
+    }
+}
 
 data class GoogleMapTransitRoutesState(
     val metroPolylineList: List<GoogleMapPolyline> = emptyList(),
@@ -81,37 +161,31 @@ fun rememberGoogleMapTransitRoutes(
         }
     }
 
-    // 1. Asynchronously load Metro Polylines
+    // 1. Asynchronously load & cache all ZoomCategories of Metro Polylines
     LaunchedEffect(showMetroLines, currentMetroZoomCategory) {
         if (showMetroLines) {
-            withContext(Dispatchers.IO) {
-                try {
-                    MetroMapOverlayLoader.ensureLoaded(context)
-                    if (!MetroMapOverlayLoader.isLoaded) {
-                        MetroMapOverlayLoader.isLoadedState.first { it }
+            if (MetroMapOverlayLoader.isLoaded) {
+                val sets = MetroMapOverlayLoader.getPolylineSets()
+                metroPolylineList = GoogleMapPolylineConversionCache.getOrConvertMetroPolylines(sets, currentMetroZoomCategory)
+                isLinesLoading = false
+            } else {
+                withContext(Dispatchers.IO) {
+                    try {
+                        MetroMapOverlayLoader.ensureLoaded(context)
+                        if (!MetroMapOverlayLoader.isLoaded) {
+                            MetroMapOverlayLoader.isLoadedState.first { it }
+                        }
+                        val sets = MetroMapOverlayLoader.getPolylineSets()
+                        val converted = GoogleMapPolylineConversionCache.getOrConvertMetroPolylines(sets, currentMetroZoomCategory)
+                        withContext(Dispatchers.Main) {
+                            metroPolylineList = converted
+                            isLinesLoading = false
+                        }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        Log.e("GoogleMapTransitRoutes", "Error loading metro polylines", e)
+                        withContext(Dispatchers.Main) { isLinesLoading = false }
                     }
-                    val sets = MetroMapOverlayLoader.getPolylineSets()
-                    val rawSets = when (currentMetroZoomCategory) {
-                        MetroMapOverlayLoader.ZoomCategory.FAR -> sets.highResFar.ifEmpty { sets.lowResFar }
-                        MetroMapOverlayLoader.ZoomCategory.MEDIUM -> sets.highResMedium.ifEmpty { sets.lowResMedium }
-                        MetroMapOverlayLoader.ZoomCategory.CLOSE -> sets.highResClose.ifEmpty { sets.lowResClose }
-                    }
-                    val converted = rawSets.map { raw ->
-                        GoogleMapPolyline(
-                            points = raw.points.map { LatLng(it.latitude, it.longitude) },
-                            color = Color(raw.color),
-                            width = raw.strokeWidth,
-                            lineRef = raw.lineRef
-                        )
-                    }
-                    withContext(Dispatchers.Main) {
-                        metroPolylineList = converted
-                        isLinesLoading = false
-                    }
-                } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
-                    Log.e("GoogleMapTransitRoutes", "Error loading metro polylines", e)
-                    withContext(Dispatchers.Main) { isLinesLoading = false }
                 }
             }
         } else {
@@ -119,35 +193,28 @@ fun rememberGoogleMapTransitRoutes(
         }
     }
 
-    // 2. Asynchronously load Cercanías Polylines
+    // 2. Asynchronously load & cache all ZoomCategories of Cercanías Polylines
     LaunchedEffect(showCercaniasLines, currentCercaniasZoomCategory) {
         if (showCercaniasLines) {
-            withContext(Dispatchers.IO) {
-                try {
-                    CercaniasMapOverlayLoader.ensureLoaded(context)
-                    if (!CercaniasMapOverlayLoader.isLoaded) {
-                        CercaniasMapOverlayLoader.isLoadedState.first { it }
+            if (CercaniasMapOverlayLoader.isLoaded) {
+                val sets = CercaniasMapOverlayLoader.getPolylineSets()
+                cercaniasPolylineList = GoogleMapPolylineConversionCache.getOrConvertCercaniasPolylines(sets, currentCercaniasZoomCategory)
+            } else {
+                withContext(Dispatchers.IO) {
+                    try {
+                        CercaniasMapOverlayLoader.ensureLoaded(context)
+                        if (!CercaniasMapOverlayLoader.isLoaded) {
+                            CercaniasMapOverlayLoader.isLoadedState.first { it }
+                        }
+                        val sets = CercaniasMapOverlayLoader.getPolylineSets()
+                        val converted = GoogleMapPolylineConversionCache.getOrConvertCercaniasPolylines(sets, currentCercaniasZoomCategory)
+                        withContext(Dispatchers.Main) {
+                            cercaniasPolylineList = converted
+                        }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        Log.e("GoogleMapTransitRoutes", "Error loading cercanias polylines", e)
                     }
-                    val sets = CercaniasMapOverlayLoader.getPolylineSets()
-                    val rawSets = when (currentCercaniasZoomCategory) {
-                        MetroMapOverlayLoader.ZoomCategory.FAR -> sets.highResFar.ifEmpty { sets.lowResFar }
-                        MetroMapOverlayLoader.ZoomCategory.MEDIUM -> sets.highResMedium.ifEmpty { sets.lowResMedium }
-                        MetroMapOverlayLoader.ZoomCategory.CLOSE -> sets.highResClose.ifEmpty { sets.lowResClose }
-                    }
-                    val converted = rawSets.map { raw ->
-                        GoogleMapPolyline(
-                            points = raw.points.map { LatLng(it.latitude, it.longitude) },
-                            color = Color(raw.color),
-                            width = raw.strokeWidth,
-                            lineRef = raw.lineRef
-                        )
-                    }
-                    withContext(Dispatchers.Main) {
-                        cercaniasPolylineList = converted
-                    }
-                } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
-                    Log.e("GoogleMapTransitRoutes", "Error loading cercanias polylines", e)
                 }
             }
         } else {
@@ -240,7 +307,7 @@ fun rememberGoogleMapTransitRoutes(
                             polylines.add(
                                 GoogleMapPolyline(
                                     points = shape.points.map { LatLng(it.latitude, it.longitude) },
-                                    color = Color(AndroidColor.parseColor("#E52320")),
+                                    color = GoogleMapPolylineConversionCache.emtColor,
                                     width = polyWidth,
                                     lineRef = lineRef
                                 )
@@ -251,6 +318,7 @@ fun rememberGoogleMapTransitRoutes(
                         busPolylineList = polylines
                     }
                 } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     Log.e("GoogleMapTransitRoutes", "Error loading EMT bus polylines", e)
                 }
             }
@@ -259,8 +327,8 @@ fun rememberGoogleMapTransitRoutes(
         }
     }
 
-    // 4. Dynamic Metrobús Route Polylines
-    LaunchedEffect(selectedMetrobusShapes, activeBusTarget, selectedDirectionFilter, settledZoom) {
+    // 4. Dynamic Metrobús Route Polylines (keyed on discrete busPolyCategory rather than continuous settledZoom)
+    LaunchedEffect(selectedMetrobusShapes, activeBusTarget, selectedDirectionFilter, busPolyCategory) {
         val (linesToDraw, stopGeo) = activeBusTarget
         val mbLines = linesToDraw.filter { line ->
             val norm = MetrobusStationHighlightManager.normalizeLine(line)
@@ -287,11 +355,10 @@ fun rememberGoogleMapTransitRoutes(
                         1 -> 9f
                         else -> 12f
                     }
-                    val mbColor = Color(AndroidColor.parseColor("#F97316"))
                     val polylines = filteredShapes.map { (key, points) ->
                         GoogleMapPolyline(
                             points = points.map { LatLng(it.latitude, it.longitude) },
-                            color = mbColor,
+                            color = GoogleMapPolylineConversionCache.mbColor,
                             width = polyWidth,
                             lineRef = key
                         )
@@ -308,7 +375,11 @@ fun rememberGoogleMapTransitRoutes(
             withContext(Dispatchers.IO) {
                 try {
                     val db = com.example.data.database.AppDatabase.getDatabase(context)
-                    val mbRepo = com.example.data.repository.MetrobusRepository(db, okhttp3.OkHttpClient(), context)
+                    val mbRepo = com.example.data.repository.MetrobusRepository(
+                        db,
+                        GoogleMapPolylineConversionCache.sharedHttpClient,
+                        context
+                    )
                     val shapesMap = mutableMapOf<String, List<GeoPoint>>()
                     mbLines.forEach { lineCode ->
                         val shapeData = mbRepo.fetchLineShape(lineCode)
@@ -336,11 +407,10 @@ fun rememberGoogleMapTransitRoutes(
                         1 -> 9f
                         else -> 12f
                     }
-                    val mbColor = Color(AndroidColor.parseColor("#F97316"))
                     val polylines = filteredShapes.map { (key, points) ->
                         GoogleMapPolyline(
                             points = points.map { LatLng(it.latitude, it.longitude) },
-                            color = mbColor,
+                            color = GoogleMapPolylineConversionCache.mbColor,
                             width = polyWidth,
                             lineRef = key
                         )

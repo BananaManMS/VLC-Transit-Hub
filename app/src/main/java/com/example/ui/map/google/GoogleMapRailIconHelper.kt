@@ -21,7 +21,7 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory
  * Isolated LruCache prevents rail icons from being evicted by high-volume bus stops.
  */
 internal object GoogleMapRailIconHelper {
-    private val railCache = LruCache<String, CachedMarkerIcon>(128)
+    private val railCache = LruCache<String, CachedMarkerIcon>(512)
 
     fun getOrCreateMetroStationIcon(
         context: Context,

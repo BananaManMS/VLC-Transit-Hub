@@ -83,7 +83,15 @@ fun NearbyStopsBottomSheet(
     val collapsedHeightPx = with(density) { (collapsedHeightDp + activeTripBottomPadding).toPx() }
     val expandedHeightPx = with(density) { (expandedHeightDp + activeTripBottomPadding).toPx() }
 
-    val heightAnimatable = remember { Animatable(collapsedHeightPx) }
+    val heightAnimatable = remember {
+        Animatable(
+            when (sheetState) {
+                SheetState.MINIMIZED -> minimizedHeightPx
+                SheetState.COLLAPSED -> collapsedHeightPx
+                SheetState.EXPANDED -> expandedHeightPx
+            }
+        )
+    }
 
     LaunchedEffect(sheetState, expandedHeightPx, collapsedHeightPx) {
         val target = when (sheetState) {

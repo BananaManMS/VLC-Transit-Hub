@@ -1,7 +1,6 @@
 package com.example.ui.map.google
 
 import android.content.Context
-import android.graphics.Color as AndroidColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -11,6 +10,7 @@ import com.example.ui.cercanias.LiveVehicleInfo
 import com.example.ui.map.MapFilter
 import com.example.ui.map.SelectedMapItem
 import com.example.ui.map.components.CercaniasMapOverlayLoader
+import com.example.ui.map.components.MarkerLogoBitmapCache
 import com.example.util.LineColorResolver
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.Marker
@@ -31,6 +31,10 @@ internal fun GoogleMapCercaniasLayer(
     trainsToRender: List<LiveVehicleInfo>,
     isDarkMode: Boolean,
     settledZoom: Float,
+    minLat: Double = -90.0,
+    maxLat: Double = 90.0,
+    minLon: Double = -180.0,
+    maxLon: Double = 180.0,
     context: Context,
     handleTransitItemTap: (GoogleMapTransitItem, Double, Double) -> Unit
 ) {
@@ -38,29 +42,62 @@ internal fun GoogleMapCercaniasLayer(
 
     // 1. Cercanías Stations
     if (isCercaniasActiveFilter) {
-        cercaniasStationsToRender.forEach { station ->
-            val isSelected = (selectedItem as? GoogleMapTransitItem.Cercanias)?.station?.stop_id == station.stop_id ||
-                             (selectedMapItem as? SelectedMapItem.Cercanias)?.station?.stop_id == station.stop_id
-            if (!isSelected && !isZoomForCercanias && !mapFilter.isFavorites) return@forEach
+        val selectedCercaniasId = (selectedItem as? GoogleMapTransitItem.Cercanias)?.station?.stop_id
+            ?: (selectedMapItem as? SelectedMapItem.Cercanias)?.station?.stop_id
+        val hasBounds = maxLat > minLat && maxLon > minLon && minLat > -89.0
+        val latPad = if (hasBounds) ((maxLat - minLat) * 0.5).coerceAtLeast(0.03) else 0.0
+        val lonPad = if (hasBounds) ((maxLon - minLon) * 0.5).coerceAtLeast(0.03) else 0.0
+        val pMinLat = minLat - latPad
+        val pMaxLat = maxLat + latPad
+        val pMinLon = minLon - lonPad
+        val pMaxLon = maxLon + lonPad
+
+        val visibleStations = remember(
+            cercaniasStationsToRender,
+            isZoomForCercanias,
+            mapFilter.isFavorites,
+            selectedCercaniasId,
+            hasBounds,
+            pMinLat,
+            pMaxLat,
+            pMinLon,
+            pMaxLon
+        ) {
+            if (!isZoomForCercanias && !mapFilter.isFavorites) {
+                if (selectedCercaniasId == null) emptyList()
+                else cercaniasStationsToRender.filter { it.stop_id == selectedCercaniasId }
+            } else if (!hasBounds || mapFilter.isFavorites) {
+                cercaniasStationsToRender
+            } else {
+                cercaniasStationsToRender.filter { station ->
+                    station.stop_id == selectedCercaniasId ||
+                        (station.lat in pMinLat..pMaxLat && station.lon in pMinLon..pMaxLon)
+                }
+            }
+        }
+
+        val isDimmedByOtherMode = isBusActive || isMetroActive
+        val cercaniasLod = when {
+            settledZoom < 11.5f -> 0
+            settledZoom < 13.5f -> 1
+            settledZoom < 15.0f -> 2
+            settledZoom < 16.0f -> 3
+            else -> 4
+        }
+        val hasActiveHighlight = activeCercaniasLines.isNotEmpty()
+
+        visibleStations.forEach { station ->
+            val isSelected = station.stop_id == selectedCercaniasId
 
             key("CERCANIAS_${station.stop_id}") {
                 val isFav = favoriteCercaniasStations.contains(station.stop_id)
-
-                val isDimmedByOtherMode = isBusActive || isMetroActive
-                val isDimmedByCercaniasHighlight = activeCercaniasLines.isNotEmpty() && !activeCercaniasLines.any { station.lineas.contains(it) }
+                val matchesHighlight = hasActiveHighlight && station.lineas.any { activeCercaniasLines.contains(it) }
+                val isDimmedByCercaniasHighlight = hasActiveHighlight && !matchesHighlight
                 val isDimmed = !isSelected && (isDimmedByOtherMode || isDimmedByCercaniasHighlight)
-                val isConnected = !isSelected && activeCercaniasLines.isNotEmpty() && activeCercaniasLines.any { station.lineas.contains(it) }
+                val isConnected = !isSelected && matchesHighlight
 
                 val cercaniasAlpha = if (isSelected) 1.0f else if (isDimmed) 0.20f else 1.0f
                 val cercaniasZIndex = if (isSelected) 45f else if (isDimmed) 2f else if (isConnected) 34f else 25f
-
-                val cercaniasLod = when {
-                    settledZoom < 11.5f -> 0
-                    settledZoom < 13.5f -> 1
-                    settledZoom < 15.0f -> 2
-                    settledZoom < 16.0f -> 3
-                    else -> 4
-                }
 
                 val iconInfo = remember(station.nombre, station.lineas, isDarkMode, isFav, cercaniasLod, isSelected) {
                     if (isSelected) {
@@ -132,7 +169,7 @@ internal fun GoogleMapCercaniasLayer(
             if (vLat != null && vLon != null && !vLat.isNaN() && !vLon.isNaN()) {
                 val canonicalNum = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(vehicle.routeId, vehicle.tripId)
                 val lineCode = "C$canonicalNum"
-                val lineColorHex = AndroidColor.parseColor(
+                val lineColorHex = MarkerLogoBitmapCache.parseColorCached(
                     LineColorResolver.getCercaniasLineColorHex(lineCode)
                 )
                 val trackPoints = remember(lineCode) {

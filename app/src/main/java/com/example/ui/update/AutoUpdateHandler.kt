@@ -34,10 +34,8 @@ fun DashboardAutoUpdateHandler(
     // Session dismissal state so dismissing the update prompt does not annoy the user repeatedly
     var dismissedInSession by rememberSaveable { mutableStateOf(false) }
 
-    // On app startup, clean old cache APKs and run a background update check
+    // Run a background update check after startup UI & network settle
     LaunchedEffect(Unit) {
-        AppUpdateManager.cleanOldUpdateApks(context)
-        // Staggered startup: wait ~8s so UI, alerts, and syncs complete smoothly
         delay(8000L)
         appUpdateViewModel.checkForUpdate(silentIfUpToDate = true)
     }

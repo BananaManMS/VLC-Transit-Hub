@@ -106,6 +106,9 @@ fun DashboardScreen(
     var pendingSelectedMetroStationId by remember { mutableStateOf<String?>(null) }
     var pendingSelectedCercaniasStationId by remember { mutableStateOf<String?>(null) }
     var pendingSelectedBusStopId by remember { mutableStateOf<String?>(null) }
+    var pendingSelectedBusStopEntity by remember { mutableStateOf<com.example.data.database.GeoportalStopEntity?>(null) }
+    var pendingSelectedMetrobusStopEntity by remember { mutableStateOf<com.example.data.database.MetrobusStopEntity?>(null) }
+    var pendingMapSelectionMode by remember { mutableStateOf<com.example.ui.map.MapSelectionMode?>(null) }
     var isPlannerVisible by remember { mutableStateOf(false) }
     var isNetworkPlansVisible by remember { mutableStateOf(false) }
     var isViewingPlannerItineraryOnMap by remember { mutableStateOf(false) }
@@ -154,8 +157,6 @@ fun DashboardScreen(
     var showCercaniasStationConfigDialog by remember { mutableStateOf(false) }
     var showMetroSearchDialog by remember { mutableStateOf(false) }
 
-    val mapVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.map.MapViewModel>()
-
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -191,11 +192,7 @@ fun DashboardScreen(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 isAppInForeground = true
-                viewModel.onAppForegrounded()
                 viewModel.refreshRealTimeTripStatus()
-                if (LocationUtils.hasLocationPermission(context)) {
-                    LocationUtils.requestDeviceLocation(context, handleLocationResult)
-                }
                 if (android.os.Build.VERSION.SDK_INT >= 33) {
                     val hasNotifPerm = androidx.core.content.ContextCompat.checkSelfPermission(
                         context,
@@ -224,10 +221,14 @@ fun DashboardScreen(
                     viewModel.updateLocation(lat, lng)
                     viewModel.updateWeatherByLocation(lat, lng, context)
                 }
-                LocationUtils.getLocationUpdates(context, intervalMs = 15000L, minDistanceMeters = 10.0f)
-                    .collect { loc ->
-                        viewModel.updateLocation(loc.latitude, loc.longitude)
-                    }
+                LocationUtils.getLocationUpdates(
+                    context = context,
+                    intervalMs = 15000L,
+                    minDistanceMeters = 10.0f,
+                    allowSatelliteGps = (activeTrip != null)
+                ).collect { loc ->
+                    viewModel.updateLocation(loc.latitude, loc.longitude)
+                }
             }
         }
     }
@@ -417,7 +418,7 @@ fun DashboardScreen(
                                 },
                                 onDeleteCalendarItem = { viewModel.deleteItem(it) },
                                 dashboardViewModel = viewModel,
-                                busViewModel = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.bus.BusViewModel>(),
+                                busViewModel = null,
                                 onNavigateToTab = { targetTab, page ->
                                     previousTabForBack = DashboardTab.Inicio
                                     when (targetTab) {
@@ -433,6 +434,12 @@ fun DashboardScreen(
                                 },
                                 onSelectCercaniasStation = { stationId ->
                                     pendingSelectedCercaniasStationId = stationId
+                                },
+                                onSelectBusStop = { stop ->
+                                    pendingSelectedBusStopEntity = stop
+                                },
+                                onSelectMetrobusStop = { stop ->
+                                    pendingSelectedMetrobusStopEntity = stop
                                 },
                                 onOpenRoutePlanner = { dest ->
                                     previousTabForBack = DashboardTab.Inicio
@@ -453,7 +460,7 @@ fun DashboardScreen(
                                         "WORK" -> com.example.ui.map.MapSelectionMode.SELECTING_WORK
                                         else -> com.example.ui.map.MapSelectionMode.SELECTING_PINNED
                                     }
-                                    mapVm.setSelectionMode(mode)
+                                    pendingMapSelectionMode = mode
                                     previousTabForBack = DashboardTab.Inicio
                                     activeTab = DashboardTab.Mapa
                                 },
@@ -463,17 +470,22 @@ fun DashboardScreen(
                             )
                         }
                         DashboardTab.Mapa -> {
+                            val mapVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.map.MapViewModel>()
                             val metroVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
                             val cercaniasVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.cercanias.CercaniasViewModel>()
                             val plannerVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.routing.RoutePlannerViewModel>()
-                            
-                            val currentLoc = lastLocation ?: com.example.util.LocationUtils.lastKnownLocationCache?.let { Pair(it.latitude, it.longitude) }
-                            if (currentLoc != null) {
-                                mapVm.updateLocation(currentLoc.first, currentLoc.second)
-                            }
 
+                            LaunchedEffect(pendingMapSelectionMode) {
+                                pendingMapSelectionMode?.let { mode ->
+                                    mapVm.setSelectionMode(mode)
+                                    pendingMapSelectionMode = null
+                                }
+                            }
+                            
                             LaunchedEffect(lastLocation) {
-                                lastLocation?.let { (lat, lon) ->
+                                val currentLoc = lastLocation
+                                    ?: com.example.util.LocationUtils.lastKnownLocationCache?.let { Pair(it.latitude, it.longitude) }
+                                currentLoc?.let { (lat, lon) ->
                                     mapVm.updateLocation(lat, lon)
                                     metroVm.setLocation(android.location.Location("gps").apply {
                                         latitude = lat
@@ -579,15 +591,6 @@ fun DashboardScreen(
                             )
                         }
                 DashboardTab.Bus -> {
-                    val metroVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
-                    LaunchedEffect(lastLocation) {
-                        lastLocation?.let { (lat, lon) ->
-                            metroVm.setLocation(android.location.Location("gps").apply {
-                                latitude = lat
-                                longitude = lon
-                            })
-                        }
-                    }
                     val busVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.bus.BusViewModel>()
                     LaunchedEffect(pendingSelectedBusStopId) {
                         pendingSelectedBusStopId?.let { stopId ->
@@ -595,9 +598,20 @@ fun DashboardScreen(
                             pendingSelectedBusStopId = null
                         }
                     }
+                    LaunchedEffect(pendingSelectedBusStopEntity) {
+                        pendingSelectedBusStopEntity?.let { stop ->
+                            busVm.selectBusStopFromEntity(stop)
+                            pendingSelectedBusStopEntity = null
+                        }
+                    }
+                    LaunchedEffect(pendingSelectedMetrobusStopEntity) {
+                        pendingSelectedMetrobusStopEntity?.let { stop ->
+                            busVm.selectMetrobusStopFromEntity(stop)
+                            pendingSelectedMetrobusStopEntity = null
+                        }
+                    }
                     DashboardBusTab(
                         viewModel = viewModel,
-                        metroViewModel = metroVm,
                         busViewModel = busVm,
                         isDarkMode = isDarkMode,
                         initialPage = busInitialPage,

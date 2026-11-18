@@ -87,36 +87,17 @@ internal fun createMarkerIcon(context: Context, label: String, primaryColor: Int
         paint.strokeWidth = 2.5f
         canvas.drawRoundRect(squareRect, 10f, 10f, paint)
 
-        // Draw logo_metrobus inside
-        val logoDrawable = try {
-            ResourcesCompat.getDrawable(context.resources, com.example.R.drawable.logo_metrobus, context.theme)
-        } catch (e: Exception) {
-            null
-        }
+        // Draw logo_metrobus inside (pre-rasterized logo bitmap)
+        val drewMbLogo = MarkerLogoBitmapCache.drawAspectFittedLogo(
+            context = context,
+            canvas = canvas,
+            resId = com.example.R.drawable.logo_metrobus,
+            centerX = centerX,
+            centerY = centerY,
+            maxSize = size - 12f
+        )
 
-        if (logoDrawable != null) {
-            val intrinsicWidth = logoDrawable.intrinsicWidth.toFloat()
-            val intrinsicHeight = logoDrawable.intrinsicHeight.toFloat()
-            if (intrinsicWidth > 0 && intrinsicHeight > 0) {
-                val ratio = intrinsicWidth / intrinsicHeight
-                val targetMax = size - 12f
-                val w: Float
-                val h: Float
-                if (ratio > 1f) {
-                    w = targetMax
-                    h = targetMax / ratio
-                } else {
-                    h = targetMax
-                    w = targetMax * ratio
-                }
-                val left = centerX - w / 2f
-                val top = centerY - h / 2f
-                logoDrawable.setBounds(left.toInt(), top.toInt(), (left + w).toInt(), (top + h).toInt())
-            } else {
-                logoDrawable.setBounds(6, 6, size - 6, size - 6)
-            }
-            logoDrawable.draw(canvas)
-        } else {
+        if (!drewMbLogo) {
             // Fallback: white "m" letter inside
             paint.style = Paint.Style.FILL
             paint.color = Color.WHITE
@@ -152,41 +133,23 @@ internal fun createMarkerIcon(context: Context, label: String, primaryColor: Int
     canvas.drawRoundRect(squareRect, 10f, 10f, paint)
 
     // Draw thin EMT blue border stroke around square
-    paint.color = Color.parseColor("#2563EB") // Nice bus/EMT blue
+    paint.color = MarkerLogoBitmapCache.parseColorCached("#2563EB") // Nice bus/EMT blue
     paint.style = Paint.Style.STROKE
     paint.strokeWidth = 2.5f
     canvas.drawRoundRect(squareRect, 10f, 10f, paint)
 
-    // Draw the EMT logo inside
-    val logoDrawable = try {
-        ResourcesCompat.getDrawable(context.resources, com.example.R.drawable.logo_emt_valencia, context.theme)
-    } catch (e: Exception) {
-        null
-    }
+    // Draw the EMT logo inside (pre-rasterized logo bitmap)
+    val drewEmtLogo = MarkerLogoBitmapCache.drawAspectFittedLogo(
+        context = context,
+        canvas = canvas,
+        resId = com.example.R.drawable.logo_emt_valencia,
+        centerX = centerX,
+        centerY = centerY,
+        maxSize = size - 14f,
+        fallbackPaddingInset = 2f
+    )
 
-    if (logoDrawable != null) {
-        val intrinsicWidth = logoDrawable.intrinsicWidth.toFloat()
-        val intrinsicHeight = logoDrawable.intrinsicHeight.toFloat()
-        if (intrinsicWidth > 0 && intrinsicHeight > 0) {
-            val ratio = intrinsicWidth / intrinsicHeight
-            val targetMax = size - 14f // leave padding
-            val w: Float
-            val h: Float
-            if (ratio > 1f) {
-                w = targetMax
-                h = targetMax / ratio
-            } else {
-                h = targetMax
-                w = targetMax * ratio
-            }
-            val left = centerX - w / 2f
-            val top = centerY - h / 2f
-            logoDrawable.setBounds(left.toInt(), top.toInt(), (left + w).toInt(), (top + h).toInt())
-        } else {
-            logoDrawable.setBounds(8, 8, size - 8, size - 8)
-        }
-        logoDrawable.draw(canvas)
-    } else {
+    if (!drewEmtLogo) {
         // Fallback inside square: draw bus silhouette in primaryColor (Red)
         paint.style = Paint.Style.FILL
         paint.color = primaryColor

@@ -21,8 +21,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.border
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
+import androidx.core.graphics.toColorInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -283,54 +288,59 @@ fun CercaniasDeparturesTab(
         val selectedLineFilters by viewModel.selectedCercaniasLineFilters.collectAsState()
 
         if (availableLines.size > 1) {
+            val horizontalScrollBoundaryLock = remember {
+                object : NestedScrollConnection {
+                    override fun onPostScroll(
+                        consumed: Offset,
+                        available: Offset,
+                        source: NestedScrollSource
+                    ): Offset = Offset(x = available.x, y = 0f)
+                }
+            }
+
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    .nestedScroll(horizontalScrollBoundaryLock)
+                    .padding(top = 2.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 item {
                     val isAllSelected = selectedLineFilters.isEmpty()
-                    val cardBgColor = if (isAllSelected) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDarkMode) 0.6f else 0.9f)
-                    } else {
-                        if (isDarkMode) Color(0xFF222222) else MaterialTheme.colorScheme.surface
-                    }
-                    val borderStroke = if (isAllSelected) {
-                        BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary)
-                    } else {
-                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-                    }
-
-                    Card(
+                    Surface(
+                        onClick = { viewModel.clearCercaniasLineFilters() },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isAllSelected) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDarkMode) 0.6f else 0.9f)
+                        } else {
+                            if (isDarkMode) Color(0xFF1E212A) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        },
+                        border = if (isAllSelected) {
+                            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                        } else {
+                            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        },
                         modifier = Modifier
-                            .height(24.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { viewModel.clearCercaniasLineFilters() }
-                            .testTag("cercanias_filter_all"),
-                        colors = CardDefaults.cardColors(containerColor = cardBgColor),
-                        border = borderStroke,
-                        shape = RoundedCornerShape(6.dp)
+                            .heightIn(min = 44.dp)
+                            .testTag("cercanias_filter_all")
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .padding(horizontal = 8.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DirectionsRailway,
                                 contentDescription = null,
-                                tint = if (isAllSelected) MaterialTheme.colorScheme.primary else subtextColor,
-                                modifier = Modifier.size(12.dp)
+                                tint = if (isAllSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(15.dp)
                             )
                             Text(
-                                text = "Todas",
-                                fontSize = 10.sp,
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.bus_line_filter_all),
+                                fontSize = 12.5.sp,
                                 fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isAllSelected) MaterialTheme.colorScheme.onPrimaryContainer else textColor
+                                color = if (isAllSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -339,39 +349,41 @@ fun CercaniasDeparturesTab(
                 items(availableLines, key = { it }) { line ->
                     val isSelected = selectedLineFilters.contains(line)
                     val isAnySelected = selectedLineFilters.isNotEmpty()
-                    val alpha = if (isAnySelected && !isSelected) 0.38f else 1.0f
+                    val lineHex = com.example.util.LineColorResolver.getCercaniasLineColorHex(line)
+                    val lineColor = remember(lineHex) {
+                        try {
+                            Color(lineHex.toColorInt())
+                        } catch (_: Exception) {
+                            Color(0xFF702B7B)
+                        }
+                    }
+                    val displayLine = com.example.ui.metro.TransitLogoUtils.getCercaniasDisplayName(line)
 
-                    androidx.compose.material3.Surface(
+                    Surface(
                         onClick = { viewModel.toggleCercaniasLineFilter(line) },
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color.Transparent,
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isSelected) {
+                            lineColor.copy(alpha = if (isDarkMode) 0.28f else 0.15f)
+                        } else {
+                            if (isDarkMode) Color(0xFF1E212A) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        },
+                        border = if (isSelected) {
+                            BorderStroke(1.5.dp, lineColor)
+                        } else {
+                            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        },
                         modifier = Modifier
-                            .height(24.dp)
-                            .widthIn(min = 24.dp)
-                            .alpha(alpha)
-                            .then(
-                                if (isSelected) {
-                                    Modifier.border(
-                                        width = 1.2.dp,
-                                        color = if (isDarkMode) Color.White else MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(6.dp)
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            )
+                            .heightIn(min = 44.dp)
+                            .alpha(if (isAnySelected && !isSelected) 0.55f else 1f)
                             .testTag("cercanias_filter_$line")
                     ) {
                         Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(if (isSelected) 1.5.dp else 0.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             com.example.ui.metro.CercaniasLineBadge(
                                 routeId = line,
-                                size = 16.dp,
-                                modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                                size = 24.dp
                             )
                         }
                     }

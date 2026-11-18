@@ -12,7 +12,13 @@ import android.util.LruCache
 import androidx.core.content.res.ResourcesCompat
 import com.example.util.LineColorResolver
 
-private val cercaniasStationIconCache = LruCache<String, MarkerIconResult>(64)
+private val cercaniasStationIconCache = LruCache<String, MarkerIconResult>(256)
+
+private val COLOR_CERC_TEXT_LIGHT = Color.parseColor("#0F172A")
+private val COLOR_CERC_TEXT_DARK = Color.parseColor("#F8FAFC")
+private val COLOR_CERC_STROKE_DARK = Color.parseColor("#090D16")
+private val COLOR_CERC_PURPLE = Color.parseColor("#702B7B")
+private val COLOR_CERC_YELLOW_BORDER = Color.argb(140, 0, 0, 0)
 
 internal fun getCercaniasMarkerIcon(
     context: Context,
@@ -43,7 +49,7 @@ internal fun createCercaniasMarkerIcon(
     val stationStrokeWidth = if (hasLines) 7f else 6f
 
     val textFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = if (isDarkMode) Color.parseColor("#F8FAFC") else Color.parseColor("#0F172A")
+        color = if (isDarkMode) COLOR_CERC_TEXT_DARK else COLOR_CERC_TEXT_LIGHT
         textSize = stationTextSize
         typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.LEFT
@@ -51,7 +57,7 @@ internal fun createCercaniasMarkerIcon(
     }
 
     val textStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = if (isDarkMode) Color.parseColor("#090D16") else Color.WHITE
+        color = if (isDarkMode) COLOR_CERC_STROKE_DARK else Color.WHITE
         textSize = stationTextSize
         typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.LEFT
@@ -100,6 +106,8 @@ internal fun createCercaniasMarkerIcon(
         return maxOf(38f, badgeTextPaint.measureText(label) + 14f)
     }
 
+    var precomputedChunks: List<List<String>> = emptyList()
+
     if (showPill) {
         val textWidth = textFillPaint.measureText(stationName)
 
@@ -112,7 +120,7 @@ internal fun createCercaniasMarkerIcon(
             parsedLines.sumOf { getBadgeWidth(it).toDouble() }.toFloat() + (parsedLines.size - 1) * badgeSpacingX
         } else 0f
 
-        val lineChunks: List<List<String>> = when {
+        precomputedChunks = when {
             parsedLines.isEmpty() -> emptyList()
             parsedLines.size <= 3 || totalWidthSingleRow <= textWidth + 8f -> listOf(parsedLines)
             parsedLines.size == 4 -> listOf(parsedLines.take(2), parsedLines.drop(2))
@@ -125,11 +133,11 @@ internal fun createCercaniasMarkerIcon(
             }
         }
 
-        val maxRowWidth = lineChunks.maxOfOrNull { row ->
+        val maxRowWidth = precomputedChunks.maxOfOrNull { row ->
             row.sumOf { getBadgeWidth(it).toDouble() }.toFloat() + ((row.size - 1) * badgeSpacingX)
         } ?: 0f
 
-        val numRows = lineChunks.size
+        val numRows = precomputedChunks.size
         val badgesHeight = if (numRows > 0) {
             (numRows * badgeH) + ((numRows - 1) * badgeSpacingY)
         } else 0f
@@ -166,7 +174,7 @@ internal fun createCercaniasMarkerIcon(
     if (showPill) {
         val fontMetrics = textFillPaint.fontMetrics
         val textLeft = logoCenterX + logoRadius + spacing
-        
+
         val nameCenterY = if (parsedLines.isNotEmpty()) {
             26f
         } else {
@@ -180,25 +188,15 @@ internal fun createCercaniasMarkerIcon(
         canvas.drawText(stationName, textLeft, textY, textFillPaint)
 
         // Draw line badges if present
-        if (parsedLines.isNotEmpty()) {
+        if (precomputedChunks.isNotEmpty()) {
             val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG)
             val badgeFontMetrics = badgeTextPaint.fontMetrics
             val badgesStartY = 54f
+            val haloColor = if (isDarkMode) Color.argb(160, 0, 0, 0) else Color.argb(80, 0, 0, 0)
+            val reusableRect = RectF()
+            val reusableShadowRect = RectF()
 
-            val totalWidthSingleRow = parsedLines.sumOf { getBadgeWidth(it).toDouble() }.toFloat() + (parsedLines.size - 1) * badgeSpacingX
-            val lineChunks: List<List<String>> = when {
-                parsedLines.size <= 3 || totalWidthSingleRow <= textFillPaint.measureText(stationName) + 8f -> listOf(parsedLines)
-                parsedLines.size == 4 -> listOf(parsedLines.take(2), parsedLines.drop(2))
-                parsedLines.size == 5 -> listOf(parsedLines.take(3), parsedLines.drop(3))
-                parsedLines.size == 6 -> listOf(parsedLines.take(3), parsedLines.drop(3))
-                else -> {
-                    val numRows = (parsedLines.size + 2) / 3
-                    val perRow = (parsedLines.size + numRows - 1) / numRows
-                    parsedLines.chunked(perRow)
-                }
-            }
-
-            lineChunks.forEachIndexed { rowIndex, rowLines ->
+            precomputedChunks.forEachIndexed { rowIndex, rowLines ->
                 var currentX = textLeft
                 val rowY = badgesStartY + (rowIndex * (badgeH + badgeSpacingY))
 
@@ -208,30 +206,31 @@ internal fun createCercaniasMarkerIcon(
                     val bW = maxOf(38f, badgeTextPaint.measureText(label) + 14f)
 
                     val hexColor = LineColorResolver.getCercaniasLineColorHex(lineId)
-                    val colorInt = Color.parseColor(hexColor)
+                    val colorInt = MarkerLogoBitmapCache.parseColorCached(hexColor)
                     val isYellowLine = lineId.contains("C2", ignoreCase = true) || hexColor.equals("#FAB700", ignoreCase = true)
 
-                    val rect = RectF(currentX, rowY, currentX + bW, rowY + badgeH)
+                    reusableRect.set(currentX, rowY, currentX + bW, rowY + badgeH)
+                    reusableShadowRect.set(reusableRect.left - 1f, reusableRect.top, reusableRect.right + 1f, reusableRect.bottom + 2f)
 
                     // Outer subtle dark halo / shadow
                     badgePaint.style = Paint.Style.FILL
-                    badgePaint.color = if (isDarkMode) Color.argb(160, 0, 0, 0) else Color.argb(80, 0, 0, 0)
-                    canvas.drawRoundRect(RectF(rect.left - 1f, rect.top, rect.right + 1f, rect.bottom + 2f), cornerRad + 1f, cornerRad + 1f, badgePaint)
+                    badgePaint.color = haloColor
+                    canvas.drawRoundRect(reusableShadowRect, cornerRad + 1f, cornerRad + 1f, badgePaint)
 
                     // Fill color
                     badgePaint.color = colorInt
-                    canvas.drawRoundRect(rect, cornerRad, cornerRad, badgePaint)
+                    canvas.drawRoundRect(reusableRect, cornerRad, cornerRad, badgePaint)
 
                     // Subtle white/dark ring border
                     badgePaint.style = Paint.Style.STROKE
                     badgePaint.strokeWidth = 1.2f
-                    badgePaint.color = if (isYellowLine) Color.argb(140, 0, 0, 0) else Color.WHITE
-                    canvas.drawRoundRect(rect, cornerRad, cornerRad, badgePaint)
+                    badgePaint.color = if (isYellowLine) COLOR_CERC_YELLOW_BORDER else Color.WHITE
+                    canvas.drawRoundRect(reusableRect, cornerRad, cornerRad, badgePaint)
 
                     // Text
-                    badgeTextPaint.color = if (isYellowLine) Color.parseColor("#0F172A") else Color.WHITE
-                    val bTextY = rect.centerY() - (badgeFontMetrics.ascent + badgeFontMetrics.descent) / 2f
-                    canvas.drawText(label, rect.centerX(), bTextY, badgeTextPaint)
+                    badgeTextPaint.color = if (isYellowLine) COLOR_CERC_TEXT_LIGHT else Color.WHITE
+                    val bTextY = reusableRect.centerY() - (badgeFontMetrics.ascent + badgeFontMetrics.descent) / 2f
+                    canvas.drawText(label, reusableRect.centerX(), bTextY, badgeTextPaint)
 
                     currentX += bW + badgeSpacingX
                 }
@@ -239,85 +238,43 @@ internal fun createCercaniasMarkerIcon(
         }
     }
 
-    // 2. Draw Cercanias Logo Image or Fallback Circle
-    val logoDrawable = try {
-        ResourcesCompat.getDrawable(context.resources, com.example.R.drawable.logo_cercanias, context.theme)
-    } catch (e: Exception) {
-        null
-    }
+    // 2. Draw Cercanias Logo Image or Fallback Circle (pre-rasterized logo bitmap)
+    paint.style = Paint.Style.FILL
+    paint.color = Color.argb(40, 0, 0, 0)
+    canvas.drawOval(
+        logoCenterX - logoRadius + 2f,
+        logoCenterY - logoRadius + 4f,
+        logoCenterX + logoRadius + 2f,
+        logoCenterY + logoRadius + 4f,
+        paint
+    )
+    paint.color = Color.WHITE
+    canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
 
-    if (logoDrawable != null) {
-        // Soft drop shadow
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(40, 0, 0, 0)
-        canvas.drawOval(
-            logoCenterX - logoRadius + 2f,
-            logoCenterY - logoRadius + 4f,
-            logoCenterX + logoRadius + 2f,
-            logoCenterY + logoRadius + 4f,
-            paint
-        )
+    val drewLogo = MarkerLogoBitmapCache.drawAspectFittedLogo(
+        context = context,
+        canvas = canvas,
+        resId = com.example.R.drawable.logo_cercanias,
+        centerX = logoCenterX,
+        centerY = logoCenterY,
+        maxSize = logoRadius * 1.6f
+    )
 
-        // Draw clean white circular background
-        paint.color = Color.WHITE
+    if (!drewLogo) {
+        paint.color = COLOR_CERC_PURPLE
         canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
 
-        // Calculate aspect ratio so the logo isn't squished or stretched
-        val intrinsicWidth = logoDrawable.intrinsicWidth.toFloat()
-        val intrinsicHeight = logoDrawable.intrinsicHeight.toFloat()
-        val maxLogoSize = logoRadius * 1.6f
-        val w: Float
-        val h: Float
-        if (intrinsicWidth > 0 && intrinsicHeight > 0) {
-            val ratio = intrinsicWidth / intrinsicHeight
-            if (ratio > 1f) {
-                w = maxLogoSize
-                h = maxLogoSize / ratio
-            } else {
-                h = maxLogoSize
-                w = maxLogoSize * ratio
-            }
-        } else {
-            w = maxLogoSize
-            h = maxLogoSize
-        }
-        val left = logoCenterX - w / 2f
-        val top = logoCenterY - h / 2f
-
-        logoDrawable.setBounds(
-            left.toInt(),
-            top.toInt(),
-            (left + w).toInt(),
-            (top + h).toInt()
-        )
-        logoDrawable.draw(canvas)
-    } else {
-        // Fallback to classic Cercanias purple logo circle & letter C
-        val cercaniasPurple = Color.parseColor("#702B7B")
-        
-        // Soft drop shadow
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(40, 0, 0, 0)
-        canvas.drawOval(logoCenterX - logoRadius + 2f, logoCenterY - logoRadius + 4f, logoCenterX + logoRadius + 2f, logoCenterY + logoRadius + 4f, paint)
-
-        // Solid purple circle
-        paint.color = cercaniasPurple
-        canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
-
-        // White inner circle ring
         paint.color = Color.WHITE
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 3f
         canvas.drawCircle(logoCenterX, logoCenterY, logoRadius - 2.5f, paint)
 
-        // White inner circle background
         paint.color = Color.WHITE
         paint.style = Paint.Style.FILL
         canvas.drawCircle(logoCenterX, logoCenterY, logoRadius - 3.5f, paint)
 
-        // Draw classic Cercanias "C" logo letter
         val cPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = cercaniasPurple
+            color = COLOR_CERC_PURPLE
             textSize = 36f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
@@ -375,65 +332,29 @@ internal fun createCercaniasMarkerIconSmall(context: Context, isDarkMode: Boolea
 
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    val logoDrawable = try {
-        ResourcesCompat.getDrawable(context.resources, com.example.R.drawable.logo_cercanias, context.theme)
-    } catch (e: Exception) {
-        null
-    }
+    paint.style = Paint.Style.FILL
+    paint.color = Color.argb(40, 0, 0, 0)
+    canvas.drawOval(
+        logoCenterX - logoRadius + 1f,
+        logoCenterY - logoRadius + 2f,
+        logoCenterX + logoRadius + 1f,
+        logoCenterY + logoRadius + 2f,
+        paint
+    )
+    paint.color = Color.WHITE
+    canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
 
-    if (logoDrawable != null) {
-        // Soft drop shadow
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(40, 0, 0, 0)
-        canvas.drawOval(
-            logoCenterX - logoRadius + 1f,
-            logoCenterY - logoRadius + 2f,
-            logoCenterX + logoRadius + 1f,
-            logoCenterY + logoRadius + 2f,
-            paint
-        )
+    val drewLogo = MarkerLogoBitmapCache.drawAspectFittedLogo(
+        context = context,
+        canvas = canvas,
+        resId = com.example.R.drawable.logo_cercanias,
+        centerX = logoCenterX,
+        centerY = logoCenterY,
+        maxSize = logoRadius * 1.6f
+    )
 
-        // Draw clean white circular background
-        paint.color = Color.WHITE
-        canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
-
-        // Calculate aspect ratio so the logo isn't squished or stretched
-        val intrinsicWidth = logoDrawable.intrinsicWidth.toFloat()
-        val intrinsicHeight = logoDrawable.intrinsicHeight.toFloat()
-        val maxLogoSize = logoRadius * 1.6f
-        val w: Float
-        val h: Float
-        if (intrinsicWidth > 0 && intrinsicHeight > 0) {
-            val ratio = intrinsicWidth / intrinsicHeight
-            if (ratio > 1f) {
-                w = maxLogoSize
-                h = maxLogoSize / ratio
-            } else {
-                h = maxLogoSize
-                w = maxLogoSize * ratio
-            }
-        } else {
-            w = maxLogoSize
-            h = maxLogoSize
-        }
-        val left = logoCenterX - w / 2f
-        val top = logoCenterY - h / 2f
-
-        logoDrawable.setBounds(
-            left.toInt(),
-            top.toInt(),
-            (left + w).toInt(),
-            (top + h).toInt()
-        )
-        logoDrawable.draw(canvas)
-    } else {
-        val cercaniasPurple = Color.parseColor("#702B7B")
-        
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(40, 0, 0, 0)
-        canvas.drawOval(logoCenterX - logoRadius + 1f, logoCenterY - logoRadius + 2f, logoCenterX + logoRadius + 1f, logoCenterY + logoRadius + 2f, paint)
-
-        paint.color = cercaniasPurple
+    if (!drewLogo) {
+        paint.color = COLOR_CERC_PURPLE
         canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
 
         paint.color = Color.WHITE
@@ -446,7 +367,7 @@ internal fun createCercaniasMarkerIconSmall(context: Context, isDarkMode: Boolea
         canvas.drawCircle(logoCenterX, logoCenterY, logoRadius - 2.5f, paint)
 
         val cPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = cercaniasPurple
+            color = COLOR_CERC_PURPLE
             textSize = 20f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER

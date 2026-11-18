@@ -352,66 +352,41 @@ private fun drawBusIconAt(
         canvas.drawRoundRect(squareRect, 10f, 10f, paint)
 
         // Amber border
-        paint.color = Color.parseColor(com.example.util.MetrobusLineColorResolver.BRAND_HEX)
+        paint.color = MarkerLogoBitmapCache.parseColorCached(com.example.util.MetrobusLineColorResolver.BRAND_HEX)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2.5f
         canvas.drawRoundRect(squareRect, 10f, 10f, paint)
 
-        val logoDrawable = try {
-            ResourcesCompat.getDrawable(context.resources, com.example.R.drawable.logo_metrobus, context.theme)
-        } catch (e: Exception) {
-            null
-        }
-
-        if (logoDrawable != null) {
-            val intrinsicWidth = logoDrawable.intrinsicWidth.toFloat()
-            val intrinsicHeight = logoDrawable.intrinsicHeight.toFloat()
-            if (intrinsicWidth > 0 && intrinsicHeight > 0) {
-                val ratio = intrinsicWidth / intrinsicHeight
-                val targetMax = size - 12f
-                val w = if (ratio > 1f) targetMax else targetMax * ratio
-                val h = if (ratio > 1f) targetMax / ratio else targetMax
-                val l = centerX - w / 2f
-                val t = centerY - h / 2f
-                logoDrawable.setBounds(l.toInt(), t.toInt(), (l + w).toInt(), (t + h).toInt())
-            } else {
-                logoDrawable.setBounds((left + 6).toInt(), (top + 6).toInt(), (right - 6).toInt(), (bottom - 6).toInt())
-            }
-            logoDrawable.draw(canvas)
-        }
+        MarkerLogoBitmapCache.drawAspectFittedLogo(
+            context = context,
+            canvas = canvas,
+            resId = com.example.R.drawable.logo_metrobus,
+            centerX = centerX,
+            centerY = centerY,
+            maxSize = size - 12f
+        )
     } else {
         // EMT Bus background (White square with blue border and EMT logo)
         paint.color = Color.WHITE
         val squareRect = RectF(left, top, right, bottom)
         canvas.drawRoundRect(squareRect, 10f, 10f, paint)
 
-        paint.color = Color.parseColor("#2563EB")
+        paint.color = MarkerLogoBitmapCache.parseColorCached("#2563EB")
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2.5f
         canvas.drawRoundRect(squareRect, 10f, 10f, paint)
 
-        val logoDrawable = try {
-            ResourcesCompat.getDrawable(context.resources, com.example.R.drawable.logo_emt_valencia, context.theme)
-        } catch (e: Exception) {
-            null
-        }
+        val drewEmtLogo = MarkerLogoBitmapCache.drawAspectFittedLogo(
+            context = context,
+            canvas = canvas,
+            resId = com.example.R.drawable.logo_emt_valencia,
+            centerX = centerX,
+            centerY = centerY,
+            maxSize = size - 14f,
+            fallbackPaddingInset = 1f
+        )
 
-        if (logoDrawable != null) {
-            val intrinsicWidth = logoDrawable.intrinsicWidth.toFloat()
-            val intrinsicHeight = logoDrawable.intrinsicHeight.toFloat()
-            if (intrinsicWidth > 0 && intrinsicHeight > 0) {
-                val ratio = intrinsicWidth / intrinsicHeight
-                val targetMax = size - 14f
-                val w = if (ratio > 1f) targetMax else targetMax * ratio
-                val h = if (ratio > 1f) targetMax / ratio else targetMax
-                val l = centerX - w / 2f
-                val t = centerY - h / 2f
-                logoDrawable.setBounds(l.toInt(), t.toInt(), (l + w).toInt(), (t + h).toInt())
-            } else {
-                logoDrawable.setBounds((left + 8).toInt(), (top + 8).toInt(), (right - 8).toInt(), (bottom - 8).toInt())
-            }
-            logoDrawable.draw(canvas)
-        } else {
+        if (!drewEmtLogo) {
             // Fallback red bus silhouette
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#E53935")

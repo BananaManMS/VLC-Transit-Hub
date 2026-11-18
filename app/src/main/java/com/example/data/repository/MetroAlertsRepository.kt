@@ -28,6 +28,21 @@ class MetroAlertsRepository {
         private val fetchMutex = kotlinx.coroutines.sync.Mutex()
         private val newsMutex = kotlinx.coroutines.sync.Mutex()
 
+        private val client: OkHttpClient by lazy {
+            NetworkModule.okHttpClient.newBuilder()
+                .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+        }
+
+        private val _accessibilityIncidents = MutableStateFlow<List<AccessibilityIncident>>(emptyList())
+        private val _activeIncidents = MutableStateFlow<List<MetroIncident>>(emptyList())
+        private val _specialNotices = MutableStateFlow<List<MetroNotice>>(emptyList())
+        private val _metroNews = MutableStateFlow<List<MetroNewsItem>>(emptyList())
+        private val _isAlertsLoading = MutableStateFlow(true)
+        private val _hasAlertsError = MutableStateFlow(false)
+        private val _isNewsLoading = MutableStateFlow(false)
+
         fun hasValidCache(): Boolean {
             val now = System.currentTimeMillis()
             return lastFetchTimestamp > 0L && (now - lastFetchTimestamp < CACHE_DURATION_MS)
@@ -38,33 +53,15 @@ class MetroAlertsRepository {
         fun getCachedAccessibility(): List<AccessibilityIncident> = cachedAccessibility
     }
 
-    private val client = NetworkModule.okHttpClient.newBuilder()
-        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
-
-    private val _accessibilityIncidents = MutableStateFlow<List<AccessibilityIncident>>(emptyList())
     val accessibilityIncidents = _accessibilityIncidents.asStateFlow()
-
-    private val _activeIncidents = MutableStateFlow<List<MetroIncident>>(emptyList())
     val activeIncidents = _activeIncidents.asStateFlow()
-
-    private val _specialNotices = MutableStateFlow<List<MetroNotice>>(emptyList())
     val specialNotices = _specialNotices.asStateFlow()
-
-    private val _metroNews = MutableStateFlow<List<MetroNewsItem>>(emptyList())
     val metroNews = _metroNews.asStateFlow()
-
-    private val _isAlertsLoading = MutableStateFlow(true)
     val isAlertsLoading = _isAlertsLoading.asStateFlow()
-
-    private val _hasAlertsError = MutableStateFlow(false)
     val hasAlertsError = _hasAlertsError.asStateFlow()
-
-    private val _isNewsLoading = MutableStateFlow(false)
     val isNewsLoading = _isNewsLoading.asStateFlow()
 
-    suspend fun fetchAllAlerts(force: Boolean = false) = withContext(Dispatchers.IO) {
+    suspend fun fetchAllAlerts(force: Boolean = false, includeNews: Boolean = false) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         if (!force && lastFetchTimestamp > 0L && (now - lastFetchTimestamp < CACHE_DURATION_MS)) {
             _accessibilityIncidents.value = cachedAccessibility
@@ -280,11 +277,13 @@ class MetroAlertsRepository {
         }
         }
 
-        // Fetch news in background asynchronously without blocking alerts resolution
-        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-            try {
-                this@MetroAlertsRepository.fetchNews(force = force)
-            } catch (_: Exception) {}
+        // Fetch news lazily only when explicitly requested (e.g., from Avisos tab)
+        if (includeNews) {
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    this@MetroAlertsRepository.fetchNews(force = force)
+                } catch (_: Exception) {}
+            }
         }
     }
 

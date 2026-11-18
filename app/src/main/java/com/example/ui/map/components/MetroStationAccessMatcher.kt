@@ -86,8 +86,11 @@ object MetroStationAccessMatcher {
         return trimmed
     }
 
+    private val normalizedCache = java.util.concurrent.ConcurrentHashMap<String, String>(256)
+
     fun normalize(name: String): String {
-        return name.lowercase()
+        normalizedCache[name]?.let { return it }
+        val normalized = name.lowercase()
             .replace("á", "a")
             .replace("é", "e")
             .replace("í", "i")
@@ -103,6 +106,8 @@ object MetroStationAccessMatcher {
             .replace(" ", "")
             .replace("plaça", "pl")
             .trim()
+        normalizedCache[name] = normalized
+        return normalized
     }
 
     fun matchesStation(candidateStationName: String, selectedStation: MetroStation): Boolean {

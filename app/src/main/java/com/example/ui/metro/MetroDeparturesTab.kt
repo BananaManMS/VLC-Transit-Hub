@@ -179,7 +179,7 @@ fun ProximosTrenesScreen(
     // If all tracked departures have expired naturally over time, trigger auto-refresh for new incoming trains
     LaunchedEffect(departures, visibleDepartures.isEmpty()) {
         if (departures.isNotEmpty() && visibleDepartures.isEmpty()) {
-            metroViewModel.fetchRealTimeDepartures(selectedStationId, isAutoRefresh = true)
+            metroViewModel.fetchRealTimeDepartures(selectedStationId, isAutoRefresh = true, forceRefresh = true)
         }
     }
 
@@ -478,7 +478,7 @@ fun ProximosTrenesScreen(
             val isInitialDeparturesLoad = visibleDepartures.isEmpty() || lineDepartureGroups.isEmpty()
             PullToRefreshBox(
                 isRefreshing = isLoading,
-                onRefresh = { metroViewModel.fetchRealTimeDepartures(selectedStationId) },
+                onRefresh = { metroViewModel.fetchRealTimeDepartures(selectedStationId, forceRefresh = true) },
                 state = pullToRefreshState,
                 indicator = {
                     TransitPullRefreshIndicator(
@@ -582,7 +582,7 @@ fun ProximosTrenesScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Button(
-                                        onClick = { metroViewModel.fetchRealTimeDepartures(selectedStationId) },
+                                        onClick = { metroViewModel.fetchRealTimeDepartures(selectedStationId, forceRefresh = true) },
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                         shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier
@@ -646,7 +646,7 @@ fun ProximosTrenesScreen(
                                     stationIncidents = stationIncidents,
                                     selectedStationId = selectedStationId,
                                     selectedStation = selectedStation,
-                                    onRetry = { metroViewModel.fetchRealTimeDepartures(selectedStationId) },
+                                    onRetry = { metroViewModel.fetchRealTimeDepartures(selectedStationId, forceRefresh = true) },
                                     onShowScheduled = { stId, stName ->
                                         metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
                                     }

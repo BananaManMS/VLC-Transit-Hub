@@ -215,6 +215,14 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
     private fun loadMetroStations() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                if (com.example.data.repository.MetroRepository.isStationsDbVerified()) {
+                    val cached = metroRepository.loadMetroStations()
+                    if (cached.isNotEmpty()) {
+                        _allNetworkStations.value = cached.distinctBy { it.id }
+                        return@launch
+                    }
+                }
+
                 val currentVersion = repository.getPreference("metro_stations_json_version", "0")
                 var currentDbStations = database.stationDao().getAllStations()
 
@@ -236,6 +244,7 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
                 }
 
                 if (currentDbStations.isNotEmpty()) {
+                    com.example.data.repository.MetroRepository.markStationsDbVerified()
                     val stations = currentDbStations.map { entity ->
                         MetroStation(
                             id = entity.id.toString(),
@@ -380,7 +389,11 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
         }
     }
 
-    fun fetchRealTimeDepartures(stationId: String, isAutoRefresh: Boolean = false) {
+    fun fetchRealTimeDepartures(
+        stationId: String,
+        isAutoRefresh: Boolean = false,
+        forceRefresh: Boolean = false
+    ) {
         if (!isAutoRefresh) {
             fetchDeparturesJob?.cancel()
         }
@@ -420,7 +433,7 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
                 val rawArrivals = kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
                     com.example.data.repository.RealTimeTransitRepository.getMetroLiveArrivals(
                         stationId = numericId.toString(),
-                        forceRefresh = !isAutoRefresh,
+                        forceRefresh = forceRefresh,
                         useFastTimeout = isWeakSignal
                     )
                 } ?: emptyList()
@@ -549,12 +562,11 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
         realTimeRefreshJob = viewModelScope.launch {
             try {
                 while (true) {
-                    val currentStation = _realTimeSelectedStationId.value ?: return@launch
-                    fetchRealTimeDepartures(currentStation, isAutoRefresh = true)
-
-                    // Metrovalencia live API refresh interval: 30 seconds
-                    val nextDelayMs = 30000L
-                    delay(nextDelayMs)
+                    // Metrovalencia live API refresh interval: 30 seconds (delay before repeating to avoid double initial fetch)
+                    delay(30000L)
+                    val currentStation = _realTimeSelectedStationId.value
+                    if (currentStation.isBlank()) return@launch
+                    fetchRealTimeDepartures(currentStation, isAutoRefresh = true, forceRefresh = true)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 // Expected when ticker is cancelled/restarted
@@ -719,9 +731,9 @@ fun autoSelectNearestMetroStationIfNeeded(force: Boolean = false) {
         _isStationInfoExpanded.value = !_isStationInfoExpanded.value
     }
 
-    fun fetchAllAlerts(force: Boolean = false) {
+    fun fetchAllAlerts(force: Boolean = false, includeNews: Boolean = false) {
         viewModelScope.launch {
-            metroAlertsRepository.fetchAllAlerts(force = force)
+            metroAlertsRepository.fetchAllAlerts(force = force, includeNews = includeNews)
             lastAlertsFetchTime = System.currentTimeMillis()
         }
     }

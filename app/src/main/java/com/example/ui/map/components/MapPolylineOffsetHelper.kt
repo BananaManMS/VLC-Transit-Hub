@@ -70,6 +70,98 @@ object MapPolylineOffsetHelper {
         return false
     }
 
+    /**
+     * Uniform spatial grid indexing route segments for O(1) exact coexistence checks
+     * matching isRouteCloseToPoint's 0.001° bounding box semantics.
+     */
+    class SegmentSpatialGrid(private val cellStep: Double = 0.001) {
+        private class IndexedSegment(
+            val routeRef: String,
+            val s1: GeoPoint,
+            val s2: GeoPoint?, // null for 1-point degenerate segments
+            val minLat: Double,
+            val maxLat: Double,
+            val minLon: Double,
+            val maxLon: Double
+        )
+
+        private val grid = HashMap<Long, MutableList<IndexedSegment>>(1024)
+
+        private fun packKey(gx: Int, gy: Int): Long =
+            (gx.toLong() shl 32) or (gy.toLong() and 0xFFFFFFFFL)
+
+        fun addSegments(routeRef: String, segments: List<List<GeoPoint>>) {
+            for (segment in segments) {
+                if (segment.isEmpty()) continue
+                if (segment.size == 1) {
+                    val p = segment[0]
+                    val minLat = p.latitude - cellStep
+                    val maxLat = p.latitude + cellStep
+                    val minLon = p.longitude - cellStep
+                    val maxLon = p.longitude + cellStep
+                    val item = IndexedSegment(routeRef, p, null, minLat, maxLat, minLon, maxLon)
+                    insertIntoCells(item, minLat, maxLat, minLon, maxLon)
+                    continue
+                }
+                for (i in 0 until segment.size - 1) {
+                    val s1 = segment[i]
+                    val s2 = segment[i + 1]
+                    val minLat = Math.min(s1.latitude, s2.latitude) - cellStep
+                    val maxLat = Math.max(s1.latitude, s2.latitude) + cellStep
+                    val minLon = Math.min(s1.longitude, s2.longitude) - cellStep
+                    val maxLon = Math.max(s1.longitude, s2.longitude) + cellStep
+                    val item = IndexedSegment(routeRef, s1, s2, minLat, maxLat, minLon, maxLon)
+                    insertIntoCells(item, minLat, maxLat, minLon, maxLon)
+                }
+            }
+        }
+
+        private fun insertIntoCells(
+            item: IndexedSegment,
+            minLat: Double,
+            maxLat: Double,
+            minLon: Double,
+            maxLon: Double
+        ) {
+            val gx0 = kotlin.math.floor(minLat / cellStep).toInt()
+            val gx1 = kotlin.math.floor(maxLat / cellStep).toInt()
+            val gy0 = kotlin.math.floor(minLon / cellStep).toInt()
+            val gy1 = kotlin.math.floor(maxLon / cellStep).toInt()
+            for (gx in gx0..gx1) {
+                for (gy in gy0..gy1) {
+                    grid.getOrPut(packKey(gx, gy)) { ArrayList(4) }.add(item)
+                }
+            }
+        }
+
+        fun collectNearbyRoutes(
+            point: GeoPoint,
+            selfRef: String,
+            maxDistance: Double,
+            outRefs: MutableList<String>
+        ) {
+            val gx = kotlin.math.floor(point.latitude / cellStep).toInt()
+            val gy = kotlin.math.floor(point.longitude / cellStep).toInt()
+            val bucket = grid[packKey(gx, gy)] ?: return
+            val pLat = point.latitude
+            val pLon = point.longitude
+            for (i in 0 until bucket.size) {
+                val seg = bucket[i]
+                if (seg.routeRef == selfRef) continue
+                if (outRefs.contains(seg.routeRef)) continue
+                if (pLat < seg.minLat || pLat > seg.maxLat || pLon < seg.minLon || pLon > seg.maxLon) continue
+                val dist = if (seg.s2 == null) {
+                    distanceBetween(point, seg.s1)
+                } else {
+                    distancePointToSegment(point, seg.s1, seg.s2)
+                }
+                if (dist < maxDistance) {
+                    outRefs.add(seg.routeRef)
+                }
+            }
+        }
+    }
+
     fun smoothOffsets(rawOffsets: DoubleArray, radius: Int = 3): DoubleArray {
         val n = rawOffsets.size
         val smoothed = DoubleArray(n)
@@ -96,12 +188,11 @@ object MapPolylineOffsetHelper {
     }
 
     fun offsetPointsWithArray(points: List<GeoPoint>, offsets: DoubleArray): List<GeoPoint> {
-        if (points.size < 2) return points
-
-        val result = ArrayList<GeoPoint>(points.size)
         val n = points.size
+        if (n < 2) return points
 
-        val normals = ArrayList<Point2D>(n - 1)
+        val normX = DoubleArray(n - 1)
+        val normY = DoubleArray(n - 1)
         for (i in 0 until n - 1) {
             val p1 = points[i]
             val p2 = points[i + 1]
@@ -110,47 +201,57 @@ object MapPolylineOffsetHelper {
             val dy = (p2.latitude - p1.latitude) * 111111.0
             val len = Math.sqrt(dx * dx + dy * dy)
             if (len > 1e-9) {
-                normals.add(Point2D(dy / len, -dx / len))
-            } else {
-                normals.add(Point2D(0.0, 0.0))
+                normX[i] = dy / len
+                normY[i] = -dx / len
             }
         }
 
+        val result = ArrayList<GeoPoint>(n)
         for (i in 0 until n) {
             val curr = points[i]
-            val miter: Point2D
+            val offsetMeters = offsets[i]
+            if (offsetMeters == 0.0) {
+                result.add(GeoPoint(curr.latitude, curr.longitude))
+                continue
+            }
 
+            var mx: Double
+            var my: Double
             if (i == 0) {
-                miter = normals[0]
+                mx = normX[0]
+                my = normY[0]
             } else if (i == n - 1) {
-                miter = normals[n - 2]
+                mx = normX[n - 2]
+                my = normY[n - 2]
             } else {
-                val n1 = normals[i - 1]
-                val n2 = normals[i]
+                val n1x = normX[i - 1]
+                val n1y = normY[i - 1]
+                val n2x = normX[i]
+                val n2y = normY[i]
 
-                val mx = n1.x + n2.x
-                val my = n1.y + n2.y
-                val mLen = Math.sqrt(mx * mx + my * my)
+                val sumX = n1x + n2x
+                val sumY = n1y + n2y
+                val mLen = Math.sqrt(sumX * sumX + sumY * sumY)
 
                 if (mLen > 1e-9) {
-                    val bx = mx / mLen
-                    val by = my / mLen
-
-                    val cosHalfAngle = bx * n1.x + by * n1.y
+                    val bx = sumX / mLen
+                    val by = sumY / mLen
+                    val cosHalfAngle = bx * n1x + by * n1y
                     val scale = if (cosHalfAngle > 0.1) {
                         Math.min(1.0 / cosHalfAngle, 2.0)
                     } else {
                         2.0
                     }
-                    miter = Point2D(bx * scale, by * scale)
+                    mx = bx * scale
+                    my = by * scale
                 } else {
-                    miter = n1
+                    mx = n1x
+                    my = n1y
                 }
             }
 
-            val offsetMeters = offsets[i]
-            val shiftLat = (offsetMeters * miter.y) / 111111.0
-            val shiftLon = (offsetMeters * miter.x) / (111111.0 * Math.cos(Math.toRadians(curr.latitude)))
+            val shiftLat = (offsetMeters * my) / 111111.0
+            val shiftLon = (offsetMeters * mx) / (111111.0 * Math.cos(Math.toRadians(curr.latitude)))
 
             result.add(GeoPoint(curr.latitude + shiftLat, curr.longitude + shiftLon))
         }
@@ -224,27 +325,71 @@ object MapPolylineOffsetHelper {
     }
 
     fun rdpSimplify(points: List<GeoPoint>, epsilon: Double): List<GeoPoint> {
-        if (points.size < 3) return points
+        val n = points.size
+        if (n < 3) return points
 
-        var dmax = 0.0
-        var index = 0
-        val end = points.size - 1
+        val keep = BooleanArray(n)
+        keep[0] = true
+        keep[n - 1] = true
 
-        for (i in 1 until end) {
-            val d = perpendicularDistance(points[i], points[0], points[end])
-            if (d > dmax) {
-                index = i
-                dmax = d
+        // Iterative explicit stack of (start, end) ranges to eliminate recursive subList allocations
+        var stackCap = 64
+        var starts = IntArray(stackCap)
+        var ends = IntArray(stackCap)
+        var sp = 0
+        starts[sp] = 0
+        ends[sp] = n - 1
+        sp++
+
+        while (sp > 0) {
+            sp--
+            val start = starts[sp]
+            val end = ends[sp]
+            if (end - start <= 1) continue
+
+            val pStart = points[start]
+            val pEnd = points[end]
+            val x1 = pStart.longitude
+            val y1 = pStart.latitude
+            val x2 = pEnd.longitude
+            val y2 = pEnd.latitude
+            val dx = x2 - x1
+            val dy = y2 - y1
+            val den = Math.sqrt(dy * dy + dx * dx)
+            val crossOffset = x2 * y1 - y2 * x1
+
+            var dmax = 0.0
+            var index = start
+            for (i in (start + 1) until end) {
+                val p = points[i]
+                val d = if (den == 0.0) 0.0 else Math.abs(dy * p.longitude - dx * p.latitude + crossOffset) / den
+                if (d > dmax) {
+                    index = i
+                    dmax = d
+                }
+            }
+
+            if (dmax > epsilon) {
+                keep[index] = true
+                if (sp + 2 >= stackCap) {
+                    stackCap *= 2
+                    starts = starts.copyOf(stackCap)
+                    ends = ends.copyOf(stackCap)
+                }
+                starts[sp] = start
+                ends[sp] = index
+                sp++
+                starts[sp] = index
+                ends[sp] = end
+                sp++
             }
         }
 
-        return if (dmax > epsilon) {
-            val recResults1 = rdpSimplify(points.subList(0, index + 1), epsilon)
-            val recResults2 = rdpSimplify(points.subList(index, points.size), epsilon)
-            recResults1.dropLast(1) + recResults2
-        } else {
-            listOf(points[0], points[end])
+        val out = ArrayList<GeoPoint>(n / 3 + 4)
+        for (i in 0 until n) {
+            if (keep[i]) out.add(points[i])
         }
+        return out
     }
 
     fun perpendicularDistance(p: GeoPoint, lineStart: GeoPoint, lineEnd: GeoPoint): Double {

@@ -6,6 +6,7 @@ import com.example.ui.map.MapFilter
 import com.example.ui.map.spatial.BoundingBox2D
 import com.example.ui.map.spatial.QuadTree
 import com.example.ui.map.spatial.SpatialGridSampler
+import com.example.ui.map.spatial.SpatialQuadTree
 import org.osmdroid.util.BoundingBox
 
 /**
@@ -16,6 +17,12 @@ object ViewportTransitFilter {
 
     private var cachedBusStopsRef: List<GeoportalStopEntity>? = null
     private var cachedQuadTree: QuadTree? = null
+
+    private var cachedMetrobusStopsRef: List<MetrobusStopEntity>? = null
+    private var cachedMetrobusQuadTree: SpatialQuadTree<MetrobusStopEntity>? = null
+
+    private var cachedValenbisiRef: List<ValenbisiStation>? = null
+    private var cachedValenbisiQuadTree: SpatialQuadTree<ValenbisiStation>? = null
 
     private var lastMinLat: Double = 0.0
     private var lastMaxLat: Double = 0.0
@@ -39,6 +46,111 @@ object ViewportTransitFilter {
         val valenbisiStationsInViewport: List<ValenbisiStation>
     )
 
+    private fun getOrBuildBusQuadTree(busStops: List<GeoportalStopEntity>): QuadTree? {
+        if (busStops.isEmpty()) return null
+        if (cachedBusStopsRef !== busStops || cachedQuadTree == null) {
+            cachedBusStopsRef = busStops
+            cachedQuadTree = QuadTree.buildTree(busStops)
+        }
+        return cachedQuadTree
+    }
+
+    private fun getOrBuildMetrobusQuadTree(metrobusStops: List<MetrobusStopEntity>): SpatialQuadTree<MetrobusStopEntity>? {
+        if (metrobusStops.isEmpty()) return null
+        if (cachedMetrobusStopsRef !== metrobusStops || cachedMetrobusQuadTree == null) {
+            cachedMetrobusStopsRef = metrobusStops
+            cachedMetrobusQuadTree = SpatialQuadTree.buildTree(metrobusStops, { it.lat }, { it.lon })
+        }
+        return cachedMetrobusQuadTree
+    }
+
+    private fun getOrBuildValenbisiQuadTree(stations: List<ValenbisiStation>): SpatialQuadTree<ValenbisiStation>? {
+        if (stations.isEmpty()) return null
+        if (cachedValenbisiRef !== stations || cachedValenbisiQuadTree == null) {
+            cachedValenbisiRef = stations
+            cachedValenbisiQuadTree = SpatialQuadTree.buildTree(stations, { it.latitude }, { it.longitude })
+        }
+        return cachedValenbisiQuadTree
+    }
+
+    fun queryBusStopsInBox(
+        busStops: List<GeoportalStopEntity>,
+        range: BoundingBox2D
+    ): List<GeoportalStopEntity> {
+        if (busStops.isEmpty()) return emptyList()
+        if (busStops.size <= 50) {
+            val result = ArrayList<GeoportalStopEntity>()
+            for (s in busStops) {
+                if (range.contains(s.lat, s.lon)) result.add(s)
+            }
+            return result
+        }
+        val tree = getOrBuildBusQuadTree(busStops) ?: return emptyList()
+        val result = ArrayList<GeoportalStopEntity>()
+        tree.queryRange(range, result)
+        return result
+    }
+
+    fun queryMetrobusStopsInBox(
+        metrobusStops: List<MetrobusStopEntity>,
+        range: BoundingBox2D
+    ): List<MetrobusStopEntity> {
+        if (metrobusStops.isEmpty()) return emptyList()
+        if (metrobusStops.size <= 50) {
+            val result = ArrayList<MetrobusStopEntity>()
+            for (s in metrobusStops) {
+                if (range.contains(s.lat, s.lon)) result.add(s)
+            }
+            return result
+        }
+        val tree = getOrBuildMetrobusQuadTree(metrobusStops) ?: return emptyList()
+        val result = ArrayList<MetrobusStopEntity>()
+        tree.queryRange(range, result)
+        return result
+    }
+
+    fun queryValenbisiInBox(
+        stations: List<ValenbisiStation>,
+        range: BoundingBox2D
+    ): List<ValenbisiStation> {
+        if (stations.isEmpty()) return emptyList()
+        if (stations.size <= 50) {
+            val result = ArrayList<ValenbisiStation>()
+            for (s in stations) {
+                if (range.contains(s.latitude, s.longitude)) result.add(s)
+            }
+            return result
+        }
+        val tree = getOrBuildValenbisiQuadTree(stations) ?: return emptyList()
+        val result = ArrayList<ValenbisiStation>()
+        tree.queryRange(range, result)
+        return result
+    }
+
+    internal fun computeQueryBoundingBox(
+        latSouth: Double,
+        latNorth: Double,
+        lonWest: Double,
+        lonEast: Double
+    ): BoundingBox2D {
+        val isValidBox = latNorth > 30.0 && latSouth > 30.0 && latNorth > latSouth && lonEast > lonWest
+        val latSpan = if (isValidBox) (latNorth - latSouth).coerceAtLeast(0.0003) else 0.08
+        val lonSpan = if (isValidBox) (lonEast - lonWest).coerceAtLeast(0.0003) else 0.08
+
+        // Proportional overscan so pins/pills overlapping screen edges stay mounted during micro-pans,
+        // without forcing a 2-3 km query window when zoomed closely onto 1-2 stops.
+        val latNorthMargin = (latSpan * 0.25).coerceIn(0.00025, 0.015)
+        val latSouthMargin = (latSpan * 0.15).coerceIn(0.00020, 0.010)
+        val lonMargin = (lonSpan * 0.20).coerceIn(0.00025, 0.012)
+
+        return BoundingBox2D(
+            minLat = latSouth - latSouthMargin,
+            maxLat = latNorth + latNorthMargin,
+            minLon = lonWest - lonMargin,
+            maxLon = lonEast + lonMargin
+        )
+    }
+
     fun filterForViewport(
         boundingBox: BoundingBox,
         busStops: List<GeoportalStopEntity>,
@@ -53,21 +165,11 @@ object ViewportTransitFilter {
         val lonEast = boundingBox.lonEast
         val isValidBox = latNorth > 30.0 && latSouth > 30.0
 
-        val latSpan = if (isValidBox) (latNorth - latSouth) else 0.08
-        val lonSpan = if (isValidBox) (lonEast - lonWest) else 0.08
-
-        val safeLatSpan = latSpan.coerceAtLeast(0.015)
-        val safeLonSpan = lonSpan.coerceAtLeast(0.015)
-
-        // Generous spatial margin (extra generous on the top/north side for transparent status bar, notch, and smooth panning)
-        val latNorthMargin = safeLatSpan * 0.75
-        val latSouthMargin = safeLatSpan * 0.50
-        val lonMargin = safeLonSpan * 0.50
-
-        val minLat = latSouth - latSouthMargin
-        val maxLat = latNorth + latNorthMargin
-        val minLon = lonWest - lonMargin
-        val maxLon = lonEast + lonMargin
+        val bufferedRange = computeQueryBoundingBox(latSouth, latNorth, lonWest, lonEast)
+        val minLat = bufferedRange.minLat
+        val maxLat = bufferedRange.maxLat
+        val minLon = bufferedRange.minLon
+        val maxLon = bufferedRange.maxLon
 
         // Check if camera movement is negligible (< 0.00003 degrees, ~3 meters) and filters/datasets are identical
         val prevResult = lastFilteredResult
@@ -91,6 +193,8 @@ object ViewportTransitFilter {
                 !mapFilter.showValenbisi &&
                 !mapFilter.isFavorites
 
+        val queryRange = if (isValidBox) BoundingBox2D(minLat, maxLat, minLon, maxLon) else null
+
         // 1. Bus Stops
         val showBus = (mapFilter.isFavorites || mapFilter.showBus) &&
                 (mapFilter.isFavorites || isOnlyBusModeSelected || currentZoom >= 15.2)
@@ -102,14 +206,10 @@ object ViewportTransitFilter {
             if (isFavoritesMode || busStops.size <= 50) {
                 busStops
             } else {
-                if (cachedBusStopsRef !== busStops || cachedQuadTree == null) {
-                    cachedBusStopsRef = busStops
-                    cachedQuadTree = QuadTree.buildTree(busStops)
-                }
-                if (isValidBox && cachedQuadTree != null) {
-                    val queryRange = BoundingBox2D(minLat, maxLat, minLon, maxLon)
-                    val rangeResult = mutableListOf<GeoportalStopEntity>()
-                    cachedQuadTree!!.queryRange(queryRange, rangeResult)
+                val tree = getOrBuildBusQuadTree(busStops)
+                if (queryRange != null && tree != null) {
+                    val rangeResult = ArrayList<GeoportalStopEntity>(128)
+                    tree.queryRange(queryRange, rangeResult)
                     rangeResult
                 } else {
                     SpatialGridSampler.sampleUniformlyByGrid(busStops, 200, { it.lat }, { it.lon })
@@ -126,10 +226,11 @@ object ViewportTransitFilter {
             if (isMetrobusFavoritesMode || metrobusStops.size <= 50) {
                 metrobusStops
             } else {
-                if (isValidBox) {
-                    metrobusStops.filter { stop ->
-                        stop.lat in minLat..maxLat && stop.lon in minLon..maxLon
-                    }
+                val tree = getOrBuildMetrobusQuadTree(metrobusStops)
+                if (queryRange != null && tree != null) {
+                    val rangeResult = ArrayList<MetrobusStopEntity>(96)
+                    tree.queryRange(queryRange, rangeResult)
+                    rangeResult
                 } else {
                     SpatialGridSampler.sampleUniformlyByGrid(metrobusStops, 200, { it.lat }, { it.lon })
                 }
@@ -138,8 +239,17 @@ object ViewportTransitFilter {
 
         // 3. Valenbisi
         val showValenbisi = mapFilter.showValenbisi
-        val valenbisiInViewport = if (showValenbisi) {
-            if (isValidBox) {
+        val valenbisiInViewport = if (showValenbisi && valenbisiStations.isNotEmpty()) {
+            if (queryRange != null && valenbisiStations.size > 50) {
+                val tree = getOrBuildValenbisiQuadTree(valenbisiStations)
+                if (tree != null) {
+                    val rangeResult = ArrayList<ValenbisiStation>(96)
+                    tree.queryRange(queryRange, rangeResult)
+                    rangeResult
+                } else {
+                    valenbisiStations
+                }
+            } else if (queryRange != null) {
                 valenbisiStations.filter { station ->
                     station.latitude in minLat..maxLat && station.longitude in minLon..maxLon
                 }
@@ -176,6 +286,10 @@ object ViewportTransitFilter {
     fun clearCache() {
         cachedBusStopsRef = null
         cachedQuadTree = null
+        cachedMetrobusStopsRef = null
+        cachedMetrobusQuadTree = null
+        cachedValenbisiRef = null
+        cachedValenbisiQuadTree = null
         lastFilteredResult = null
     }
 }

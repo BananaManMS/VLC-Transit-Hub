@@ -311,13 +311,17 @@ object MetroMapOverlayLoader {
 
         // Process all routes dynamically with centered dynamic offsets
         val allRoutes = metroRoutes + tramRoutes
+        val segmentGrid = MapPolylineOffsetHelper.SegmentSpatialGrid(0.001)
+        for (route in allRoutes) {
+            segmentGrid.addSegments(route.ref, route.segments)
+        }
+
+        val metroMasterOrder = listOf("3", "2", "9", "1", "5", "7")
+        val tramMasterOrder = listOf("4", "6", "8", "10")
+        val reusablePresentRefs = ArrayList<String>(8)
 
         for (route in allRoutes) {
-            val masterOrder = if (route.isMetro) {
-                listOf("3", "2", "9", "1", "5", "7")
-            } else {
-                listOf("4", "6", "8", "10")
-            }
+            val masterOrder = if (route.isMetro) metroMasterOrder else tramMasterOrder
             val spacing = if (route.isMetro) 3.0 else 2.0
 
             for (segment in route.segments) {
@@ -327,27 +331,28 @@ object MetroMapOverlayLoader {
                 val rawOffsets = DoubleArray(n)
                 for (v in 0 until n) {
                     val p = segment[v]
-                    val presentRefs = ArrayList<String>()
-                    presentRefs.add(route.ref)
+                    reusablePresentRefs.clear()
+                    reusablePresentRefs.add(route.ref)
 
-                    for (otherRoute in allRoutes) {
-                        // Coexistence requires a different line reference within 30m (Rule 2)
-                        if (otherRoute.ref != route.ref && isRouteCloseToPoint(p, otherRoute, 30.0)) {
-                            if (!presentRefs.contains(otherRoute.ref)) {
-                                presentRefs.add(otherRoute.ref)
-                            }
-                        }
-                    }
+                    segmentGrid.collectNearbyRoutes(p, route.ref, 30.0, reusablePresentRefs)
 
                     // If no other different route is coexisting at this vertex, offset is strictly 0.0m (Rule 2)
-                    if (presentRefs.size == 1) {
+                    if (reusablePresentRefs.size == 1) {
                         rawOffsets[v] = 0.0
                     } else {
-                        val sortedPresent = masterOrder.filter { presentRefs.contains(it) }
-                        val j = sortedPresent.indexOf(route.ref)
-                        val N = sortedPresent.size
+                        var nCount = 0
+                        var j = -1
+                        for (mIdx in 0 until masterOrder.size) {
+                            val mRef = masterOrder[mIdx]
+                            if (reusablePresentRefs.contains(mRef)) {
+                                if (mRef == route.ref) {
+                                    j = nCount
+                                }
+                                nCount++
+                            }
+                        }
                         val rawOffset = if (j >= 0) {
-                            (j - (N - 1) / 2.0) * spacing
+                            (j - (nCount - 1) / 2.0) * spacing
                         } else {
                             0.0
                         }
@@ -356,31 +361,23 @@ object MetroMapOverlayLoader {
                 }
 
                 // Identify split points before ramping
-                val splitIndices = ArrayList<Int>()
                 for (i in 0 until n - 1) {
                     if (rawOffsets[i] != 0.0 && rawOffsets[i + 1] == 0.0) {
-                        splitIndices.add(i)
+                        val valFrom = rawOffsets[i]
+                        if (i + 1 < n) rawOffsets[i + 1] = valFrom * 0.75
+                        if (i + 2 < n) rawOffsets[i + 2] = valFrom * 0.50
+                        if (i + 3 < n) rawOffsets[i + 3] = valFrom * 0.25
                     }
-                }
-                for (i in splitIndices) {
-                    val valFrom = rawOffsets[i]
-                    if (i + 1 < n) rawOffsets[i + 1] = valFrom * 0.75
-                    if (i + 2 < n) rawOffsets[i + 2] = valFrom * 0.50
-                    if (i + 3 < n) rawOffsets[i + 3] = valFrom * 0.25
                 }
 
-                // Identify join points before ramping
-                val joinIndices = ArrayList<Int>()
+                // Identify join points before ramping (reverse scan avoids overwriting prior ramp mid-loop)
                 for (i in n - 1 downTo 1) {
                     if (rawOffsets[i] != 0.0 && rawOffsets[i - 1] == 0.0) {
-                        joinIndices.add(i)
+                        val valTo = rawOffsets[i]
+                        if (i - 1 >= 0) rawOffsets[i - 1] = valTo * 0.75
+                        if (i - 2 >= 0) rawOffsets[i - 2] = valTo * 0.50
+                        if (i - 3 >= 0) rawOffsets[i - 3] = valTo * 0.25
                     }
-                }
-                for (i in joinIndices) {
-                    val valTo = rawOffsets[i]
-                    if (i - 1 >= 0) rawOffsets[i - 1] = valTo * 0.75
-                    if (i - 2 >= 0) rawOffsets[i - 2] = valTo * 0.50
-                    if (i - 3 >= 0) rawOffsets[i - 3] = valTo * 0.25
                 }
 
                 val smoothedOffsets = smoothOffsets(rawOffsets)

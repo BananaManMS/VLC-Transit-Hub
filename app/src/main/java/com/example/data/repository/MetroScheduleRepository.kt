@@ -6,6 +6,8 @@ import com.example.data.model.MetroScheduledDeparture
 import com.example.data.model.MetroScheduledStopPass
 import com.example.data.model.MetroTrainTimeline
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,6 +30,8 @@ class MetroScheduleRepository private constructor(private val context: Context) 
         private const val CACHE_FILE_NAME = "metro_valencia_schedule_cache.json"
         private const val PREFS_NAME = "metro_schedule_prefs"
         private const val KEY_LAST_SYNC = "last_sync_timestamp"
+        private const val KEY_CACHED_FIRST_DATE = "cached_first_date"
+        private const val KEY_ETAG = "remote_etag"
 
         @Volatile
         private var INSTANCE: MetroScheduleRepository? = null
@@ -48,85 +52,110 @@ class MetroScheduleRepository private constructor(private val context: Context) 
     private val stopSchedules = mutableMapOf<Int, MutableList<IntArray>>() // IntArray of size 6: [dateIdx, min, lineInt, origWebId, destWebId, trainServiceId]
     private val lineStringMap = mutableMapOf<Int, String>() // e.g. 1 -> "1", 10 -> "10"
 
+    @Volatile
     private var isLoaded = false
+    private val loadMutex = Mutex()
+    private val syncMutex = Mutex()
 
     /**
      * Initializes mappings and loads schedules if not loaded yet.
      */
     suspend fun ensureLoaded() = withContext(Dispatchers.IO) {
         if (isLoaded) return@withContext
-        loadScheduleData()
-        isLoaded = true
+        loadMutex.withLock {
+            if (isLoaded) return@withLock
+            com.example.util.StartupProfiler.log("MetroScheduleRepo", "ensureLoaded() parsing JSON")
+            loadScheduleData()
+            isLoaded = true
+            com.example.util.StartupProfiler.log("MetroScheduleRepo", "ensureLoaded() completed (${stopSchedules.size} stops)")
+        }
     }
 
     /**
-     * Synchronizes schedule from remote GitHub repository if more than 24h passed or cache missing.
+     * Synchronizes schedule from remote GitHub repository if more than 6h passed or date stale.
+     * Uses ETag / If-Modified-Since so unchanged files return 304 without body download.
      */
     suspend fun syncScheduleFromRemoteIfNeeded(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val lastSync = prefs.getLong(KEY_LAST_SYNC, 0L)
-            val now = System.currentTimeMillis()
-            val cacheFile = File(context.filesDir, CACHE_FILE_NAME)
+        syncMutex.withLock {
+            try {
+                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val lastSync = prefs.getLong(KEY_LAST_SYNC, 0L)
+                val now = System.currentTimeMillis()
+                val cacheFile = File(context.filesDir, CACHE_FILE_NAME)
 
-            val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).apply {
-                timeZone = TimeZone.getTimeZone("Europe/Madrid")
-            }
-            val todayStr = sdf.format(Date())
-            val hasTodayAsFirstDate = datesList.isNotEmpty() && datesList.firstOrNull() == todayStr
-            val isCacheStale = (now - lastSync > 6 * 60 * 60 * 1000L) || !hasTodayAsFirstDate
+                val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).apply {
+                    timeZone = TimeZone.getTimeZone("Europe/Madrid")
+                }
+                val todayStr = sdf.format(Date())
+                val knownFirstDate = datesList.firstOrNull() ?: prefs.getString(KEY_CACHED_FIRST_DATE, null)
+                val hasTodayAsFirstDate = knownFirstDate == todayStr
+                val recentlyCheckedMs = now - lastSync
+                val isCacheStale = (recentlyCheckedMs > 6 * 60 * 60 * 1000L) ||
+                    (!hasTodayAsFirstDate && recentlyCheckedMs > 30 * 60 * 1000L)
 
-            val needsSync = !cacheFile.exists() || isCacheStale
-            if (!needsSync) {
-                return@withContext false
-            }
+                val needsSync = !cacheFile.exists() || isCacheStale
+                if (!needsSync) {
+                    return@withLock false
+                }
 
-            Log.d(TAG, "Syncing Metrovalencia schedule from remote...")
-            val url = URL(REMOTE_URL)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 10000
-            conn.readTimeout = 15000
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "VLC-Transit/1.0")
+                Log.d(TAG, "Syncing Metrovalencia schedule from remote...")
+                val url = URL(REMOTE_URL)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 8000
+                conn.readTimeout = 12000
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("User-Agent", "VLC-Transit/1.0")
 
-            val lastModifiedPref = prefs.getLong("last_modified_header", 0L)
-            if (cacheFile.exists() && lastModifiedPref > 0L) {
-                conn.ifModifiedSince = lastModifiedPref
-            }
+                val lastModifiedPref = prefs.getLong("last_modified_header", 0L)
+                if (cacheFile.exists() && lastModifiedPref > 0L) {
+                    conn.ifModifiedSince = lastModifiedPref
+                }
+                val storedEtag = prefs.getString(KEY_ETAG, null)
+                if (cacheFile.exists() && !storedEtag.isNullOrBlank()) {
+                    conn.setRequestProperty("If-None-Match", storedEtag)
+                }
 
-            if (conn.responseCode == HttpURLConnection.HTTP_NOT_MODIFIED) {
-                Log.d(TAG, "Metrovalencia schedule has not changed on GitHub (304 Not Modified)")
-                prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
-                return@withContext false
-            }
+                if (conn.responseCode == HttpURLConnection.HTTP_NOT_MODIFIED) {
+                    Log.d(TAG, "Metrovalencia schedule has not changed on GitHub (304 Not Modified)")
+                    prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
+                    return@withLock false
+                }
 
-            if (conn.responseCode == HttpURLConnection.HTTP_OK) {
-                val lastModifiedHeader = conn.lastModified
-                val tempFile = File(context.filesDir, "$CACHE_FILE_NAME.tmp")
-                conn.inputStream.use { input ->
-                    tempFile.outputStream().use { output ->
-                        input.copyTo(output)
+                if (conn.responseCode == HttpURLConnection.HTTP_OK) {
+                    val lastModifiedHeader = conn.lastModified
+                    val newEtag = conn.getHeaderField("ETag")
+                    val tempFile = File(context.filesDir, "$CACHE_FILE_NAME.tmp")
+                    conn.inputStream.use { input ->
+                        tempFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    if (tempFile.length() > 50000) { // Valid non-empty file
+                        if (cacheFile.exists()) cacheFile.delete()
+                        tempFile.renameTo(cacheFile)
+                        val editor = prefs.edit()
+                            .putLong(KEY_LAST_SYNC, now)
+                            .putLong("last_modified_header", lastModifiedHeader)
+                        if (!newEtag.isNullOrBlank()) {
+                            editor.putString(KEY_ETAG, newEtag)
+                        }
+                        editor.apply()
+                        Log.d(TAG, "Metrovalencia schedule synced successfully (${cacheFile.length()} bytes)")
+                        // Reload in-memory under loadMutex
+                        loadMutex.withLock {
+                            loadScheduleData()
+                            isLoaded = true
+                        }
+                        return@withLock true
+                    } else {
+                        tempFile.delete()
                     }
                 }
-                if (tempFile.length() > 50000) { // Valid non-empty file
-                    if (cacheFile.exists()) cacheFile.delete()
-                    tempFile.renameTo(cacheFile)
-                    prefs.edit()
-                        .putLong(KEY_LAST_SYNC, now)
-                        .putLong("last_modified_header", lastModifiedHeader)
-                        .apply()
-                    Log.d(TAG, "Metrovalencia schedule synced successfully (${cacheFile.length()} bytes)")
-                    // Reload in-memory
-                    loadScheduleData()
-                    return@withContext true
-                } else {
-                    tempFile.delete()
-                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to download remote metro schedule: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to download remote metro schedule: ${e.message}")
+            return@withLock false
         }
-        return@withContext false
     }
 
     /**
@@ -533,6 +562,14 @@ class MetroScheduleRepository private constructor(private val context: Context) 
                 }
             }
             datesList = dList
+            try {
+                dList.firstOrNull()?.let { firstDate ->
+                    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        .edit()
+                        .putString(KEY_CACHED_FIRST_DATE, firstDate)
+                        .apply()
+                }
+            } catch (_: Exception) {}
 
             // 2. webID station names
             val webIdObj = root.optJSONObject("webID")

@@ -1,7 +1,6 @@
 package com.example.ui.map.google
 
 import android.content.Context
-import android.graphics.Color as AndroidColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -11,6 +10,10 @@ import com.google.android.gms.maps.model.RoundCap
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberMarkerState
+
+private val SHARED_ROUND_CAP = RoundCap()
+private const val CHEVRON_BORDER_MB = 0xFFF97316.toInt()
+private const val CHEVRON_BORDER_EMT = 0xFFE52320.toInt()
 
 @Composable
 internal fun GoogleMapPolylinesLayer(
@@ -30,9 +33,10 @@ internal fun GoogleMapPolylinesLayer(
 ) {
     // 1. Draw Cercanías Line Polylines (zIndex = 2f dimmed / 10f normal / 16f highlighted)
     if (showCercaniasLines) {
+        val hasCercaniasActive = activeCercaniasLines.isNotEmpty()
         cercaniasPolylineList.forEachIndexed { index, line ->
             key("CERCANIAS_LINE_${index}_${line.lineRef}") {
-                val isHighlighted = activeCercaniasLines.isNotEmpty() &&
+                val isHighlighted = hasCercaniasActive &&
                         activeCercaniasLines.contains(line.lineRef.trim().uppercase())
                 val isDimmed = (isCercaniasActive && !isHighlighted) || (isMetroActive && !isHighlighted) || (isBusActive && !isHighlighted)
 
@@ -46,8 +50,8 @@ internal fun GoogleMapPolylinesLayer(
                     width = effectiveWidth,
                     zIndex = effectiveZIndex,
                     jointType = JointType.ROUND,
-                    startCap = RoundCap(),
-                    endCap = RoundCap()
+                    startCap = SHARED_ROUND_CAP,
+                    endCap = SHARED_ROUND_CAP
                 )
             }
         }
@@ -55,10 +59,11 @@ internal fun GoogleMapPolylinesLayer(
 
     // 2. Draw Metro Line Polylines (zIndex = 2f dimmed / 12f normal / 17f highlighted)
     if (showMetroLines) {
+        val hasMetroActive = activeMetroLines.isNotEmpty()
         metroPolylineList.forEachIndexed { index, line ->
             key("METRO_LINE_${index}_${line.lineRef}") {
                 val cleanRef = MetroStationHighlightManager.normalizeLineRef(line.lineRef)
-                val isHighlighted = activeMetroLines.isNotEmpty() && activeMetroLines.contains(cleanRef)
+                val isHighlighted = hasMetroActive && activeMetroLines.contains(cleanRef)
                 val isDimmed = (isMetroActive && !isHighlighted) || (isCercaniasActive && !isHighlighted) || (isBusActive && !isHighlighted)
 
                 val effectiveColor = if (isDimmed) line.color.copy(alpha = 0.20f) else line.color
@@ -71,8 +76,8 @@ internal fun GoogleMapPolylinesLayer(
                     width = effectiveWidth,
                     zIndex = effectiveZIndex,
                     jointType = JointType.ROUND,
-                    startCap = RoundCap(),
-                    endCap = RoundCap()
+                    startCap = SHARED_ROUND_CAP,
+                    endCap = SHARED_ROUND_CAP
                 )
             }
         }
@@ -88,8 +93,8 @@ internal fun GoogleMapPolylinesLayer(
                     width = line.width,
                     zIndex = 18f,
                     jointType = JointType.ROUND,
-                    startCap = RoundCap(),
-                    endCap = RoundCap()
+                    startCap = SHARED_ROUND_CAP,
+                    endCap = SHARED_ROUND_CAP
                 )
             }
         }
@@ -105,8 +110,8 @@ internal fun GoogleMapPolylinesLayer(
                     width = line.width,
                     zIndex = 18f,
                     jointType = JointType.ROUND,
-                    startCap = RoundCap(),
-                    endCap = RoundCap()
+                    startCap = SHARED_ROUND_CAP,
+                    endCap = SHARED_ROUND_CAP
                 )
             }
         }
@@ -117,7 +122,7 @@ internal fun GoogleMapPolylinesLayer(
         routeChevronArrows.forEachIndexed { idx, arrow ->
             key("CHEVRON_${idx}_${arrow.position.latitude}_${arrow.position.longitude}") {
                 val chevronIcon = remember(arrow.isMetrobus) {
-                    val borderColor = if (arrow.isMetrobus) AndroidColor.parseColor("#F97316") else AndroidColor.parseColor("#E52320")
+                    val borderColor = if (arrow.isMetrobus) CHEVRON_BORDER_MB else CHEVRON_BORDER_EMT
                     GoogleMapsMarkerCache.getOrCreateChevronArrowIcon(context, borderColor)
                 }
                 Marker(

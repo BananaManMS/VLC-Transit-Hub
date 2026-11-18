@@ -55,49 +55,50 @@ class UnifiedSearchEngine {
         this.geocodingRepository = geocodingRepository
     }
 
-    @Volatile
-    private var cachedMetroStations: List<MetroStation>? = null
-    @Volatile
-    private var cachedCercaniasStations: List<CercaniasStationEntity>? = null
-    @Volatile
-    private var cachedBusStops: List<GeoportalStopEntity>? = null
-    @Volatile
-    private var cachedMetrobusStops: List<MetrobusStopEntity>? = null
+    companion object {
+        @Volatile
+        private var cachedCercaniasStations: List<CercaniasStationEntity>? = null
+
+        fun invalidateCercaniasCache() {
+            cachedCercaniasStations = null
+        }
+    }
 
     private suspend fun getEffectiveMetroStations(passed: List<Any>): List<MetroStation> {
         val casted = passed.filterIsInstance<MetroStation>()
         if (casted.isNotEmpty()) return casted
-        if (cachedMetroStations != null) return cachedMetroStations!!
-        val loaded = context?.let { MetroRepository(it).loadMetroStations() } ?: com.example.data.model.ValenciaMetroData.mainMetroStations
-        cachedMetroStations = loaded
-        return loaded
+        return context?.let { MetroRepository(it).loadMetroStations() } ?: com.example.data.model.ValenciaMetroData.mainMetroStations
     }
 
     private suspend fun getEffectiveCercaniasStations(passed: List<Any>): List<CercaniasStationEntity> {
         val casted = passed.filterIsInstance<CercaniasStationEntity>()
         if (casted.isNotEmpty()) return casted
-        if (cachedCercaniasStations != null) return cachedCercaniasStations!!
+        cachedCercaniasStations?.let { return it }
         val loaded = try { database?.cercaniasStationDao()?.getAllStations() ?: emptyList() } catch (e: Exception) { emptyList() }
-        cachedCercaniasStations = loaded
+        if (loaded.isNotEmpty()) {
+            cachedCercaniasStations = loaded
+        }
         return loaded
     }
 
     private suspend fun getEffectiveBusStops(passed: List<Any>): List<GeoportalStopEntity> {
         val casted = passed.filterIsInstance<GeoportalStopEntity>()
         if (casted.isNotEmpty()) return casted
-        if (cachedBusStops != null) return cachedBusStops!!
-        val loaded = try { database?.geoportalStopDao()?.getAllStops() ?: emptyList() } catch (e: Exception) { emptyList() }
-        cachedBusStops = loaded
-        return loaded
+        context?.let {
+            val shared = StaticTransitDataCache.getOrLoadEmtStops(it)
+            if (shared.isNotEmpty()) return shared
+        }
+        return try { database?.geoportalStopDao()?.getAllActiveStops() ?: emptyList() } catch (e: Exception) { emptyList() }
     }
 
     private suspend fun getEffectiveMetrobusStops(passed: List<Any>): List<MetrobusStopEntity> {
         val casted = passed.filterIsInstance<MetrobusStopEntity>()
         if (casted.isNotEmpty()) return casted
-        if (cachedMetrobusStops != null) return cachedMetrobusStops!!
-        val loaded = try { database?.metrobusStopDao()?.getAllStops() ?: emptyList() } catch (e: Exception) { emptyList() }
-        cachedMetrobusStops = loaded
-        return loaded
+        context?.let {
+            val shared = StaticTransitDataCache.getOrLoadMetrobusStops(it)
+            if (shared.isNotEmpty()) return shared
+        }
+        return try { database?.metrobusStopDao()?.getAllActiveStops() ?: emptyList() } catch (e: Exception) { emptyList() }
     }
 
     suspend fun search(query: String): List<String> = withContext(Dispatchers.IO) {

@@ -11,7 +11,12 @@ import android.util.LruCache
 import androidx.core.content.res.ResourcesCompat
 import com.example.util.LineColorResolver
 
-private val metroStationIconCache = LruCache<String, MarkerIconResult>(64)
+private val metroStationIconCache = LruCache<String, MarkerIconResult>(256)
+
+private val COLOR_TEXT_LIGHT_BG = Color.parseColor("#0F172A")
+private val COLOR_TEXT_DARK_BG = Color.parseColor("#F8FAFC")
+private val COLOR_STROKE_DARK = Color.parseColor("#090D16")
+private val COLOR_METRO_RED = Color.parseColor("#E2001A")
 
 internal fun getMetroMarkerIcon(
     context: Context,
@@ -42,7 +47,7 @@ internal fun createMetroMarkerIcon(
     val stationStrokeWidth = if (hasLines) 7f else 6f
 
     val textFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = if (isDarkMode) Color.parseColor("#F8FAFC") else Color.parseColor("#0F172A")
+        color = if (isDarkMode) COLOR_TEXT_DARK_BG else COLOR_TEXT_LIGHT_BG
         textSize = stationTextSize
         typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.LEFT
@@ -50,7 +55,7 @@ internal fun createMetroMarkerIcon(
     }
 
     val textStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = if (isDarkMode) Color.parseColor("#090D16") else Color.WHITE
+        color = if (isDarkMode) COLOR_STROKE_DARK else Color.WHITE
         textSize = stationTextSize
         typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.LEFT
@@ -87,6 +92,8 @@ internal fun createMetroMarkerIcon(
     val badgeSpacingX = 6f
     val badgeSpacingY = 6f
 
+    var precomputedChunks: List<List<String>> = emptyList()
+
     if (showPill) {
         val textWidth = textFillPaint.measureText(stationName)
 
@@ -99,7 +106,7 @@ internal fun createMetroMarkerIcon(
             (parsedLines.size * (badgeRadius * 2f)) + ((parsedLines.size - 1) * badgeSpacingX)
         } else 0f
 
-        val lineChunks: List<List<String>> = when {
+        precomputedChunks = when {
             parsedLines.isEmpty() -> emptyList()
             parsedLines.size <= 3 || singleRowWidth <= textWidth + 8f -> listOf(parsedLines)
             parsedLines.size == 4 -> listOf(parsedLines.take(2), parsedLines.drop(2))
@@ -112,11 +119,11 @@ internal fun createMetroMarkerIcon(
             }
         }
 
-        val maxRowWidth = lineChunks.maxOfOrNull { row ->
+        val maxRowWidth = precomputedChunks.maxOfOrNull { row ->
             (row.size * (badgeRadius * 2f)) + ((row.size - 1) * badgeSpacingX)
         } ?: 0f
 
-        val numRows = lineChunks.size
+        val numRows = precomputedChunks.size
         val badgesHeight = if (numRows > 0) {
             (numRows * (badgeRadius * 2f)) + ((numRows - 1) * badgeSpacingY)
         } else 0f
@@ -153,7 +160,7 @@ internal fun createMetroMarkerIcon(
     if (showPill) {
         val fontMetrics = textFillPaint.fontMetrics
         val textLeft = logoCenterX + logoRadius + spacing
-        
+
         val nameCenterY = if (parsedLines.isNotEmpty()) {
             26f
         } else {
@@ -167,7 +174,7 @@ internal fun createMetroMarkerIcon(
         canvas.drawText(stationName, textLeft, textY, textFillPaint)
 
         // Draw line badges if present
-        if (parsedLines.isNotEmpty()) {
+        if (precomputedChunks.isNotEmpty()) {
             val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG)
             val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
@@ -177,32 +184,20 @@ internal fun createMetroMarkerIcon(
             }
             val badgeFontMetrics = badgeTextPaint.fontMetrics
             val badgesStartY = 54f
+            val haloColor = if (isDarkMode) Color.argb(160, 0, 0, 0) else Color.argb(80, 0, 0, 0)
 
-            val singleRowWidth = (parsedLines.size * (badgeRadius * 2f)) + ((parsedLines.size - 1) * badgeSpacingX)
-            val lineChunks: List<List<String>> = when {
-                parsedLines.size <= 3 || singleRowWidth <= textFillPaint.measureText(stationName) + 8f -> listOf(parsedLines)
-                parsedLines.size == 4 -> listOf(parsedLines.take(2), parsedLines.drop(2))
-                parsedLines.size == 5 -> listOf(parsedLines.take(3), parsedLines.drop(3))
-                parsedLines.size == 6 -> listOf(parsedLines.take(3), parsedLines.drop(3))
-                else -> {
-                    val numRows = (parsedLines.size + 2) / 3
-                    val perRow = (parsedLines.size + numRows - 1) / numRows
-                    parsedLines.chunked(perRow)
-                }
-            }
-
-            lineChunks.forEachIndexed { rowIndex, rowLines ->
+            precomputedChunks.forEachIndexed { rowIndex, rowLines ->
                 val rowY = badgesStartY + badgeRadius + (rowIndex * (badgeRadius * 2f + badgeSpacingY))
                 rowLines.forEachIndexed { colIndex, lineId ->
                     val cx = textLeft + badgeRadius + (colIndex * (badgeRadius * 2f + badgeSpacingX))
                     val cy = rowY
 
                     val hexColor = LineColorResolver.getMetroLineColorHex(lineId)
-                    val colorInt = Color.parseColor(hexColor)
+                    val colorInt = MarkerLogoBitmapCache.parseColorCached(hexColor)
 
                     // Outer subtle dark halo / shadow
                     badgePaint.style = Paint.Style.FILL
-                    badgePaint.color = if (isDarkMode) Color.argb(160, 0, 0, 0) else Color.argb(80, 0, 0, 0)
+                    badgePaint.color = haloColor
                     canvas.drawCircle(cx, cy + 1f, badgeRadius + 1f, badgePaint)
 
                     // Fill color
@@ -225,78 +220,38 @@ internal fun createMetroMarkerIcon(
         }
     }
 
-    // 2. Draw Metrovalencia Logo Image or Fallback Circle
-    val logoDrawable = try {
-        ResourcesCompat.getDrawable(context.resources, com.example.R.drawable.logo_metrovalencia, context.theme)
-    } catch (e: Exception) {
-        null
-    }
+    // 2. Draw Metrovalencia Logo Image or Fallback Circle (pre-rasterized logo bitmap)
+    paint.style = Paint.Style.FILL
+    paint.color = Color.argb(40, 0, 0, 0)
+    canvas.drawOval(
+        logoCenterX - logoRadius + 2f,
+        logoCenterY - logoRadius + 4f,
+        logoCenterX + logoRadius + 2f,
+        logoCenterY + logoRadius + 4f,
+        paint
+    )
+    paint.color = Color.WHITE
+    canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
 
-    if (logoDrawable != null) {
-        // Soft drop shadow
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(40, 0, 0, 0)
-        canvas.drawOval(
-            logoCenterX - logoRadius + 2f,
-            logoCenterY - logoRadius + 4f,
-            logoCenterX + logoRadius + 2f,
-            logoCenterY + logoRadius + 4f,
-            paint
-        )
+    val drewLogo = MarkerLogoBitmapCache.drawAspectFittedLogo(
+        context = context,
+        canvas = canvas,
+        resId = com.example.R.drawable.logo_metrovalencia,
+        centerX = logoCenterX,
+        centerY = logoCenterY,
+        maxSize = logoRadius * 1.6f
+    )
 
-        // Draw clean white circular background
-        paint.color = Color.WHITE
-        canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
-
-        // Calculate aspect ratio so the logo isn't squished or stretched
-        val intrinsicWidth = logoDrawable.intrinsicWidth.toFloat()
-        val intrinsicHeight = logoDrawable.intrinsicHeight.toFloat()
-        val maxLogoSize = logoRadius * 1.6f
-        val w: Float
-        val h: Float
-        if (intrinsicWidth > 0 && intrinsicHeight > 0) {
-            val ratio = intrinsicWidth / intrinsicHeight
-            if (ratio > 1f) {
-                w = maxLogoSize
-                h = maxLogoSize / ratio
-            } else {
-                h = maxLogoSize
-                w = maxLogoSize * ratio
-            }
-        } else {
-            w = maxLogoSize
-            h = maxLogoSize
-        }
-        val left = logoCenterX - w / 2f
-        val top = logoCenterY - h / 2f
-
-        logoDrawable.setBounds(
-            left.toInt(),
-            top.toInt(),
-            (left + w).toInt(),
-            (top + h).toInt()
-        )
-        logoDrawable.draw(canvas)
-    } else {
+    if (!drewLogo) {
         // Fallback to classic custom m text red logo
-        val metroRed = Color.parseColor("#E2001A")
-        
-        // Soft drop shadow
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(40, 0, 0, 0)
-        canvas.drawOval(logoCenterX - logoRadius + 2f, logoCenterY - logoRadius + 4f, logoCenterX + logoRadius + 2f, logoCenterY + logoRadius + 4f, paint)
-
-        // Solid red circle
-        paint.color = metroRed
+        paint.color = COLOR_METRO_RED
         canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
 
-        // Subtle white outer border stroke
         paint.color = Color.WHITE
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2.5f
         canvas.drawCircle(logoCenterX, logoCenterY, logoRadius - 1.25f, paint)
 
-        // Draw Metrovalencia white lowercase 'm'
         val mPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             textSize = 42f
@@ -329,7 +284,7 @@ internal fun getMetroTinyDotIcon(context: Context, isDarkMode: Boolean): MarkerI
         canvas.drawCircle(size / 2f, size / 2f, size / 2f - 1.5f, paint)
 
         // 3. Inner filled Red dot
-        paint.color = Color.parseColor("#E2001A")
+        paint.color = COLOR_METRO_RED
         canvas.drawCircle(size / 2f, size / 2f, size / 2f - 3.5f, paint)
 
         val drawable = BitmapDrawable(context.resources, bitmap)
@@ -388,65 +343,29 @@ internal fun createMetroMarkerIconSmall(context: Context, isDarkMode: Boolean): 
 
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    val logoDrawable = try {
-        ResourcesCompat.getDrawable(context.resources, com.example.R.drawable.logo_metrovalencia, context.theme)
-    } catch (e: Exception) {
-        null
-    }
+    paint.style = Paint.Style.FILL
+    paint.color = Color.argb(40, 0, 0, 0)
+    canvas.drawOval(
+        logoCenterX - logoRadius + 1f,
+        logoCenterY - logoRadius + 2f,
+        logoCenterX + logoRadius + 1f,
+        logoCenterY + logoRadius + 2f,
+        paint
+    )
+    paint.color = Color.WHITE
+    canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
 
-    if (logoDrawable != null) {
-        // Soft drop shadow
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(40, 0, 0, 0)
-        canvas.drawOval(
-            logoCenterX - logoRadius + 1f,
-            logoCenterY - logoRadius + 2f,
-            logoCenterX + logoRadius + 1f,
-            logoCenterY + logoRadius + 2f,
-            paint
-        )
+    val drewLogo = MarkerLogoBitmapCache.drawAspectFittedLogo(
+        context = context,
+        canvas = canvas,
+        resId = com.example.R.drawable.logo_metrovalencia,
+        centerX = logoCenterX,
+        centerY = logoCenterY,
+        maxSize = logoRadius * 1.6f
+    )
 
-        // Draw clean white circular background
-        paint.color = Color.WHITE
-        canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
-
-        // Calculate aspect ratio so the logo isn't squished or stretched
-        val intrinsicWidth = logoDrawable.intrinsicWidth.toFloat()
-        val intrinsicHeight = logoDrawable.intrinsicHeight.toFloat()
-        val maxLogoSize = logoRadius * 1.6f
-        val w: Float
-        val h: Float
-        if (intrinsicWidth > 0 && intrinsicHeight > 0) {
-            val ratio = intrinsicWidth / intrinsicHeight
-            if (ratio > 1f) {
-                w = maxLogoSize
-                h = maxLogoSize / ratio
-            } else {
-                h = maxLogoSize
-                w = maxLogoSize * ratio
-            }
-        } else {
-            w = maxLogoSize
-            h = maxLogoSize
-        }
-        val left = logoCenterX - w / 2f
-        val top = logoCenterY - h / 2f
-
-        logoDrawable.setBounds(
-            left.toInt(),
-            top.toInt(),
-            (left + w).toInt(),
-            (top + h).toInt()
-        )
-        logoDrawable.draw(canvas)
-    } else {
-        val metroRed = Color.parseColor("#E2001A")
-        
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(40, 0, 0, 0)
-        canvas.drawOval(logoCenterX - logoRadius + 1f, logoCenterY - logoRadius + 2f, logoCenterX + logoRadius + 1f, logoCenterY + logoRadius + 2f, paint)
-
-        paint.color = metroRed
+    if (!drewLogo) {
+        paint.color = COLOR_METRO_RED
         canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
 
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

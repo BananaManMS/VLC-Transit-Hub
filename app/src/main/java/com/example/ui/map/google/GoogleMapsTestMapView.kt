@@ -22,6 +22,7 @@ import com.example.data.model.MetroStation
 import com.example.data.model.routing.PlannedItinerary
 import com.example.ui.cercanias.CercaniasRouteUtils
 import com.example.ui.cercanias.LiveVehicleInfo
+import com.example.ui.map.MapConfig
 import com.example.ui.map.MapFilter
 import com.example.ui.map.RecentSearch
 import com.example.ui.map.SelectedMapItem
@@ -33,6 +34,7 @@ import com.example.ui.map.components.MetroStationHighlightManager
 import com.example.ui.map.components.ValenbisiStation
 import com.google.android.gms.maps.GoogleMapOptions
 import com.google.android.gms.maps.MapsInitializer
+import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.GoogleMap
@@ -53,6 +55,9 @@ import org.osmdroid.util.GeoPoint
  * 5. Coordinated native Map Padding and smooth target centering.
  * 6. Isolated sub-composable layers to eliminate unnecessary recompositions during map interactions.
  */
+private const val MAP_BG_DARK = 0xFF1E2430.toInt()
+private const val MAP_BG_LIGHT = 0xFFF1F5F9.toInt()
+
 @Composable
 fun GoogleMapsTestMapView(
     modifier: Modifier = Modifier,
@@ -108,7 +113,8 @@ fun GoogleMapsTestMapView(
     onCameraPositionChanged: ((GeoPoint, Double) -> Unit)? = null,
     onZoomLevelChanged: ((Double) -> Unit)? = null,
     onMapReady: (() -> Unit)? = null,
-    onMapError: ((String) -> Unit)? = null
+    onMapError: ((String) -> Unit)? = null,
+    isMapLoaded: Boolean = true
 ) {
     val context = LocalContext.current
 
@@ -157,6 +163,10 @@ fun GoogleMapsTestMapView(
     val isOnlyMetroSelected = isMetroActiveMode && !isBusActiveMode && !isCercaniasActiveMode && !isMetrobusActiveMode && !isValenbisiActiveMode && !mapFilter.isFavorites
     val isOnlyCercaniasSelected = isCercaniasActiveMode && !isBusActiveMode && !isMetroActiveMode && !isMetrobusActiveMode && !isValenbisiActiveMode && !mapFilter.isFavorites
 
+    val (initialCameraLatLng, initialCameraZoom) = remember {
+        resolveInitialCameraPosition(cameraTarget, cameraZoom)
+    }
+
     // Camera and optical center coordinator
     val cameraCoordinator = rememberGoogleMapCameraCoordinator(
         cameraTarget = cameraTarget,
@@ -174,6 +184,7 @@ fun GoogleMapsTestMapView(
         valenbisiStations = valenbisiStations,
         showValenbisi = isValenbisiActiveMode,
         mapFilter = effectiveFilter,
+        isMapLoaded = isMapLoaded,
         onCameraPositionChanged = onCameraPositionChanged,
         onZoomLevelChanged = onZoomLevelChanged,
         onMapTouch = onMapTouch,
@@ -216,7 +227,9 @@ fun GoogleMapsTestMapView(
             isMyLocationEnabled = false,
             isBuildingEnabled = false,
             isIndoorEnabled = false,
-            latLngBoundsForCameraTarget = comValencianaBounds
+            latLngBoundsForCameraTarget = comValencianaBounds,
+            minZoomPreference = MapConfig.MIN_ZOOM.toFloat(),
+            maxZoomPreference = MapConfig.MAX_ZOOM.toFloat()
         )
     }
 
@@ -257,7 +270,9 @@ fun GoogleMapsTestMapView(
         mapFilter = effectiveFilter,
         busStops = busStops,
         metrobusStops = metrobusStops,
-        valenbisiStations = valenbisiStations
+        valenbisiStations = valenbisiStations,
+        initialTarget = cameraTarget,
+        initialZoom = initialCameraZoom
     )
 
     // Zoom LOD thresholds and active layer filters matching OSMdroid rules
@@ -327,8 +342,9 @@ fun GoogleMapsTestMapView(
             properties = mapProperties,
             uiSettings = uiSettings,
             googleMapOptionsFactory = {
-                val bg = if (isDarkMode) AndroidColor.parseColor("#0F172A") else AndroidColor.parseColor("#F1F5F9")
-                GoogleMapOptions().backgroundColor(bg)
+                GoogleMapOptions()
+                    .backgroundColor(if (isDarkMode) MAP_BG_DARK else MAP_BG_LIGHT)
+                    .camera(CameraPosition.fromLatLngZoom(initialCameraLatLng, initialCameraZoom))
             },
             contentPadding = PaddingValues(bottom = bottomPaddingDp),
             onMapClick = {
@@ -388,6 +404,10 @@ fun GoogleMapsTestMapView(
                     activeMetroLines = activeMetroLines,
                     isDarkMode = isDarkMode,
                     settledZoom = settledZoom,
+                    minLat = minLat,
+                    maxLat = maxLat,
+                    minLon = minLon,
+                    maxLon = maxLon,
                     context = context,
                     handleTransitItemTap = handleTransitItemTap
                 )
@@ -407,6 +427,10 @@ fun GoogleMapsTestMapView(
                     trainsToRender = trainsToRender,
                     isDarkMode = isDarkMode,
                     settledZoom = settledZoom,
+                    minLat = minLat,
+                    maxLat = maxLat,
+                    minLon = minLon,
+                    maxLon = maxLon,
                     context = context,
                     handleTransitItemTap = handleTransitItemTap
                 )
@@ -495,7 +519,7 @@ fun GoogleMapsTestMapView(
                         userBearing = userBearing,
                         isCellTowerLocation = isCellTowerLocation,
                         context = context,
-                        cameraBearing = cameraPositionState.position.bearing
+                        cameraBearingProvider = { cameraPositionState.position.bearing }
                     )
                 }
             }
@@ -515,9 +539,11 @@ fun GoogleMapsTestMapView(
             settledZoom = settledZoom,
             metroLinesCount = routesState.metroPolylineList.size,
             cercaniasLinesCount = routesState.cercaniasPolylineList.size,
-            showBusStops = showBusStops,
-            showMetrobusStops = showMetrobusStops,
-            viewportState = viewportState
+            showBusStops = isBusActiveMode,
+            showMetrobusStops = isMetrobusActiveMode,
+            viewportState = viewportState,
+            activeIsolatedBusLines = routesState.activeIsolatedBusLines,
+            hasActiveItinerary = selectedItinerary != null
         )
 
         // Loading indicator overlay while polylines or footprints load

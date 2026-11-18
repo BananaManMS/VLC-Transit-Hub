@@ -56,6 +56,14 @@
     ]
   },
   {
+    "featureType": "poi.park",
+    "stylers": [
+      {
+        "visibility": "off"
+      }
+    ]
+  },
+  {
     "featureType": "transit.station",
     "stylers": [
       {
@@ -73,11 +81,11 @@
     ]
   },
   {
-    "featureType": "poi.park",
+    "featureType": "landscape.natural",
     "elementType": "geometry.fill",
     "stylers": [
       {
-        "color": "#e5f5e0"
+        "color": "#eef2f7"
       }
     ]
   },
@@ -86,7 +94,7 @@
     "elementType": "geometry.fill",
     "stylers": [
       {
-        "color": "#cce5ff"
+        "color": "#c9e0ff"
       }
     ]
   }

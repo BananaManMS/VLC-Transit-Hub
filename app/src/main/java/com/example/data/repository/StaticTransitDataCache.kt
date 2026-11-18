@@ -8,9 +8,16 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
 object StaticTransitDataCache {
+    @Volatile
     private var cachedEmtStops: List<GeoportalStopEntity>? = null
+    @Volatile
     private var cachedMetrobusStops: List<MetrobusStopEntity>? = null
+    private val emtLoadMutex = Mutex()
+    private val metrobusLoadMutex = Mutex()
     private var offsetsPrecomputed = false
     private val metroPositions = mutableMapOf<String, org.osmdroid.util.GeoPoint>()
     private val cercaniasPositions = mutableMapOf<String, org.osmdroid.util.GeoPoint>()
@@ -36,31 +43,57 @@ object StaticTransitDataCache {
         return cercaniasPositions[id] ?: fallback
     }
 
+    fun invalidateEmtCache() {
+        cachedEmtStops = null
+    }
+
+    fun invalidateMetrobusCache() {
+        cachedMetrobusStops = null
+    }
+
     suspend fun initialize(context: Context) {
         getOrLoadEmtStops(context)
         getOrLoadMetrobusStops(context)
     }
 
-    suspend fun getOrLoadEmtStops(context: Context): List<GeoportalStopEntity> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        cachedEmtStops?.let { return@withContext it }
-        val db = com.example.data.database.AppDatabase.getDatabase(context)
-        val fromDb = try {
-            db.geoportalStopDao().getAllActiveStops()
-        } catch (_: Exception) { emptyList() }
-        if (fromDb.isNotEmpty() && fromDb.size >= 50) {
-            cachedEmtStops = fromDb
-            return@withContext fromDb
+    suspend fun getOrLoadEmtStops(context: Context): List<GeoportalStopEntity> {
+        cachedEmtStops?.let { return it }
+        return emtLoadMutex.withLock {
+            cachedEmtStops?.let { return@withLock it }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val db = com.example.data.database.AppDatabase.getDatabase(context)
+                val fromDb = try {
+                    db.geoportalStopDao().getAllActiveStops()
+                } catch (_: Exception) { emptyList() }
+                if (fromDb.isNotEmpty() && fromDb.size >= 50) {
+                    cachedEmtStops = fromDb
+                    return@withContext fromDb
+                }
+                val stops = BusMapper.parseStopsFromJsonDirect(context)
+                cachedEmtStops = stops
+                stops
+            }
         }
-        val stops = BusMapper.parseStopsFromJsonDirect(context)
-        cachedEmtStops = stops
-        stops
     }
 
-    suspend fun getOrLoadMetrobusStops(context: Context): List<MetrobusStopEntity> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        cachedMetrobusStops?.let { return@withContext it }
-        val stops = parseMetrobusStops(context)
-        cachedMetrobusStops = stops
-        stops
+    suspend fun getOrLoadMetrobusStops(context: Context): List<MetrobusStopEntity> {
+        cachedMetrobusStops?.let { return it }
+        return metrobusLoadMutex.withLock {
+            cachedMetrobusStops?.let { return@withLock it }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val db = com.example.data.database.AppDatabase.getDatabase(context)
+                val fromDb = try {
+                    db.metrobusStopDao().getAllActiveStops()
+                } catch (_: Exception) { emptyList() }
+                if (fromDb.isNotEmpty() && fromDb.any { !it.lineas.isNullOrEmpty() }) {
+                    cachedMetrobusStops = fromDb
+                    return@withContext fromDb
+                }
+                val stops = parseMetrobusStops(context)
+                cachedMetrobusStops = stops
+                stops
+            }
+        }
     }
 
     private fun parseMetrobusStops(context: Context): List<MetrobusStopEntity> {

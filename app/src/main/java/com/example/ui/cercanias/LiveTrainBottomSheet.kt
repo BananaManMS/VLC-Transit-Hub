@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.map.components.BottomSheetDragScrollController
 import com.example.ui.map.components.DetailSheetState
+import com.example.ui.map.components.rememberBottomSheetDismissController
 import com.example.ui.metro.CercaniasLineBadge
 import com.example.ui.metro.TransitLogoUtils
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -51,7 +52,9 @@ fun LiveTrainBottomSheet(
     sheetState: DetailSheetState = DetailSheetState.HALF_EXPANDED,
     onSheetStateChanged: (DetailSheetState) -> Unit = {},
     dismissOnCollapse: Boolean = true,
-    bottomPadding: Dp = 32.dp
+    bottomPadding: Dp = 32.dp,
+    dismissTargetHeightPx: Float = 0f,
+    dismissSignal: Int = 0
 ) {
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
@@ -129,7 +132,16 @@ fun LiveTrainBottomSheet(
         )
     }
 
+    val dismissController = rememberBottomSheetDismissController(
+        heightAnimatable = heightAnimatable,
+        dismissTargetHeightPx = dismissTargetHeightPx,
+        onDismiss = onDismiss,
+        resetKey = vehicle.tripId,
+        dismissSignal = dismissSignal
+    )
+
     LaunchedEffect(sheetState, collapsedPx, halfExpandedPx, fullyExpandedPx) {
+        if (dismissController.isDismissing) return@LaunchedEffect
         val target = when (sheetState) {
             DetailSheetState.COLLAPSED -> collapsedPx
             DetailSheetState.HALF_EXPANDED -> halfExpandedPx
@@ -174,7 +186,7 @@ fun LiveTrainBottomSheet(
     }
 
     LaunchedEffect(scrollState.isScrollInProgress) {
-        if (!scrollState.isScrollInProgress && !heightAnimatable.isRunning) {
+        if (!dismissController.isDismissing && !scrollState.isScrollInProgress && !heightAnimatable.isRunning) {
             val currentHeight = heightAnimatable.value
             val isStable = kotlin.math.abs(currentHeight - collapsedPx) < 2f ||
                            kotlin.math.abs(currentHeight - halfExpandedPx) < 2f ||
@@ -262,7 +274,7 @@ fun LiveTrainBottomSheet(
                     }
 
                     IconButton(
-                        onClick = onDismiss,
+                        onClick = { dismissController.triggerDismiss() },
                         modifier = Modifier.size(48.dp)
                     ) {
                         Icon(

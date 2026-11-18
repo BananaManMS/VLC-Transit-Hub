@@ -1,6 +1,8 @@
 package com.example
 
+import android.app.ActivityManager
 import android.app.Application
+import android.content.Context
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -13,7 +15,9 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 
 class MainApplication : Application() {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -21,50 +25,84 @@ class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        com.example.util.StartupProfiler.log("MainApp", "onCreate starting: AppDatabase.getDatabase & RealTimeTransitRepository.init")
+        com.example.util.StartupProfiler.log("MainApp", "onCreate starting: AppDatabase & RealTimeTransitRepository")
         AppDatabase.getDatabase(this)
         RealTimeTransitRepository.init(this)
-        
-        // Clean any leftover update APK files from previous installs
-        com.example.util.AppUpdateManager.cleanOldUpdateApks(this)
-        
+
+        // Defer disk cleanup & WorkManager scheduling completely off the main startup path
         applicationScope.launch(Dispatchers.IO) {
-            com.example.util.StartupProfiler.log("MainApp", "scheduleDailyUpdateWorker")
+            com.example.util.AppUpdateManager.cleanOldUpdateApks(this@MainApplication)
             scheduleDailyUpdateWorker()
         }
-        
-        // Trigger an initial async sync on startup
-        applicationScope.launch {
-            com.example.util.StartupProfiler.log("MainApp", "MetroScheduleRepository.syncScheduleFromRemoteIfNeeded() starting")
-            try {
-                com.example.data.repository.MetroScheduleRepository.getInstance(this@MainApplication)
-                    .syncScheduleFromRemoteIfNeeded()
-                com.example.util.StartupProfiler.log("MainApp", "MetroScheduleRepository.syncScheduleFromRemoteIfNeeded() completed")
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
 
-        // Proactively pre-warm GeoJSON map line overlays and station footprints in background (deferred by 4s to prioritize initial UI)
+        // Staged background warmup after Inicio frame 0 & live widget requests settle (~1.6s)
         applicationScope.launch(Dispatchers.IO) {
             try {
-                kotlinx.coroutines.delay(4000L)
-                com.example.ui.map.components.MetroMapOverlayLoader.ensureLoaded(this@MainApplication)
-                com.example.ui.map.components.CercaniasMapOverlayLoader.ensureLoaded(this@MainApplication)
-                com.example.ui.map.components.MetroStationFootprintsOverlayManager.preloadGeoJson(this@MainApplication)
-            } catch (e: Exception) {
+                delay(1600L)
+                com.example.util.StartupProfiler.log("MainApp", "Stage 1: sequential local schedule/stop cache warmup")
+
+                // 1. Pre-warm Metro schedules, Renfe schedules, and static bus stop caches sequentially with yield()
+                try {
+                    com.example.data.repository.MetroScheduleRepository.getInstance(this@MainApplication).ensureLoaded()
+                } catch (_: Exception) {}
+                yield()
+
+                try {
+                    com.example.data.repository.renfe.RenfeRepository(
+                        this@MainApplication,
+                        AppDatabase.getDatabase(this@MainApplication)
+                    ).syncManager.ensureScheduleLoadedInMemory()
+                } catch (_: Exception) {}
+                yield()
+
+                try {
+                    com.example.data.repository.StaticTransitDataCache.initialize(this@MainApplication)
+                } catch (_: Exception) {}
+                yield()
+
+                // 2. Always warm tiny map theme JSONs
+                try {
+                    com.example.ui.map.google.GoogleMapStyleCache.preload(this@MainApplication)
+                } catch (_: Exception) {}
+
+                // 3. RAM-aware Map GeoJSON & MapsInitializer warmup:
+                // Skip heavy eager GeoJSON parsing on low-RAM / <=192MB heap devices to avoid GC stutter & OOM;
+                // those devices load map layers cleanly on demand when the user opens Mapa.
+                if (!isLowEndDevice()) {
+                    delay(400L)
+                    com.example.util.StartupProfiler.log("MainApp", "Stage 2: pre-warming Map GeoJSONs & MapsInitializer")
+                    try { com.example.ui.map.components.MetroMapOverlayLoader.ensureLoaded(this@MainApplication, this) } catch (_: Exception) {}
+                    delay(80L)
+                    try { com.example.ui.map.components.CercaniasMapOverlayLoader.ensureLoaded(this@MainApplication, this) } catch (_: Exception) {}
+                    delay(80L)
+                    try { com.example.ui.map.components.EmtMapOverlayLoader.ensureLoaded(this@MainApplication, this) } catch (_: Exception) {}
+                    delay(80L)
+                    try { com.example.ui.map.components.MetroStationFootprintsOverlayManager.ensureLoaded(this@MainApplication) } catch (_: Exception) {}
+                    launch(Dispatchers.Main) {
+                        try {
+                            com.google.android.gms.maps.MapsInitializer.initialize(
+                                this@MainApplication,
+                                com.google.android.gms.maps.MapsInitializer.Renderer.LATEST
+                            ) { }
+                        } catch (_: Throwable) {}
+                    }
+                } else {
+                    com.example.util.StartupProfiler.log("MainApp", "Stage 2: low-RAM device detected, deferring heavy map GeoJSON warmup until Mapa tab")
+                }
+            } catch (_: Exception) {
                 // Non-critical background warmup
             }
         }
+    }
 
-        // Deferred Google Maps SDK warmup (3-second delay to preserve cold-start speed under 300ms)
-        applicationScope.launch {
-            try {
-                kotlinx.coroutines.delay(3000)
-                com.google.android.gms.maps.MapsInitializer.initialize(this@MainApplication, com.google.android.gms.maps.MapsInitializer.Renderer.LATEST) { }
-            } catch (_: Throwable) {
-                // Ignore background warmup exceptions
-            }
+    private fun isLowEndDevice(): Boolean {
+        return try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            val isLowRam = am?.isLowRamDevice == true
+            val maxHeapMb = Runtime.getRuntime().maxMemory() / (1024L * 1024L)
+            isLowRam || maxHeapMb <= 192L
+        } catch (_: Exception) {
+            false
         }
     }
 

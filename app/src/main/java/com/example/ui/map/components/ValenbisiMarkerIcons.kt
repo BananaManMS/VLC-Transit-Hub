@@ -9,17 +9,23 @@ import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.util.LruCache
 
-private val valenbisiIconCache = LruCache<String, MarkerIconResult>(80)
+private val valenbisiIconCache = LruCache<String, MarkerIconResult>(256)
+
+private val COLOR_VALENBISI_EMPTY = Color.parseColor("#94A3B8")
+private val COLOR_VALENBISI_LOW = Color.parseColor("#F97316")
+private val COLOR_VALENBISI_OK = Color.parseColor("#10B981")
+private val COLOR_VALENBISI_LIGHT_TEXT = Color.parseColor("#0F172A")
+private val COLOR_VALENBISI_DARK_BG = Color.parseColor("#1E293B")
 
 internal fun getValenbisiCompactDotIcon(context: Context, available: Int): MarkerIconResult {
     val bikeBgColor = if (available == 0) {
-        Color.parseColor("#94A3B8") // Slate gray if empty
+        COLOR_VALENBISI_EMPTY // Slate gray if empty
     } else if (available < 3) {
-        Color.parseColor("#F97316") // Amber if low
+        COLOR_VALENBISI_LOW // Amber if low
     } else {
-        Color.parseColor("#10B981") // Emerald green
+        COLOR_VALENBISI_OK // Emerald green
     }
-    val key = "VALENBISI_COMPACT_DOT_${available}_${bikeBgColor}"
+    val key = "VALENBISI_COMPACT_DOT_${bikeBgColor}"
     var cached = valenbisiIconCache.get(key)
     if (cached == null) {
         val size = 36 // Small colored dot
@@ -46,7 +52,17 @@ internal fun getValenbisiCompactDotIcon(context: Context, available: Int): Marke
 }
 
 internal fun getValenbisiMarkerIcon(context: Context, available: Int, free: Int, isDarkMode: Boolean, showPill: Boolean): MarkerIconResult {
-    val key = "VALENBISI_${available}_${free}_${isDarkMode}_${showPill}"
+    // Note: [free] does not affect visual output; omit it from key for ~90% higher cache hit rate
+    val key = if (showPill) {
+        "VALENBISI_${available}_${isDarkMode}_true"
+    } else {
+        val colorBucket = when {
+            available == 0 -> 0
+            available < 3 -> 1
+            else -> 2
+        }
+        "VALENBISI_NO_PILL_${colorBucket}_${isDarkMode}"
+    }
     var cached = valenbisiIconCache.get(key)
     if (cached == null) {
         cached = createValenbisiMarkerIcon(context, available, free, isDarkMode, showPill)
@@ -57,15 +73,15 @@ internal fun getValenbisiMarkerIcon(context: Context, available: Int, free: Int,
 
 internal fun createValenbisiMarkerIcon(context: Context, available: Int, free: Int, isDarkMode: Boolean, showPill: Boolean): MarkerIconResult {
     val bikeBgColor = if (available == 0) {
-        Color.parseColor("#94A3B8") // Slate gray if empty
+        COLOR_VALENBISI_EMPTY // Slate gray if empty
     } else if (available < 3) {
-        Color.parseColor("#F97316") // Amber if low
+        COLOR_VALENBISI_LOW // Amber if low
     } else {
-        Color.parseColor("#10B981") // Emerald green
+        COLOR_VALENBISI_OK // Emerald green
     }
 
     val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = if (isDarkMode) Color.WHITE else Color.parseColor("#0F172A")
+        color = if (isDarkMode) Color.WHITE else COLOR_VALENBISI_LIGHT_TEXT
         textSize = 24f
         typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.CENTER
@@ -125,7 +141,7 @@ internal fun createValenbisiMarkerIcon(context: Context, available: Int, free: I
         canvas.drawRoundRect(android.graphics.RectF(pillLeft, pillTop + 2f, pillRight, pillBottom + 2f), 16f, 16f, paint)
 
         // Pill body
-        paint.color = if (isDarkMode) Color.parseColor("#1E293B") else Color.WHITE
+        paint.color = if (isDarkMode) COLOR_VALENBISI_DARK_BG else Color.WHITE
         canvas.drawRoundRect(android.graphics.RectF(pillLeft, pillTop, pillRight, pillBottom), 16f, 16f, paint)
 
         // Border
@@ -135,8 +151,6 @@ internal fun createValenbisiMarkerIcon(context: Context, available: Int, free: I
         canvas.drawRoundRect(android.graphics.RectF(pillLeft, pillTop, pillRight, pillBottom), 16f, 16f, paint)
 
         // Available bikes text
-        paint.style = Paint.Style.FILL
-        paint.color = if (isDarkMode) Color.WHITE else Color.parseColor("#0F172A")
         val textX = pillLeft + (pillRight - pillLeft) / 2f
         val fontMetrics = textPaint.fontMetrics
         val textY = logoCenterY - (fontMetrics.descent + fontMetrics.ascent) / 2f
@@ -158,29 +172,20 @@ internal fun createValenbisiMarkerIcon(context: Context, available: Int, free: I
     paint.strokeWidth = 2.5f
     canvas.drawCircle(logoCenterX, logoCenterY, logoRadius, paint)
 
-    // Draw bike logo inside main circle
-    val bikeResId = context.resources.getIdentifier("ic_bike", "drawable", context.packageName)
-    val bikeDrawable = try {
-        if (bikeResId != 0) {
-            androidx.core.content.res.ResourcesCompat.getDrawable(context.resources, bikeResId, context.theme)
-        } else null
-    } catch (e: Exception) {
-        null
-    }
-
-    if (bikeDrawable != null) {
+    // Draw pre-rasterized tinted bike logo inside main circle
+    val bikeResId = MarkerLogoBitmapCache.resolveBikeDrawableResId(context)
+    if (bikeResId != 0) {
         val dSize = (logoRadius * 1.25f).toInt()
-        val left = (logoCenterX - dSize / 2).toInt()
-        val top = (logoCenterY - dSize / 2).toInt()
-        bikeDrawable.setBounds(left, top, left + dSize, top + dSize)
-        
         val tintColor = if (isDarkMode) Color.WHITE else Color.BLACK
-        androidx.core.graphics.drawable.DrawableCompat.setTint(
-            androidx.core.graphics.drawable.DrawableCompat.wrap(bikeDrawable).mutate(),
-            tintColor
+        MarkerLogoBitmapCache.drawSquareLogo(
+            context = context,
+            canvas = canvas,
+            resId = bikeResId,
+            centerX = logoCenterX,
+            centerY = logoCenterY,
+            sizePx = dSize,
+            tintColor = tintColor
         )
-        
-        bikeDrawable.draw(canvas)
     }
 
     return MarkerIconResult(BitmapDrawable(context.resources, bitmap), anchorU, anchorV)

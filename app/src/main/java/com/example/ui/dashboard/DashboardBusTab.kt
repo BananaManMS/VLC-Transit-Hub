@@ -9,13 +9,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.ui.bus.BusViewModel
 import com.example.ui.bus.EmtBusScreen
-import com.example.ui.metro.MetroViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun DashboardBusTab(
     viewModel: DashboardViewModel,
-    metroViewModel: MetroViewModel,
     busViewModel: BusViewModel = viewModel(),
     isDarkMode: Boolean,
     activeTripBottomPadding: Dp,
@@ -25,7 +23,6 @@ fun DashboardBusTab(
     EmtBusScreen(
         viewModel = viewModel,
         busViewModel = busViewModel,
-        metroViewModel = metroViewModel,
         initialPage = initialPage,
         modifier = modifier
             .fillMaxSize()

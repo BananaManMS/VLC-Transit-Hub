@@ -46,6 +46,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 private val widgetRawCache = ConcurrentHashMap<String, RawWidgetCacheEntry>()
 
+@Volatile
+private var sharedMetrobusRepo: com.example.data.repository.MetrobusRepository? = null
+
+@Volatile
+private var sharedRenfeRepo: com.example.data.repository.renfe.RenfeRepository? = null
+
 private data class RawWidgetCacheEntry(
     val timestamp: Long,
     val rawList: List<RawWidgetDeparture>
@@ -88,7 +94,8 @@ fun NearbyDeparturesWidget(
     onBusStopClick: (GeoportalStopEntity) -> Unit,
     onMetrobusStopClick: ((com.example.data.database.MetrobusStopEntity) -> Unit)? = null,
     onOpenHabitualLines: (() -> Unit)? = null,
-    onRequestLocationPermission: () -> Unit
+    onRequestLocationPermission: () -> Unit,
+    isLocationAndStationsReady: Boolean = true
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().testTag("nearby_departures_widget"),
@@ -105,13 +112,6 @@ fun NearbyDeparturesWidget(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_departures_title),
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -219,6 +219,8 @@ fun NearbyDeparturesWidget(
                         calculateBadgeWidthPx = { _, _, density ->
                             with(density) { 22.dp.toPx() }
                         },
+                        isReady = isLocationAndStationsReady,
+                        fetchIndex = 0,
                         onClick = { onMetroStationClick(nearestMetroStation.id) }
                     )
                 }
@@ -294,12 +296,14 @@ fun NearbyDeparturesWidget(
                                 tw + with(density) { 12.dp.toPx() }
                             }
                         },
-                        onClick = { onCercaniasStationClick(nearestCercaniasStation.stop_id) }
+                        onClick = { onCercaniasStationClick(nearestCercaniasStation.stop_id) },
+                        isReady = isLocationAndStationsReady,
+                        fetchIndex = 1
                     )
                 }
 
                 // 3 & 4. EMT BUS STOPS (MAX 2)
-                nearbyBusStops.forEach { (busStop, isBusFav) ->
+                nearbyBusStops.forEachIndexed { idx, (busStop, isBusFav) ->
                     val alias = busStopAliases[busStop.id_parada]
                     val displayName = alias ?: busStop.denominacion
                     val dist = LocationUtils.calculateDistanceMeters(refLat, refLon, busStop.lat, busStop.lon)
@@ -358,12 +362,14 @@ fun NearbyDeparturesWidget(
                             ).size.width
                             tw + with(density) { 12.dp.toPx() }
                         },
-                        onClick = { onBusStopClick(busStop) }
+                        onClick = { onBusStopClick(busStop) },
+                        isReady = isLocationAndStationsReady,
+                        fetchIndex = 2 + idx
                     )
                 }
 
                 // 5 & 6. METROBÚS STOPS (MAX 2)
-                nearbyMetrobusStops.forEach { (metrobusStop, isMetrobusFav) ->
+                nearbyMetrobusStops.forEachIndexed { idx, (metrobusStop, isMetrobusFav) ->
                     val alias = metrobusStopAliases[metrobusStop.id_parada]
                     val displayName = alias ?: metrobusStop.denominacion
                     val dist = LocationUtils.calculateDistanceMeters(refLat, refLon, metrobusStop.lat, metrobusStop.lon)
@@ -422,38 +428,51 @@ fun NearbyDeparturesWidget(
                             ).size.width
                             tw + with(density) { 12.dp.toPx() }
                         },
-                        onClick = { onMetrobusStopClick?.invoke(metrobusStop) }
+                        onClick = { onMetrobusStopClick?.invoke(metrobusStop) },
+                        isReady = isLocationAndStationsReady,
+                        fetchIndex = 4 + idx
                     )
                 }
 
-                // Empty state if nothing is within 1 km
+                // Empty state or initial warmup indicator
                 if (nearestMetroStation == null && nearestCercaniasStation == null && nearbyBusStops.isEmpty() && nearbyMetrobusStops.isEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
+                    if (!isLocationAndStationsReady) {
+                        LinearProgressIndicator(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp)
+                                .height(2.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            trackColor = Color.Transparent
+                        )
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.LocationOn,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_no_stops_within_1km),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = androidx.compose.ui.res.stringResource(com.example.R.string.nearby_no_stops_within_1km),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
@@ -474,6 +493,8 @@ private fun NearbyTransitItemRow(
     habitualLines: Set<String>,
     badgeRenderer: @Composable (line: String) -> Unit,
     calculateBadgeWidthPx: (line: String, textMeasurer: androidx.compose.ui.text.TextMeasurer, density: Density) -> Float,
+    isReady: Boolean = true,
+    fetchIndex: Int = 0,
     onClick: () -> Unit
 ) {
     val density = LocalDensity.current
@@ -575,7 +596,9 @@ private fun NearbyTransitItemRow(
             itemType = itemType,
             itemId = itemId,
             habitualLines = habitualLines,
-            appLanguage = appLanguage
+            appLanguage = appLanguage,
+            isReady = isReady,
+            fetchIndex = fetchIndex
         )
     }
 }
@@ -585,7 +608,9 @@ private fun WidgetLiveDeparturesSection(
     itemType: String,
     itemId: String,
     habitualLines: Set<String>,
-    appLanguage: AppLanguage
+    appLanguage: AppLanguage,
+    isReady: Boolean = true,
+    fetchIndex: Int = 0
 ) {
     val context = LocalContext.current
     val cacheKey = "widget_${itemType}_$itemId"
@@ -600,8 +625,13 @@ private fun WidgetLiveDeparturesSection(
     var isLoading by remember(cacheKey) { mutableStateOf(initialRaw.isEmpty()) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(cacheKey) {
+    LaunchedEffect(cacheKey, isReady) {
+        if (!isReady && initialRaw.isEmpty()) return@LaunchedEffect
+
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            if (fetchIndex > 0) {
+                delay(fetchIndex * 45L)
+            }
             while (isActive) {
                 val currentCached = widgetRawCache[cacheKey]
                 val currentTime = System.currentTimeMillis()
@@ -619,6 +649,7 @@ private fun WidgetLiveDeparturesSection(
 
                     widgetRawCache[cacheKey] = RawWidgetCacheEntry(System.currentTimeMillis(), rawList)
                     rawDepartures = rawList
+                    com.example.util.StartupProfiler.log("NearbyWidget", "Loaded $itemType($itemId): ${rawList.size} items")
                 } catch (_: Exception) {
                 } finally {
                     isLoading = false
@@ -734,12 +765,14 @@ private suspend fun fetchRawDepartures(
             }
         }
         "METROBUS" -> {
-            val db = com.example.data.database.AppDatabase.getDatabase(context)
-            val repo = com.example.data.repository.MetrobusRepository(
-                database = db,
-                client = com.example.data.network.NetworkModule.okHttpClient,
-                context = context
-            )
+            val appCtx = context.applicationContext
+            val repo = sharedMetrobusRepo ?: synchronized(widgetRawCache) {
+                sharedMetrobusRepo ?: com.example.data.repository.MetrobusRepository(
+                    database = com.example.data.database.AppDatabase.getDatabase(appCtx),
+                    client = com.example.data.network.NetworkModule.okHttpClient,
+                    context = appCtx
+                ).also { sharedMetrobusRepo = it }
+            }
             val list = repo.fetchRealTimeEstimations(itemId)
             list.forEach { dep ->
                 results.add(
@@ -753,8 +786,13 @@ private suspend fun fetchRawDepartures(
             }
         }
         "CERCANIAS" -> {
-            val db = com.example.data.database.AppDatabase.getDatabase(context)
-            val repo = com.example.data.repository.renfe.RenfeRepository(context, db)
+            val appCtx = context.applicationContext
+            val repo = sharedRenfeRepo ?: synchronized(widgetRawCache) {
+                sharedRenfeRepo ?: com.example.data.repository.renfe.RenfeRepository(
+                    context = appCtx,
+                    database = com.example.data.database.AppDatabase.getDatabase(appCtx)
+                ).also { sharedRenfeRepo = it }
+            }
             val list = repo.getDeparturesForStation(itemId)
             list.forEach { dep ->
                 val mins = dep.minutesRemaining

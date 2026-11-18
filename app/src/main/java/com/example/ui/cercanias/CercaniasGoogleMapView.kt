@@ -123,7 +123,8 @@ fun CercaniasGoogleMapView(
         MapProperties(
             mapType = MapType.NORMAL,
             mapStyleOptions = if (isDarkMode) darkStyleOptions else lightStyleOptions,
-            isMyLocationEnabled = false
+            isMyLocationEnabled = false,
+            isBuildingEnabled = false
         )
     }
 

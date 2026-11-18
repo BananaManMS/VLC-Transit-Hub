@@ -89,17 +89,20 @@ fun CercaniasScreen(
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) {
+                viewModel.startAlertsPolling()
                 if (departures.isEmpty()) {
                     viewModel.fetchCercaniasDepartures()
                 }
             } else if (event == Lifecycle.Event.ON_STOP) {
                 viewModel.stopCercaniasPolling()
+                viewModel.stopAlertsPolling()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             viewModel.stopCercaniasPolling()
+            viewModel.stopAlertsPolling()
         }
     }
 

@@ -20,13 +20,8 @@ class RenfeAlertsRepository(
     private val context: Context,
     private val database: AppDatabase = AppDatabase.getDatabase(context)
 ) {
-    private val _activeAlerts = MutableStateFlow<List<CercaniasAlert>>(emptyList())
     val activeAlerts = _activeAlerts.asStateFlow()
-
-    private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
-
-    private val _hasError = MutableStateFlow(false)
     val hasError = _hasError.asStateFlow()
 
     suspend fun fetchActiveAlerts(force: Boolean = false): List<CercaniasAlert> = withContext(Dispatchers.IO) {
@@ -312,6 +307,10 @@ class RenfeAlertsRepository(
 
         @Volatile
         private var cachedAlertsHeaderTimestamp: Long = 0L
+
+        private val _activeAlerts = MutableStateFlow<List<CercaniasAlert>>(emptyList())
+        private val _isLoading = MutableStateFlow(false)
+        private val _hasError = MutableStateFlow(false)
 
         fun hasValidCache(): Boolean {
             val now = System.currentTimeMillis()

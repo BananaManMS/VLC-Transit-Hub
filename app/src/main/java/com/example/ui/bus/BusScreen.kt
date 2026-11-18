@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Subway
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,7 +78,6 @@ import kotlinx.coroutines.delay
 fun EmtBusScreen(
     viewModel: DashboardViewModel,
     busViewModel: BusViewModel = viewModel(),
-    metroViewModel: com.example.ui.metro.MetroViewModel = viewModel(),
     initialPage: Int = -1,
     modifier: Modifier = Modifier,
     isDarkMode: Boolean = true,
@@ -91,9 +89,6 @@ fun EmtBusScreen(
     
     val currentFilter by busViewModel.currentBusFilterSource.collectAsState()
     val searchQuery by busViewModel.busSearchQuery.collectAsState()
-    val selectedMetroStationId by busViewModel.selectedMetroStationIdForBus.collectAsState()
-    val favoriteMetroStations by metroViewModel.sortedFavoriteStations.collectAsState()
-    val allMetroStations by metroViewModel.allNetworkStations.collectAsState()
     
     val busStopsList by busViewModel.busStopsList.collectAsState()
     val busStopsLoading by busViewModel.busStopsLoading.collectAsState()
@@ -132,7 +127,6 @@ fun EmtBusScreen(
     val valenbisiSearchQuery by busViewModel.valenbisiSearchQuery.collectAsState()
     val valenbisiStations by busViewModel.valenbisiStations.collectAsState()
     val valenbisiLoading by busViewModel.valenbisiLoading.collectAsState()
-    val selectedMetroStationIdForValenbisi by busViewModel.selectedMetroStationIdForValenbisi.collectAsState()
     
     var showTimesSheet by remember { mutableStateOf(false) }
     var showMetrobusTimesSheet by remember { mutableStateOf(false) }
@@ -200,8 +194,6 @@ fun EmtBusScreen(
     LaunchedEffect(dashboardLocation) {
         dashboardLocation?.let { (lat, lon) ->
             busViewModel.updateLocation(lat, lon)
-            busViewModel.loadBusStops()
-            busViewModel.loadMetrobusStops()
         }
     }
 
@@ -210,34 +202,6 @@ fun EmtBusScreen(
             LocationUtils.requestDeviceLocation(context) { lat, lng ->
                 viewModel.updateLocation(lat, lng)
                 busViewModel.updateLocation(lat, lng)
-                busViewModel.loadBusStops()
-                busViewModel.loadMetrobusStops()
-            }
-        }
-    }
-
-    val metroStationsList = remember(favoriteMetroStations, allMetroStations) {
-        val all = if (allMetroStations.isNotEmpty()) allMetroStations else com.example.data.model.ValenciaMetroData.mainMetroStations
-        val sortedAll = all.sortedBy { it.name }
-        if (favoriteMetroStations.isNotEmpty()) {
-            val favs = favoriteMetroStations.mapNotNull { id -> sortedAll.find { it.id == id } }.sortedBy { it.name }
-            val others = sortedAll.filterNot { station -> favoriteMetroStations.contains(station.id) }
-            favs + others
-        } else {
-            sortedAll
-        }
-    }
-
-    LaunchedEffect(allMetroStations) {
-        if (allMetroStations.isNotEmpty()) {
-            busViewModel.updateNetworkStations(allMetroStations)
-        }
-    }
-
-    LaunchedEffect(currentFilter, metroStationsList) {
-        if (currentFilter == BusFilterSource.METRO_STATION && metroStationsList.isNotEmpty()) {
-            if (selectedMetroStationId == null || metroStationsList.none { it.id == selectedMetroStationId }) {
-                busViewModel.selectMetroStationForBus(metroStationsList.first().id)
             }
         }
     }
@@ -245,7 +209,7 @@ fun EmtBusScreen(
     val busListState = rememberLazyListState()
     val metrobusListState = rememberLazyListState()
 
-    LaunchedEffect(currentFilter, searchQuery, selectedMetroStationId) {
+    LaunchedEffect(currentFilter, searchQuery) {
         busViewModel.loadBusStops()
     }
 
@@ -257,7 +221,7 @@ fun EmtBusScreen(
         }
     }
 
-    LaunchedEffect(currentFilter, metrobusSearchQuery, selectedMetroStationId) {
+    LaunchedEffect(currentFilter, metrobusSearchQuery) {
         busViewModel.loadMetrobusStops()
     }
 
@@ -562,7 +526,7 @@ fun EmtBusScreen(
                         onSearchQueryChanged = { busViewModel.setValenbisiSearchQuery(it) },
                         onToggleFavorite = { busViewModel.toggleValenbisiFavorite(it) },
                         onSaveAlias = { stationNumber, alias -> busViewModel.saveValenbisiAlias(stationNumber, alias) },
-                        onRefresh = { busViewModel.fetchValenbisiStations() },
+                        onRefresh = { busViewModel.fetchValenbisiStations(force = true) },
                         onUpdateLocation = { lat, lng ->
                             viewModel.updateLocation(lat, lng)
                             busViewModel.updateLocation(lat, lng)
@@ -625,7 +589,7 @@ fun EmtBusScreen(
                 editingMetrobusStopForAlias = selectedMetrobusStop
             },
             onRefresh = {
-                busViewModel.fetchMetrobusTimes(selectedMetrobusStop!!.idParada)
+                busViewModel.fetchMetrobusTimes(selectedMetrobusStop!!.idParada, forceRefresh = true)
             },
             scheduledDepartures = metrobusScheduledTimes,
             isScheduledLoaded = isMetrobusScheduledLoaded,

@@ -83,6 +83,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val _nearbyMetrobusStops = MutableStateFlow<List<Pair<com.example.data.database.MetrobusStopEntity, Boolean>>>(emptyList())
     val nearbyMetrobusStops: StateFlow<List<Pair<com.example.data.database.MetrobusStopEntity, Boolean>>> = _nearbyMetrobusStops.asStateFlow()
 
+    private val _isNearbyContextReady = MutableStateFlow(false)
+    val isNearbyContextReady: StateFlow<Boolean> = _isNearbyContextReady.asStateFlow()
+
     private var nearbyComputeJob: Job? = null
 
     fun computeNearbyStops(
@@ -272,7 +275,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         val metroLines = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
         val cercaniasLines = listOf("C1", "C2", "C3", "C5", "C6")
 
-        val emtStops = try { database.geoportalStopDao().getAllActiveStops() } catch (_: Exception) { emptyList() }
+        val appCtx = getApplication<Application>()
+        val emtStops = try {
+            com.example.data.repository.StaticTransitDataCache.getOrLoadEmtStops(appCtx)
+                .filter { it.suprimida == 0 }
+        } catch (_: Exception) { emptyList() }
         val emtLines = emtStops
             .mapNotNull { it.lineas }
             .flatMap { it.split(",") }
@@ -281,7 +288,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             .distinct()
             .sortedWith(compareBy({ it.toIntOrNull() ?: Int.MAX_VALUE }, { it }))
 
-        val metrobusStops = try { database.metrobusStopDao().getAllActiveStops() } catch (_: Exception) { emptyList() }
+        val metrobusStops = try {
+            com.example.data.repository.StaticTransitDataCache.getOrLoadMetrobusStops(appCtx)
+                .filter { it.suprimida == 0 }
+        } catch (_: Exception) { emptyList() }
         val metrobusLines = metrobusStops
             .map { it.lineas }
             .flatMap { it.split(",") }
@@ -481,51 +491,24 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // Phase 2: Incidents & Alerts for Dashboard
-    private val _activeMetroIncidents = MutableStateFlow<List<com.example.ui.metro.MetroIncident>>(
-        if (com.example.data.repository.MetroAlertsRepository.hasValidCache()) {
-            com.example.data.repository.MetroAlertsRepository.getCachedIncidents()
-        } else {
-            emptyList()
-        }
-    )
-    val activeMetroIncidents: StateFlow<List<com.example.ui.metro.MetroIncident>> = _activeMetroIncidents.asStateFlow()
+    // Phase 2: Incidents & Alerts for Dashboard (reactively synced via shared repository StateFlows)
+    private val metroAlertsRepo = com.example.data.repository.MetroAlertsRepository()
+    private val renfeAlertsRepo = com.example.data.repository.renfe.RenfeAlertsRepository(application, database)
 
-    private val _metroSpecialNotices = MutableStateFlow<List<com.example.ui.metro.MetroNotice>>(
-        if (com.example.data.repository.MetroAlertsRepository.hasValidCache()) {
-            com.example.data.repository.MetroAlertsRepository.getCachedNotices()
-        } else {
-            emptyList()
-        }
-    )
-    val metroSpecialNotices: StateFlow<List<com.example.ui.metro.MetroNotice>> = _metroSpecialNotices.asStateFlow()
+    val activeMetroIncidents: StateFlow<List<com.example.ui.metro.MetroIncident>> = metroAlertsRepo.activeIncidents
+    val metroSpecialNotices: StateFlow<List<com.example.ui.metro.MetroNotice>> = metroAlertsRepo.specialNotices
+    val activeCercaniasAlerts: StateFlow<List<com.example.ui.cercanias.CercaniasAlert>> = renfeAlertsRepo.activeAlerts
 
-    private val _activeCercaniasAlerts = MutableStateFlow<List<com.example.ui.cercanias.CercaniasAlert>>(
-        if (com.example.data.repository.renfe.RenfeAlertsRepository.hasValidCache()) {
-            com.example.data.repository.renfe.RenfeAlertsRepository.getCachedAlerts()
-        } else {
-            emptyList()
-        }
-    )
-    val activeCercaniasAlerts: StateFlow<List<com.example.ui.cercanias.CercaniasAlert>> = _activeCercaniasAlerts.asStateFlow()
-
-    private val _isMetroAlertsLoading = MutableStateFlow(!com.example.data.repository.MetroAlertsRepository.hasValidCache())
-    val isMetroAlertsLoading: StateFlow<Boolean> = _isMetroAlertsLoading.asStateFlow()
-
+    val isMetroAlertsLoading: StateFlow<Boolean> = metroAlertsRepo.isAlertsLoading
     private val _hasFetchedMetroAlertsOnce = MutableStateFlow(com.example.data.repository.MetroAlertsRepository.hasValidCache())
     val hasFetchedMetroAlertsOnce: StateFlow<Boolean> = _hasFetchedMetroAlertsOnce.asStateFlow()
 
-    private val _isCercaniasAlertsLoading = MutableStateFlow(!com.example.data.repository.renfe.RenfeAlertsRepository.hasValidCache())
-    val isCercaniasAlertsLoading: StateFlow<Boolean> = _isCercaniasAlertsLoading.asStateFlow()
-
+    val isCercaniasAlertsLoading: StateFlow<Boolean> = renfeAlertsRepo.isLoading
     private val _hasFetchedCercaniasAlertsOnce = MutableStateFlow(com.example.data.repository.renfe.RenfeAlertsRepository.hasValidCache())
     val hasFetchedCercaniasAlertsOnce: StateFlow<Boolean> = _hasFetchedCercaniasAlertsOnce.asStateFlow()
 
-    private val _hasMetroAlertsError = MutableStateFlow(false)
-    val hasMetroAlertsError: StateFlow<Boolean> = _hasMetroAlertsError.asStateFlow()
-
-    private val _hasCercaniasAlertsError = MutableStateFlow(false)
-    val hasCercaniasAlertsError: StateFlow<Boolean> = _hasCercaniasAlertsError.asStateFlow()
+    val hasMetroAlertsError: StateFlow<Boolean> = metroAlertsRepo.hasAlertsError
+    val hasCercaniasAlertsError: StateFlow<Boolean> = renfeAlertsRepo.hasError
 
     private val _allMetroStations = MutableStateFlow<List<com.example.data.model.MetroStation>>(
         com.example.data.model.ValenciaMetroData.allNetworkStationsCache.ifEmpty { com.example.data.model.ValenciaMetroData.mainMetroStations }
@@ -572,28 +555,33 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             } catch (_: Exception) { emptyMap() }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    private fun parsePrefSet(key: String): Set<String> {
+        val raw = repository.getPreferenceSync(key, "")
+        return if (raw.isNotEmpty()) raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet()
+    }
+
     private val favoriteBusStopsSet = repository.getPreferenceFlow("favorite_bus_stops", "")
         .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
-            repository.getPreferenceSync("favorite_bus_stops", "").let { if (it.isNotEmpty()) it.split(",").map { s -> s.trim() }.filter { s -> s.isNotEmpty() }.toSet() else emptySet() }
+            SharingStarted.WhileSubscribed(5000),
+            parsePrefSet("favorite_bus_stops")
         )
 
     private val favoriteMetroStationsSet = repository.getPreferenceFlow("favorite_stations", "")
         .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
-            repository.getPreferenceSync("favorite_stations", "").let { if (it.isNotEmpty()) it.split(",").map { s -> s.trim() }.filter { s -> s.isNotEmpty() }.toSet() else emptySet() }
+            SharingStarted.WhileSubscribed(5000),
+            parsePrefSet("favorite_stations")
         )
 
     private val favoriteCercaniasStationsSet = repository.getPreferenceFlow("favorite_cercanias_stations", "")
         .map { favs -> if (favs.isNotEmpty()) favs.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet() else emptySet() }
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
-            repository.getPreferenceSync("favorite_cercanias_stations", "").let { if (it.isNotEmpty()) it.split(",").map { s -> s.trim() }.filter { s -> s.isNotEmpty() }.toSet() else emptySet() }
+            SharingStarted.WhileSubscribed(5000),
+            parsePrefSet("favorite_cercanias_stations")
         )
 
     val unifiedTransitFavorites: StateFlow<List<RecentSearch>> = kotlinx.coroutines.flow.combine(
@@ -690,9 +678,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             customFavorites = customFavorites.value,
             homeLocation = homeLocation.value,
             workLocation = workLocation.value,
-            favoriteBusStops = favoriteBusStopsSet.value,
-            favoriteMetroStations = favoriteMetroStationsSet.value,
-            favoriteCercaniasStations = favoriteCercaniasStationsSet.value
+            favoriteBusStops = favoriteBusStopsSet.value.ifEmpty { parsePrefSet("favorite_bus_stops") },
+            favoriteMetroStations = favoriteMetroStationsSet.value.ifEmpty { parsePrefSet("favorite_stations") },
+            favoriteCercaniasStations = favoriteCercaniasStationsSet.value.ifEmpty { parsePrefSet("favorite_cercanias_stations") }
         )
     }
 
@@ -747,135 +735,130 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         // Automatically sync local Android Calendar events if permission is granted
         syncGoogleCalendarEvents()
 
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            // Load saved preferences
-            val savedLang = repository.getPreference("app_language", "CA")
-            _appLanguage.value = try { AppLanguage.valueOf(savedLang) } catch (e: Exception) { AppLanguage.CA }
-
-            val savedFahr = repository.getPreference("is_fahrenheit", "false")
-            _isFahrenheit.value = savedFahr.toBoolean()
-
-            val savedCity = repository.getPreference("weather_city", "valencia")
-            _weatherCity.value = savedCity
-
-            val savedGpsOnOpen = repository.getPreference("use_gps_on_open", "false")
-            _useGpsOnOpen.value = savedGpsOnOpen.toBoolean()
-
-            val onboardingCompleted = repository.getPreference("has_completed_onboarding", "false")
-            _shouldShowOnboarding.value = onboardingCompleted == "false"
-
-            // Load saved location cache so we have data immediately
-            val savedLat = repository.getPreference("last_known_lat", "").toDoubleOrNull()
-                ?: repository.getPreference("last_latitude", "").toDoubleOrNull()
-            val savedLon = repository.getPreference("last_known_lon", "").toDoubleOrNull()
-                ?: repository.getPreference("last_longitude", "").toDoubleOrNull()
-            if (savedLat != null && savedLon != null) {
-                _lastLocation.value = Pair(savedLat, savedLon)
+        viewModelScope.launch(Dispatchers.IO) {
+            // 0. Instant local DB calendar defaults (preferences already loaded synchronously via SharedPreferences)
+            try {
+                repository.ensureDefaultCalendarItems()
+            } catch (e: Exception) {
+                Log.w("DashboardViewModel", "Default calendar items init failed: ${e.message}")
             }
-
-            // Load cached weather so there's no layout flashing
-            val cachedJson = repository.getPreference("cached_weather_json", "")
-            if (cachedJson.isNotBlank()) {
-                try {
-                    _weatherData.value = gson.fromJson(cachedJson, WeatherData::class.java)
-                } catch (_: Exception) {}
-            }
-
-            repository.ensureDefaultCalendarItems()
-
-            // Mark UI as ready immediately once local preferences, location/weather cache, and database state are loaded!
-            // Never block the Splash Screen on external network calls or GPS fixes, but guarantee local state is loaded.
             _isUiReady.value = true
+            com.example.util.StartupProfiler.log("DashboardVM", "Phase 0 ready (local prefs + UI unlocked)")
 
-            // Preload Metro and Cercanías stations asynchronously so Inicio widget has full station lists immediately
+            // 1. Phase 1 (~0-350ms, parallel): local stations, local static bus/metrobus stops & fast cached location
             try {
-                val loadedMetroStations = com.example.data.repository.MetroRepository(application).loadMetroStations()
-                if (loadedMetroStations.isNotEmpty()) {
-                    _allMetroStations.value = loadedMetroStations
-                }
-            } catch (e: Exception) {
-                Log.w("DashboardViewModel", "Error loading metro stations: ${e.message}")
-            }
-
-            try {
-                com.example.data.repository.renfe.RenfeRepository(application, database).initDatabaseFromAssetsIfNeeded()
-            } catch (e: Exception) {
-                Log.w("DashboardViewModel", "Error loading cercanias stations: ${e.message}")
-            }
-
-            // Resolve location and weather in the background with timeout guards
-            try {
-                val location = if (LocationUtils.hasLocationPermission(getApplication())) {
-                    withTimeoutOrNull(2000L) {
-                        LocationUtils.getBestLastLocation(getApplication())
-                    }
-                } else null
-
-                if (location != null) {
-                    _lastLocation.value = Pair(location.latitude, location.longitude)
-                    repository.savePreference("last_known_lat", location.latitude.toString())
-                    repository.savePreference("last_known_lon", location.longitude.toString())
-                    repository.savePreference("last_latitude", location.latitude.toString())
-                    repository.savePreference("last_longitude", location.longitude.toString())
-                }
-
-                val cachedTimestamp = repository.getPreference("cached_weather_timestamp", "0").toLongOrNull() ?: 0L
-                val isCacheExpired = (System.currentTimeMillis() - cachedTimestamp) > 30 * 60 * 1000L // 30 minutes
-
-                if (_weatherData.value == null || isCacheExpired) {
-                    val weather = withTimeoutOrNull(3500L) {
-                        val currentLoc = _lastLocation.value
-                        if (currentLoc != null) {
-                            WeatherService.getWeatherDataByCoords(currentLoc.first, currentLoc.second, _weatherCity.value)
-                        } else {
-                            WeatherService.getWeatherData(_weatherCity.value)
+                val app = getApplication<Application>()
+                kotlinx.coroutines.coroutineScope {
+                    val metroJob = launch {
+                        try {
+                            val loadedMetroStations = com.example.data.repository.MetroRepository(app).loadMetroStations()
+                            if (loadedMetroStations.isNotEmpty()) {
+                                _allMetroStations.value = loadedMetroStations
+                            }
+                        } catch (e: Exception) {
+                            Log.w("DashboardViewModel", "Error loading metro stations: ${e.message}")
                         }
                     }
-                    if (weather != null) {
-                        _weatherData.value = weather
+                    val cercaniasJob = launch {
                         try {
-                            repository.savePreference("cached_weather_json", gson.toJson(weather))
-                            repository.savePreference("cached_weather_timestamp", System.currentTimeMillis().toString())
-                            val currentLoc = _lastLocation.value
-                            if (currentLoc != null) {
-                                repository.savePreference("cached_weather_lat", currentLoc.first.toString())
-                                repository.savePreference("cached_weather_lon", currentLoc.second.toString())
-                            }
-                        } catch (_: Exception) {}
+                            com.example.data.repository.renfe.RenfeRepository(app, database).initDatabaseFromAssetsIfNeeded()
+                        } catch (e: Exception) {
+                            Log.w("DashboardViewModel", "Error loading cercanias stations: ${e.message}")
+                        }
                     }
+                    val staticStopsJob = launch {
+                        try {
+                            com.example.data.repository.StaticTransitDataCache.initialize(app)
+                        } catch (e: Exception) {
+                            Log.w("DashboardViewModel", "Error initializing static transit stops cache: ${e.message}")
+                        }
+                    }
+                    val locationJob = launch {
+                        try {
+                            val location = if (LocationUtils.hasLocationPermission(app)) {
+                                withTimeoutOrNull(800L) {
+                                    LocationUtils.getBestLastLocation(app)
+                                }
+                            } else null
+
+                            if (location != null) {
+                                val current = _lastLocation.value
+                                val dist = if (current != null) {
+                                    LocationUtils.calculateDistanceMeters(current.first, current.second, location.latitude, location.longitude)
+                                } else Double.MAX_VALUE
+
+                                if (dist >= 10.0 || current == null) {
+                                    _lastLocation.value = Pair(location.latitude, location.longitude)
+                                    repository.savePreference("last_known_lat", location.latitude.toString())
+                                    repository.savePreference("last_known_lon", location.longitude.toString())
+                                    repository.savePreference("last_latitude", location.latitude.toString())
+                                    repository.savePreference("last_longitude", location.longitude.toString())
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w("DashboardViewModel", "Fast initial location failed: ${e.message}")
+                        }
+                    }
+                    metroJob.join()
+                    cercaniasJob.join()
+                    staticStopsJob.join()
+                    locationJob.join()
                 }
-            } catch (e: Exception) {
-                Log.w("DashboardViewModel", "Background weather or location fetch failed or timed out: ${e.message}")
+            } finally {
+                _isNearbyContextReady.value = true
+                com.example.util.StartupProfiler.log("DashboardVM", "Phase 1 ready (stations + stops + lastLocation)")
             }
 
-            // Escalona el arranque secuencialmente respetando tiempos:
-            // 0-1 s: Solo UI y datos locales (ya resueltos arriba)
-            viewModelScope.launch(Dispatchers.IO) {
-                // ~2 s: Alertas Metro/Renfe y avisos remotos
-                delay(2000L)
-                fetchAllDashboardAlerts()
-                checkForRemoteAnnouncements()
-                loadAllActiveAnnouncements()
-
-                // ~4 s: EMT sync
-                delay(2000L)
+            // 2. Phase 2: Immediately load home widgets' live alerts & weather (parallel, non-blocking)
+            launch {
                 if (!_shouldShowOnboarding.value) {
-                    try {
-                        com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(getApplication())
-                    } catch (e: Exception) {
-                        Log.w("DashboardViewModel", "Background EMT sync failed: ${e.message}")
-                    }
+                    fetchAllDashboardAlerts()
                 }
+            }
+            launch {
+                try {
+                    val cachedTimestamp = repository.getPreferenceSync("cached_weather_timestamp", "0").toLongOrNull() ?: 0L
+                    val isCacheExpired = (System.currentTimeMillis() - cachedTimestamp) > 30 * 60 * 1000L // 30 minutes
 
-                // ~6 s: Metrobús sync y Cercanías CSV
-                delay(2000L)
-                if (!_shouldShowOnboarding.value) {
-                    try {
-                        com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(getApplication())
-                        com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(getApplication())
-                    } catch (e: Exception) {
-                        Log.w("DashboardViewModel", "Background transit sync failed: ${e.message}")
+                    if (_weatherData.value == null || isCacheExpired) {
+                        val weather = withTimeoutOrNull(3500L) {
+                            val currentLoc = _lastLocation.value
+                            if (currentLoc != null) {
+                                WeatherService.getWeatherDataByCoords(currentLoc.first, currentLoc.second, _weatherCity.value)
+                            } else {
+                                WeatherService.getWeatherData(_weatherCity.value)
+                            }
+                        }
+                        if (weather != null) {
+                            _weatherData.value = weather
+                            try {
+                                repository.savePreference("cached_weather_json", gson.toJson(weather))
+                                repository.savePreference("cached_weather_timestamp", System.currentTimeMillis().toString())
+                                val currentLoc = _lastLocation.value
+                                if (currentLoc != null) {
+                                    repository.savePreference("cached_weather_lat", currentLoc.first.toString())
+                                    repository.savePreference("cached_weather_lon", currentLoc.second.toString())
+                                }
+                            } catch (_: Exception) {}
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.w("DashboardViewModel", "Background weather fetch failed or timed out: ${e.message}")
+                }
+            }
+            launch {
+                delay(800L)
+                if (!_shouldShowOnboarding.value) {
+                    checkForRemoteAnnouncements()
+                    loadAllActiveAnnouncements()
+                }
+            }
+
+            // 3. Phase 3 (~2.8s): Consolidated GitHub ETag update checks (HTTP 304 fast-path when unchanged)
+            viewModelScope.launch(Dispatchers.IO) {
+                delay(2800L)
+                if (!_shouldShowOnboarding.value) {
+                    syncRemoteTransitDataInBackground()
                 }
             }
         }
@@ -883,35 +866,64 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         startClock()
     }
 
+    private suspend fun syncRemoteTransitDataInBackground() {
+        val app = getApplication<Application>()
+        com.example.util.StartupProfiler.log("DashboardVM", "Phase 3 starting GitHub ETag schedule/data checks")
+        kotlinx.coroutines.coroutineScope {
+            launch {
+                try {
+                    com.example.data.repository.MetroScheduleRepository.getInstance(app).syncScheduleFromRemoteIfNeeded()
+                } catch (e: Exception) {
+                    Log.w("DashboardViewModel", "Background Metro schedule sync failed: ${e.message}")
+                }
+            }
+            launch {
+                try {
+                    com.example.data.repository.renfe.RenfeRepository(app, database).syncScheduleFromRemoteIfNeeded()
+                } catch (e: Exception) {
+                    Log.w("DashboardViewModel", "Background Renfe schedule sync failed: ${e.message}")
+                }
+            }
+            launch {
+                try {
+                    com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(app)
+                } catch (e: Exception) {
+                    Log.w("DashboardViewModel", "Background EMT sync failed: ${e.message}")
+                }
+            }
+            launch {
+                try {
+                    com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(app)
+                } catch (e: Exception) {
+                    Log.w("DashboardViewModel", "Background Metrobús sync failed: ${e.message}")
+                }
+            }
+            launch {
+                try {
+                    com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(app)
+                } catch (e: Exception) {
+                    Log.w("DashboardViewModel", "Background Cercanías CSV sync failed: ${e.message}")
+                }
+            }
+        }
+        com.example.util.StartupProfiler.log("DashboardVM", "Phase 3 GitHub ETag checks finished")
+    }
+
     fun fetchAllDashboardAlerts(force: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             val metroJob = launch {
                 try {
-                    _isMetroAlertsLoading.value = true
-                    _hasMetroAlertsError.value = false
-                    val metroAlertsRepo = com.example.data.repository.MetroAlertsRepository()
-                    metroAlertsRepo.fetchAllAlerts(force = force)
-                    _activeMetroIncidents.value = metroAlertsRepo.activeIncidents.value
-                    _metroSpecialNotices.value = metroAlertsRepo.specialNotices.value
-                } catch (e: Exception) {
-                    _hasMetroAlertsError.value = true
+                    metroAlertsRepo.fetchAllAlerts(force = force, includeNews = false)
                 } finally {
                     _hasFetchedMetroAlertsOnce.value = true
-                    _isMetroAlertsLoading.value = false
                 }
             }
 
             val cercaniasJob = launch {
                 try {
-                    _isCercaniasAlertsLoading.value = true
-                    _hasCercaniasAlertsError.value = false
-                    val renfeAlertsRepo = com.example.data.repository.renfe.RenfeAlertsRepository(getApplication(), database)
-                    _activeCercaniasAlerts.value = renfeAlertsRepo.fetchActiveAlerts(force = force)
-                } catch (e: Exception) {
-                    _hasCercaniasAlertsError.value = true
+                    renfeAlertsRepo.fetchActiveAlerts(force = force)
                 } finally {
                     _hasFetchedCercaniasAlertsOnce.value = true
-                    _isCercaniasAlertsLoading.value = false
                 }
             }
 
@@ -995,16 +1007,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             repository.savePreference("has_completed_onboarding", "true")
             _shouldShowOnboarding.value = false
+            fetchAllDashboardAlerts()
+            checkForRemoteAnnouncements()
+            loadAllActiveAnnouncements()
             try {
-                com.example.data.repository.emt.EmtDataSyncManager.syncIfNeeded(getApplication())
-                com.example.data.repository.metrobus.MetrobusDataSyncManager.syncIfNeeded(getApplication())
-                com.example.data.repository.renfe.CercaniasCsvSyncManager.syncIfNeeded(getApplication())
+                syncRemoteTransitDataInBackground()
             } catch (e: Exception) {
                 Log.w("DashboardViewModel", "Deferred transit sync failed: ${e.message}")
             }
             val loc = _lastLocation.value
             if (loc != null) {
-                val favBus = favoriteBusStopsSet.value.toList()
+                val favBus = favoriteBusStopsSet.value.ifEmpty { parsePrefSet("favorite_bus_stops") }.toList()
                 val favMb = try { repository.getPreferenceSync("favorite_metrobus_stops", "").split(",").filter { it.isNotBlank() } } catch (_: Exception) { emptyList() }
                 val modes = favoriteTransitModes.value
                 val showEmt = modes.isEmpty() || modes.contains("EMT")
@@ -1079,6 +1092,16 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private var lastLocationUpdateTime = 0L
 
     fun updateLocation(latitude: Double, longitude: Double) {
+        val current = _lastLocation.value
+        val dist = if (current != null) {
+            LocationUtils.calculateDistanceMeters(current.first, current.second, latitude, longitude)
+        } else Double.MAX_VALUE
+        if (current != null && dist < 10.0) {
+            if (activeTripState.value != null) {
+                refreshRealTimeTripStatus()
+            }
+            return
+        }
         _lastLocation.value = Pair(latitude, longitude)
         viewModelScope.launch {
             repository.savePreference("last_known_lat", latitude.toString())
@@ -1093,16 +1116,26 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun updateWeatherByLocation(latitude: Double, longitude: Double, context: android.content.Context) {
         lastLocationUpdateTime = System.currentTimeMillis()
-        _lastLocation.value = Pair(latitude, longitude)
+        val current = _lastLocation.value
+        val distFromCurrent = if (current != null) {
+            LocationUtils.calculateDistanceMeters(current.first, current.second, latitude, longitude)
+        } else Double.MAX_VALUE
+        if (current == null || distFromCurrent >= 10.0) {
+            _lastLocation.value = Pair(latitude, longitude)
+        }
         viewModelScope.launch {
-            repository.savePreference("last_latitude", latitude.toString())
-            repository.savePreference("last_longitude", longitude.toString())
+            if (current == null || distFromCurrent >= 10.0) {
+                repository.savePreference("last_known_lat", latitude.toString())
+                repository.savePreference("last_known_lon", longitude.toString())
+                repository.savePreference("last_latitude", latitude.toString())
+                repository.savePreference("last_longitude", longitude.toString())
+            }
 
-            val cachedTimestamp = repository.getPreference("cached_weather_timestamp", "0").toLongOrNull() ?: 0L
+            val cachedTimestamp = repository.getPreferenceSync("cached_weather_timestamp", "0").toLongOrNull() ?: 0L
             val isCacheExpired = (System.currentTimeMillis() - cachedTimestamp) > 30 * 60 * 1000L // 30 minutes
 
-            val lastWeatherLat = repository.getPreference("cached_weather_lat", "").toDoubleOrNull()
-            val lastWeatherLon = repository.getPreference("cached_weather_lon", "").toDoubleOrNull()
+            val lastWeatherLat = repository.getPreferenceSync("cached_weather_lat", "").toDoubleOrNull()
+            val lastWeatherLon = repository.getPreferenceSync("cached_weather_lon", "").toDoubleOrNull()
             val distanceMovedMeters = if (lastWeatherLat != null && lastWeatherLon != null) {
                 val results = FloatArray(1)
                 android.location.Location.distanceBetween(lastWeatherLat, lastWeatherLon, latitude, longitude, results)

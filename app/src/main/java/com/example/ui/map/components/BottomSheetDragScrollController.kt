@@ -2,18 +2,158 @@ package com.example.ui.map.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Velocity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+
+internal fun computeNearbyRestingHeightPx(
+    isSearchActive: Boolean,
+    nearbySheetState: SheetState,
+    collapsedHeightPx: Float,
+    expandedHeightPx: Float
+): Float {
+    if (isSearchActive) return 0f
+    return when (nearbySheetState) {
+        SheetState.MINIMIZED -> 0f
+        SheetState.COLLAPSED -> collapsedHeightPx
+        SheetState.EXPANDED -> expandedHeightPx
+    }
+}
+
+internal fun computeMonotonicDismissReportedHeightPx(
+    currentSheetHeightPx: Float,
+    dismissStartHeightPx: Float,
+    dismissTargetHeightPx: Float
+): Float {
+    val safeTarget = dismissTargetHeightPx.coerceAtLeast(0f)
+    if (dismissStartHeightPx >= safeTarget) {
+        return currentSheetHeightPx
+    }
+    if (dismissStartHeightPx <= 1f) {
+        return safeTarget
+    }
+    val progress = (1f - (currentSheetHeightPx / dismissStartHeightPx)).coerceIn(0f, 1f)
+    return dismissStartHeightPx + (safeTarget - dismissStartHeightPx) * progress
+}
+
+@Stable
+class BottomSheetDismissController(
+    private val heightAnimatable: Animatable<Float, AnimationVector1D>,
+    private val coroutineScope: CoroutineScope,
+    dismissTargetHeightPx: Float,
+    onDismiss: () -> Unit
+) {
+    var isDismissing by mutableStateOf(false)
+        private set
+    private var dismissStartHeightPx by mutableFloatStateOf(0f)
+    internal var dismissTargetHeightPx by mutableFloatStateOf(dismissTargetHeightPx)
+    internal var latestOnDismiss: () -> Unit = onDismiss
+
+    fun resetDismissState() {
+        isDismissing = false
+        dismissStartHeightPx = 0f
+    }
+
+    fun reportedHeightPx(currentHeightPx: Float): Float {
+        if (!isDismissing) return currentHeightPx
+        return computeMonotonicDismissReportedHeightPx(
+            currentSheetHeightPx = currentHeightPx,
+            dismissStartHeightPx = dismissStartHeightPx,
+            dismissTargetHeightPx = dismissTargetHeightPx
+        )
+    }
+
+    fun triggerDismiss() {
+        if (isDismissing) return
+        val startHeight = heightAnimatable.value
+        val targetRestingHeight = dismissTargetHeightPx.coerceAtLeast(0f)
+        val visualTargetHeight = if (startHeight >= targetRestingHeight) targetRestingHeight else 0f
+
+        if (abs(startHeight - visualTargetHeight) <= 2f &&
+            abs(startHeight - targetRestingHeight) <= 2f
+        ) {
+            latestOnDismiss()
+            return
+        }
+
+        isDismissing = true
+        dismissStartHeightPx = startHeight
+        coroutineScope.launch {
+            var cancelled = false
+            try {
+                heightAnimatable.animateTo(
+                    targetValue = visualTargetHeight,
+                    animationSpec = tween(
+                        durationMillis = 190,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+            } catch (e: CancellationException) {
+                cancelled = true
+                throw e
+            } finally {
+                isDismissing = false
+                if (!cancelled) {
+                    latestOnDismiss()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun rememberBottomSheetDismissController(
+    heightAnimatable: Animatable<Float, AnimationVector1D>,
+    dismissTargetHeightPx: Float,
+    onDismiss: () -> Unit,
+    resetKey: Any? = Unit,
+    dismissSignal: Int = 0
+): BottomSheetDismissController {
+    val coroutineScope = rememberCoroutineScope()
+    val controller = remember(heightAnimatable) {
+        BottomSheetDismissController(
+            heightAnimatable = heightAnimatable,
+            coroutineScope = coroutineScope,
+            dismissTargetHeightPx = dismissTargetHeightPx,
+            onDismiss = onDismiss
+        )
+    }
+    controller.dismissTargetHeightPx = dismissTargetHeightPx
+    controller.latestOnDismiss = onDismiss
+    LaunchedEffect(resetKey) {
+        controller.resetDismissState()
+    }
+    var lastHandledSignal by remember { mutableIntStateOf(dismissSignal) }
+    LaunchedEffect(dismissSignal) {
+        if (dismissSignal > lastHandledSignal) {
+            lastHandledSignal = dismissSignal
+            controller.triggerDismiss()
+        }
+    }
+    return controller
+}
 
 /**
  * Reusable controller providing unified nested scrolling and header drag gestures for bottom sheets.

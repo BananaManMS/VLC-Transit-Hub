@@ -122,19 +122,14 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         _selectedCercaniasLineFilters.value = emptySet()
     }
     
-    private val _cercaniasAlerts = MutableStateFlow<List<CercaniasAlert>>(emptyList())
-    val cercaniasAlerts = _cercaniasAlerts.asStateFlow()
-
-    private val _isCercaniasAlertsLoading = MutableStateFlow(true)
-    val isCercaniasAlertsLoading = _isCercaniasAlertsLoading.asStateFlow()
-
-    private val _hasCercaniasAlertsError = MutableStateFlow(false)
-    val hasCercaniasAlertsError = _hasCercaniasAlertsError.asStateFlow()
+    val cercaniasAlerts: StateFlow<List<CercaniasAlert>> = renfeAlertsRepository.activeAlerts
+    val isCercaniasAlertsLoading: StateFlow<Boolean> = renfeAlertsRepository.isLoading
+    val hasCercaniasAlertsError: StateFlow<Boolean> = renfeAlertsRepository.hasError
 
     private val _allCercaniasStations = MutableStateFlow<List<CercaniasStationEntity>>(emptyList())
     val allCercaniasStations: StateFlow<List<CercaniasStationEntity>> = _allCercaniasStations.asStateFlow()
 
-    val activeCercaniasAlerts: StateFlow<List<CercaniasAlert>> = _cercaniasAlerts
+    val activeCercaniasAlerts: StateFlow<List<CercaniasAlert>> = cercaniasAlerts
         .map { alerts -> alerts.filter { !it.isAccessibility && it.isCirculationIncident } }
         .stateIn(
             scope = viewModelScope,
@@ -142,7 +137,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
             initialValue = emptyList()
         )
 
-    val generalCercaniasNotices: StateFlow<List<CercaniasAlert>> = _cercaniasAlerts
+    val generalCercaniasNotices: StateFlow<List<CercaniasAlert>> = cercaniasAlerts
         .map { alerts -> alerts.filter { !it.isAccessibility && !it.isCirculationIncident } }
         .stateIn(
             scope = viewModelScope,
@@ -151,7 +146,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         )
 
     val groupedAccessibilityAlerts: StateFlow<Map<String, List<CercaniasAlert>>> = combine(
-        _cercaniasAlerts,
+        cercaniasAlerts,
         _allCercaniasStations
     ) { alerts, stations ->
         val accessibilityAlerts = alerts.filter { it.isAccessibility }
@@ -254,19 +249,21 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                         renfeRepository.syncScheduleFromRemoteIfNeeded()
                     }
 
+                    var currentStations = _allCercaniasStations.value.ifEmpty { renfeRepository.getAllStations() }
                     val savedCercaniasFavs = repository.getPreference("favorite_cercanias_stations", "")
                     if (savedCercaniasFavs.isNotBlank() && isOnboardingCompleted) {
                         val favIds = savedCercaniasFavs.split(",").filter { it.isNotBlank() }.toSet()
-                        val all = renfeRepository.getAllStations()
-                        if (all.any { it.stop_id in favIds && !it.isFavorite }) {
-                            val updated = all.map { station ->
+                        if (currentStations.any { it.stop_id in favIds && !it.isFavorite }) {
+                            val updated = currentStations.map { station ->
                                 station.copy(isFavorite = favIds.contains(station.stop_id))
                             }
                             renfeRepository.updateAllStations(updated)
+                            com.example.data.repository.UnifiedSearchEngine.invalidateCercaniasCache()
+                            currentStations = updated
                         }
                     }
 
-                    _allCercaniasStations.value = renfeRepository.getAllStations()
+                    _allCercaniasStations.value = currentStations.ifEmpty { renfeRepository.getAllStations() }
                     fetchCercaniasRealTimeAlerts()
                     isCercaniasInitialized = true
                 } catch (e: Exception) {
@@ -300,7 +297,6 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
             // to allow dashboard and first tab to load completely without storage/CPU competition.
             delay(3500L)
             triggerHeavyInitialization()
-            alertsPollingManager.startPolling()
         }
     }
 
@@ -380,6 +376,16 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     fun stopCercaniasPolling() {
         cercaniasJob?.cancel()
         cercaniasJob = null
+    }
+
+    fun startAlertsPolling() {
+        isAlertsPollingRequested = true
+        alertsPollingManager.startPolling()
+    }
+
+    fun stopAlertsPolling() {
+        isAlertsPollingRequested = false
+        alertsPollingManager.stopPolling()
     }
 
     fun forceSyncCercaniasSchedule() {
@@ -485,7 +491,8 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                 station.copy(isFavorite = stations.contains(station.stop_id))
             }
             renfeRepository.updateAllStations(updated)
-            _allCercaniasStations.value = renfeRepository.getAllStations()
+            com.example.data.repository.UnifiedSearchEngine.invalidateCercaniasCache()
+            _allCercaniasStations.value = updated
         }
     }
 
@@ -558,17 +565,10 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun fetchCercaniasRealTimeAlerts(force: Boolean = false) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            _isCercaniasAlertsLoading.value = true
-            _hasCercaniasAlertsError.value = false
             try {
-                val alerts = renfeAlertsRepository.fetchActiveAlerts(force = force)
-                _cercaniasAlerts.value = alerts
-                _hasCercaniasAlertsError.value = renfeAlertsRepository.hasError.value
+                renfeAlertsRepository.fetchActiveAlerts(force = force)
             } catch (e: Exception) {
-                _hasCercaniasAlertsError.value = true
                 Log.w("CercaniasAlerts", "Error fetching Cercanías alerts: ${e.message}")
-            } finally {
-                _isCercaniasAlertsLoading.value = false
             }
         }
     }
@@ -638,6 +638,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var wasLiveTrainsPollingActive = false
     private var wasDeparturesPollingActive = false
+    private var isAlertsPollingRequested = false
 
     fun onAppBackgrounded() {
         alertsPollingManager.stopPolling()
@@ -652,7 +653,9 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun onAppForegrounded() {
-        alertsPollingManager.onForeground()
+        if (isAlertsPollingRequested) {
+            alertsPollingManager.onForeground()
+        }
         if (wasLiveTrainsPollingActive) {
             wasLiveTrainsPollingActive = false
             startLiveTrainsPolling()

@@ -203,6 +203,11 @@ object GoogleMapStyleCache {
         return lightStyle
     }
 
+    fun preload(context: Context) {
+        getLightStyle(context)
+        getDarkStyle(context)
+    }
+
     fun getDarkStyle(context: Context): MapStyleOptions? {
         if (darkStyle == null) {
             synchronized(this) {

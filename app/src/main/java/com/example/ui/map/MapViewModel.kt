@@ -88,7 +88,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val _cercaniasStations = MutableStateFlow<List<CercaniasStationEntity>>(emptyList())
     val cercaniasStations: StateFlow<List<CercaniasStationEntity>> = _cercaniasStations.asStateFlow()
 
-    private val _valenbisiStations = MutableStateFlow<List<ValenbisiStation>>(emptyList())
+    private val _valenbisiStations = MutableStateFlow<List<ValenbisiStation>>(ValenbisiRepository.getCachedStations())
     val valenbisiStations: StateFlow<List<ValenbisiStation>> = _valenbisiStations.asStateFlow()
 
     private val _valenbisiLoading = MutableStateFlow(false)
@@ -561,6 +561,14 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         updateLocation()
 
         viewModelScope.launch {
+            ValenbisiRepository.sharedStationsFlow.collect { sharedStations ->
+                if (sharedStations.isNotEmpty()) {
+                    _valenbisiStations.value = sharedStations
+                }
+            }
+        }
+
+        viewModelScope.launch {
             _mapFilter.collect { filter ->
                 if (filter.showValenbisi) {
                     dataLoader.refreshValenbisiStations()
@@ -613,7 +621,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     fun loadMoreScheduledBusTimes(stopId: String) = dataLoader.loadMoreScheduledBusTimes(stopId)
     fun fetchMetroDepartures(station: MetroStation) = dataLoader.fetchMetroDepartures(station)
     fun fetchCercaniasDepartures(stationId: String) = dataLoader.fetchCercaniasDepartures(stationId)
-    fun fetchMetrobusTimes(stopId: String) = dataLoader.fetchMetrobusTimes(stopId, _metrobusTimes, _metrobusTimesLoading)
+    fun fetchMetrobusTimes(stopId: String, forceRefresh: Boolean = false) =
+        dataLoader.fetchMetrobusTimes(stopId, _metrobusTimes, _metrobusTimesLoading, forceRefresh = forceRefresh)
     fun loadMoreScheduledMetrobusTimes(stopId: String) = dataLoader.loadMoreScheduledMetrobusTimes(stopId, _metrobusTimes)
 
     // Scheduled departures flows and triggers

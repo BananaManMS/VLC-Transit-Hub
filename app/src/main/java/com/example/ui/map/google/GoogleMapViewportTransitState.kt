@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.example.data.database.GeoportalStopEntity
 import com.example.data.database.MetrobusStopEntity
+import com.example.ui.map.MapConfig
 import com.example.ui.map.MapFilter
 import com.example.ui.map.components.BusMarkersRenderer
 import com.example.ui.map.components.ValenbisiStation
@@ -21,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import kotlin.math.pow
 
 data class GoogleMapViewportTransitState(
     val currentBoundingBox: BoundingBox,
@@ -48,6 +51,23 @@ private data class ViewportQuery(
     val bounds: LatLngBounds?
 )
 
+internal fun estimateViewportBoundingBox(
+    centerLat: Double,
+    centerLon: Double,
+    zoom: Float
+): BoundingBox {
+    val clampedZoom = zoom.toDouble().coerceIn(MapConfig.MIN_ZOOM, MapConfig.MAX_ZOOM)
+    val scale = 2.0.pow(clampedZoom)
+    val halfLat = (360.0 / scale).coerceIn(0.0004, 1.5)
+    val halfLon = (260.0 / scale).coerceIn(0.0004, 1.5)
+    return BoundingBox(
+        centerLat + halfLat,
+        centerLon + halfLon,
+        centerLat - halfLat,
+        centerLon - halfLon
+    )
+}
+
 /**
  * Manages debounced viewport transit calculations, including stop clustering,
  * spatial grid sampling, and stop group merging for bus and metrobús.
@@ -59,9 +79,16 @@ fun rememberGoogleMapViewportTransit(
     mapFilter: MapFilter,
     busStops: List<GeoportalStopEntity>,
     metrobusStops: List<MetrobusStopEntity>,
-    valenbisiStations: List<ValenbisiStation>
+    valenbisiStations: List<ValenbisiStation>,
+    initialTarget: GeoPoint? = null,
+    initialZoom: Float = 15.5f
 ): GoogleMapViewportTransitState {
-    var currentBoundingBox by remember { mutableStateOf(BoundingBox(39.55, -0.25, 39.35, -0.50)) }
+    val initialFallbackBox = remember(initialTarget, initialZoom) {
+        val lat = initialTarget?.latitude?.takeIf { it != 0.0 } ?: MapConfig.DEFAULT_LATITUDE
+        val lon = initialTarget?.longitude?.takeIf { it != 0.0 } ?: MapConfig.DEFAULT_LONGITUDE
+        estimateViewportBoundingBox(lat, lon, initialZoom)
+    }
+    var currentBoundingBox by remember { mutableStateOf(initialFallbackBox) }
 
     val isOnlyBusesSelected = remember(mapFilter) {
         (mapFilter.showBus || mapFilter.showMetrobus) &&
@@ -134,8 +161,8 @@ fun rememberGoogleMapViewportTransit(
                 bounds = bounds
             )
         }.collect { query ->
-            // ONLY execute heavy spatial filtering and LOD updates when gesture finishes
-            if (query.isMoving) {
+            // ONLY execute heavy spatial filtering and LOD updates when gesture finishes and zoom is initialized
+            if (query.isMoving || !isValidMapZoom(query.zoom)) {
                 return@collect
             }
             delay(50)
@@ -150,7 +177,12 @@ fun rememberGoogleMapViewportTransit(
                     bounds.southwest.longitude
                 )
             } else {
-                BoundingBox(39.55, -0.25, 39.35, -0.50)
+                val pos = cameraPositionState.position
+                if (isValidMapTarget(pos.target) && isValidMapZoom(pos.zoom)) {
+                    estimateViewportBoundingBox(pos.target.latitude, pos.target.longitude, pos.zoom)
+                } else {
+                    initialFallbackBox
+                }
             }
             currentBoundingBox = bBox
 
@@ -177,6 +209,16 @@ fun rememberGoogleMapViewportTransit(
                         standaloneMbDetailed = emptyList()
                     }
                 } else {
+                    val isOnlyBus = (currentFilter.showBus || currentFilter.showMetrobus) &&
+                            !currentFilter.showMetro &&
+                            !currentFilter.showCercanias &&
+                            !currentFilter.showValenbisi &&
+                            !currentFilter.isFavorites
+
+                    val needClusters = curZoom < 13.5 && isOnlyBus
+                    val needDots = !needClusters && curZoom < 15.2
+                    val needDetailed = curZoom >= 15.2 || currentFilter.isFavorites
+
                     val merged = if (filtered.showBus && filtered.showMetrobus) {
                         BusMarkersRenderer.findMergedStopGroups(
                             busStopsInViewport = filtered.busStopsInViewport,
@@ -189,50 +231,82 @@ fun rememberGoogleMapViewportTransit(
                         )
                     } else emptyList()
 
-                    val mergedBusIds = merged.map { it.busStop.id_parada }.toSet()
-                    val mergedMbIds = merged.map { it.mbStop.id_parada }.toSet()
+                    val mergedBusIds = if (merged.isEmpty()) emptySet() else HashSet<String>(merged.size).apply {
+                        for (m in merged) add(m.busStop.id_parada)
+                    }
+                    val mergedMbIds = if (merged.isEmpty()) emptySet() else HashSet<String>(merged.size).apply {
+                        for (m in merged) add(m.mbStop.id_parada)
+                    }
                     val bStopsSingle = if (mergedBusIds.isEmpty()) filtered.busStopsInViewport else filtered.busStopsInViewport.filter { !mergedBusIds.contains(it.id_parada) }
                     val mbStopsSingle = if (mergedMbIds.isEmpty()) filtered.metrobusStopsInViewport else filtered.metrobusStopsInViewport.filter { !mergedMbIds.contains(it.id_parada) }
 
-                    val isOnlyBus = (currentFilter.showBus || currentFilter.showMetrobus) &&
-                            !currentFilter.showMetro &&
-                            !currentFilter.showCercanias &&
-                            !currentFilter.showValenbisi &&
-                            !currentFilter.isFavorites
-
-                    // Precompute all LOD representations from the current viewport stops so zoom transitions are instant
                     var bClusters = emptyList<GoogleMapTransitItem.Cluster>()
                     var mbClusters = emptyList<GoogleMapTransitItem.Cluster>()
-                    if (isOnlyBus) {
+                    if (needClusters) {
                         val gridSize = if (curZoom < 11.0) 0.06 else 0.025
-                        val allBusLocations = (bStopsSingle + merged.map { it.busStop })
-                        if (currentFilter.showBus && allBusLocations.isNotEmpty()) {
-                            bClusters = allBusLocations.groupBy { stop ->
-                                Pair((stop.lat / gridSize).toInt(), (stop.lon / gridSize).toInt())
-                            }.values.map { group ->
+                        if (currentFilter.showBus && (bStopsSingle.isNotEmpty() || merged.isNotEmpty())) {
+                            class ClusterAcc {
+                                var count = 0
+                                var sumLat = 0.0
+                                var sumLon = 0.0
+                            }
+                            val accMap = HashMap<Long, ClusterAcc>(64)
+                            for (stop in bStopsSingle) {
+                                val gx = (stop.lat / gridSize).toInt()
+                                val gy = (stop.lon / gridSize).toInt()
+                                val key = (gx.toLong() shl 32) or (gy.toLong() and 0xFFFFFFFFL)
+                                val acc = accMap.getOrPut(key) { ClusterAcc() }
+                                acc.count++
+                                acc.sumLat += stop.lat
+                                acc.sumLon += stop.lon
+                            }
+                            for (group in merged) {
+                                val stop = group.busStop
+                                val gx = (stop.lat / gridSize).toInt()
+                                val gy = (stop.lon / gridSize).toInt()
+                                val key = (gx.toLong() shl 32) or (gy.toLong() and 0xFFFFFFFFL)
+                                val acc = accMap.getOrPut(key) { ClusterAcc() }
+                                acc.count++
+                                acc.sumLat += stop.lat
+                                acc.sumLon += stop.lon
+                            }
+                            bClusters = accMap.values.map { acc ->
                                 GoogleMapTransitItem.Cluster(
-                                    count = group.size,
-                                    centerLat = group.map { it.lat }.average(),
-                                    centerLon = group.map { it.lon }.average(),
+                                    count = acc.count,
+                                    centerLat = acc.sumLat / acc.count,
+                                    centerLon = acc.sumLon / acc.count,
                                     isMetrobus = false
                                 )
                             }
                         }
                         if (currentFilter.showMetrobus && mbStopsSingle.isNotEmpty()) {
-                            mbClusters = mbStopsSingle.groupBy { stop ->
-                                Pair((stop.lat / gridSize).toInt(), (stop.lon / gridSize).toInt())
-                            }.values.map { group ->
+                            class MbClusterAcc {
+                                var count = 0
+                                var sumLat = 0.0
+                                var sumLon = 0.0
+                            }
+                            val accMap = HashMap<Long, MbClusterAcc>(64)
+                            for (stop in mbStopsSingle) {
+                                val gx = (stop.lat / gridSize).toInt()
+                                val gy = (stop.lon / gridSize).toInt()
+                                val key = (gx.toLong() shl 32) or (gy.toLong() and 0xFFFFFFFFL)
+                                val acc = accMap.getOrPut(key) { MbClusterAcc() }
+                                acc.count++
+                                acc.sumLat += stop.lat
+                                acc.sumLon += stop.lon
+                            }
+                            mbClusters = accMap.values.map { acc ->
                                 GoogleMapTransitItem.Cluster(
-                                    count = group.size,
-                                    centerLat = group.map { it.lat }.average(),
-                                    centerLon = group.map { it.lon }.average(),
+                                    count = acc.count,
+                                    centerLat = acc.sumLat / acc.count,
+                                    centerLon = acc.sumLon / acc.count,
                                     isMetrobus = true
                                 )
                             }
                         }
                     }
 
-                    val sDotsBus = if (currentFilter.showBus && bStopsSingle.isNotEmpty()) {
+                    val sDotsBus = if (needDots && currentFilter.showBus && bStopsSingle.isNotEmpty()) {
                         if (currentFilter.isFavorites) bStopsSingle
                         else SpatialGridSampler.sampleUniformlyByGrid(
                             items = bStopsSingle,
@@ -242,7 +316,7 @@ fun rememberGoogleMapViewportTransit(
                         )
                     } else emptyList()
 
-                    val sDotsMb = if (currentFilter.showMetrobus && mbStopsSingle.isNotEmpty()) {
+                    val sDotsMb = if (needDots && currentFilter.showMetrobus && mbStopsSingle.isNotEmpty()) {
                         if (currentFilter.isFavorites) mbStopsSingle
                         else SpatialGridSampler.sampleUniformlyByGrid(
                             items = mbStopsSingle,
@@ -252,7 +326,7 @@ fun rememberGoogleMapViewportTransit(
                         )
                     } else emptyList()
 
-                    val sDetailedBus = if (currentFilter.showBus && bStopsSingle.isNotEmpty()) {
+                    val sDetailedBus = if (needDetailed && currentFilter.showBus && bStopsSingle.isNotEmpty()) {
                         if (currentFilter.isFavorites) bStopsSingle
                         else SpatialGridSampler.sampleUniformlyByGrid(
                             items = bStopsSingle,
@@ -262,7 +336,7 @@ fun rememberGoogleMapViewportTransit(
                         )
                     } else emptyList()
 
-                    val sDetailedMb = if (currentFilter.showMetrobus && mbStopsSingle.isNotEmpty()) {
+                    val sDetailedMb = if (needDetailed && currentFilter.showMetrobus && mbStopsSingle.isNotEmpty()) {
                         if (currentFilter.isFavorites) mbStopsSingle
                         else SpatialGridSampler.sampleUniformlyByGrid(
                             items = mbStopsSingle,

@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.Color
 import com.example.data.model.routing.PlannedItinerary
 import com.example.data.model.routing.PlannedLeg
 import com.example.data.model.routing.TransitMode
+import com.example.ui.map.components.MarkerLogoBitmapCache
 import com.example.util.LineColorResolver
 import com.google.android.gms.maps.model.Dash
 import com.google.android.gms.maps.model.Gap
@@ -15,9 +16,14 @@ import com.google.android.gms.maps.model.JointType
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.RoundCap
 import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polyline
+import com.google.maps.android.compose.rememberMarkerState
 import org.osmdroid.util.GeoPoint
+
+private val ITIN_ROUND_CAP = RoundCap()
+private val ITIN_WALK_COLOR = Color(0xFF64748B)
+private val ITIN_FALLBACK_COLOR = Color(0xFF0284C7)
+private val ITIN_WALK_PATTERN = listOf(Dash(20f), Gap(15f))
 
 @Composable
 internal fun GoogleMapItineraryLayer(
@@ -28,14 +34,16 @@ internal fun GoogleMapItineraryLayer(
 ) {
     // A. Route Polylines
     itinerary.legs.forEachIndexed { index, leg ->
-        val pts = if (leg.geometry.isNotEmpty()) {
-            leg.geometry.map { LatLng(it.latitude, it.longitude) }
-        } else if (leg.intermediateStops.isNotEmpty()) {
-            leg.intermediateStops.map { LatLng(it.lat, it.lon) }
-        } else {
-            val fromPt = LatLng(leg.fromLat, leg.fromLon)
-            val toPt = LatLng(leg.toLat, leg.toLon)
-            if (fromPt.latitude != 0.0 && toPt.latitude != 0.0) listOf(fromPt, toPt) else emptyList()
+        val pts = remember(itinerary.id, index, leg) {
+            if (leg.geometry.isNotEmpty()) {
+                leg.geometry.map { LatLng(it.latitude, it.longitude) }
+            } else if (leg.intermediateStops.isNotEmpty()) {
+                leg.intermediateStops.map { LatLng(it.lat, it.lon) }
+            } else {
+                val fromPt = LatLng(leg.fromLat, leg.fromLon)
+                val toPt = LatLng(leg.toLat, leg.toLon)
+                if (fromPt.latitude != 0.0 && toPt.latitude != 0.0) listOf(fromPt, toPt) else emptyList()
+            }
         }
 
         if (pts.isNotEmpty()) {
@@ -43,26 +51,28 @@ internal fun GoogleMapItineraryLayer(
                 if (leg.mode == TransitMode.WALK) {
                     Polyline(
                         points = pts,
-                        color = Color(0xFF64748B),
+                        color = ITIN_WALK_COLOR,
                         width = 11f,
-                        pattern = listOf(Dash(20f), Gap(15f)),
+                        pattern = ITIN_WALK_PATTERN,
                         jointType = JointType.ROUND,
-                        startCap = RoundCap(),
-                        endCap = RoundCap(),
+                        startCap = ITIN_ROUND_CAP,
+                        endCap = ITIN_ROUND_CAP,
                         zIndex = 22f
                     )
                 } else {
-                    val hexColorStr = LineColorResolver.resolveRouteColorHex(
-                        leg.mode, leg.routeShortName, leg.routeColorHex, leg.agencyName
-                    )
-                    val legColor = try { Color(android.graphics.Color.parseColor(hexColorStr)) } catch (_: Exception) { Color(0xFF0284C7) }
+                    val legColor = remember(leg.mode, leg.routeShortName, leg.routeColorHex, leg.agencyName) {
+                        val hexColorStr = LineColorResolver.resolveRouteColorHex(
+                            leg.mode, leg.routeShortName, leg.routeColorHex, leg.agencyName
+                        )
+                        try { Color(MarkerLogoBitmapCache.parseColorCached(hexColorStr)) } catch (_: Exception) { ITIN_FALLBACK_COLOR }
+                    }
                     Polyline(
                         points = pts,
                         color = legColor,
                         width = 14f,
                         jointType = JointType.ROUND,
-                        startCap = RoundCap(),
-                        endCap = RoundCap(),
+                        startCap = ITIN_ROUND_CAP,
+                        endCap = ITIN_ROUND_CAP,
                         zIndex = 23f
                     )
                 }
@@ -76,12 +86,13 @@ internal fun GoogleMapItineraryLayer(
             if (leg.mode != TransitMode.WALK && leg.mode != TransitMode.BICYCLE) {
                 leg.intermediateStops.forEachIndexed { stopIdx, stop ->
                     if (stop.lat in 38.0..41.0 && stop.lon in -2.0..1.0) {
-                        key("ITIN_STOP_${itinerary.id}_${legIdx}_$stopIdx") {
+                        val markerKey = "ITIN_STOP_${itinerary.id}_${legIdx}_$stopIdx"
+                        key(markerKey) {
                             val stopIcon = remember(stop.name, settledZoom, isDarkMode) {
                                 GoogleMapsMarkerCache.getOrCreateStopDotWithTextIcon(context, stop.name, settledZoom.toDouble(), isDarkMode)
                             }
                             Marker(
-                                state = MarkerState(position = LatLng(stop.lat, stop.lon)),
+                                state = rememberMarkerState(key = markerKey, position = LatLng(stop.lat, stop.lon)),
                                 icon = stopIcon.descriptor,
                                 anchor = stopIcon.anchor,
                                 title = stop.name,
@@ -95,12 +106,13 @@ internal fun GoogleMapItineraryLayer(
                 val endPt = leg.geometry.lastOrNull()
                     ?: leg.intermediateStops.lastOrNull()?.let { GeoPoint(it.lat, it.lon) }
                 if (endPt != null && leg.toName.isNotBlank()) {
-                    key("ITIN_LEG_END_${itinerary.id}_$legIdx") {
+                    val markerKey = "ITIN_LEG_END_${itinerary.id}_$legIdx"
+                    key(markerKey) {
                         val endIcon = remember(leg.toName, settledZoom, isDarkMode) {
                             GoogleMapsMarkerCache.getOrCreateStopDotWithTextIcon(context, leg.toName, settledZoom.toDouble(), isDarkMode)
                         }
                         Marker(
-                            state = MarkerState(position = LatLng(endPt.latitude, endPt.longitude)),
+                            state = rememberMarkerState(key = markerKey, position = LatLng(endPt.latitude, endPt.longitude)),
                             icon = endIcon.descriptor,
                             anchor = endIcon.anchor,
                             title = leg.toName,
@@ -118,12 +130,13 @@ internal fun GoogleMapItineraryLayer(
         ?: firstLeg?.intermediateStops?.firstOrNull()?.let { GeoPoint(it.lat, it.lon) }
         ?: firstLeg?.let { GeoPoint(it.fromLat, it.fromLon) }
     if (originPt != null && originPt.latitude != 0.0) {
-        key("ITIN_ORIGIN_${itinerary.id}") {
+        val originKey = "ITIN_ORIGIN_${itinerary.id}"
+        key(originKey) {
             val originIcon = remember {
                 GoogleMapsMarkerCache.getOrCreateOriginMarkerIcon(context)
             }
             Marker(
-                state = MarkerState(position = LatLng(originPt.latitude, originPt.longitude)),
+                state = rememberMarkerState(key = originKey, position = LatLng(originPt.latitude, originPt.longitude)),
                 icon = originIcon.descriptor,
                 anchor = originIcon.anchor,
                 title = firstLeg?.fromName?.ifBlank { "Origen" } ?: "Origen",
@@ -160,7 +173,8 @@ internal fun GoogleMapItineraryLayer(
                 } else false
             }
 
-            key("ITIN_TRANSFER_${itinerary.id}_$i") {
+            val transferKey = "ITIN_TRANSFER_${itinerary.id}_$i"
+            key(transferKey) {
                 if (isDirect && prevTransitLeg != null) {
                     val stationName = leg.fromName.ifBlank { prevTransitLeg.toName }
                     val fromFmt = prevTransitLeg.routeShortName ?: prevTransitLeg.mode.displayNameEs
@@ -170,7 +184,7 @@ internal fun GoogleMapItineraryLayer(
                         GoogleMapsMarkerCache.getOrCreateTransferLabelIcon(context, transitionLabel, settledZoom.toDouble(), isDarkMode)
                     }
                     Marker(
-                        state = MarkerState(position = LatLng(transferPt.latitude, transferPt.longitude)),
+                        state = rememberMarkerState(key = transferKey, position = LatLng(transferPt.latitude, transferPt.longitude)),
                         icon = transferIcon.descriptor,
                         anchor = transferIcon.anchor,
                         title = transitionLabel,
@@ -183,7 +197,7 @@ internal fun GoogleMapItineraryLayer(
                         GoogleMapsMarkerCache.getOrCreateTransferMarkerIcon(context, leg.routeColorHex ?: "#0284C7", label)
                     }
                     Marker(
-                        state = MarkerState(position = LatLng(transferPt.latitude, transferPt.longitude)),
+                        state = rememberMarkerState(key = transferKey, position = LatLng(transferPt.latitude, transferPt.longitude)),
                         icon = transferIcon.descriptor,
                         anchor = transferIcon.anchor,
                         title = leg.fromName.ifBlank { "Transbordo" },
@@ -201,12 +215,13 @@ internal fun GoogleMapItineraryLayer(
         ?: lastLeg?.intermediateStops?.lastOrNull()?.let { GeoPoint(it.lat, it.lon) }
         ?: lastLeg?.let { GeoPoint(it.toLat, it.toLon) }
     if (destPt != null && destPt.latitude != 0.0) {
-        key("ITIN_DEST_${itinerary.id}") {
+        val destKey = "ITIN_DEST_${itinerary.id}"
+        key(destKey) {
             val destIcon = remember(isDarkMode) {
                 GoogleMapsMarkerCache.getOrCreateDestinationMarkerIcon(context, isDarkMode)
             }
             Marker(
-                state = MarkerState(position = LatLng(destPt.latitude, destPt.longitude)),
+                state = rememberMarkerState(key = destKey, position = LatLng(destPt.latitude, destPt.longitude)),
                 icon = destIcon.descriptor,
                 anchor = destIcon.anchor,
                 title = lastLeg?.toName?.ifBlank { "Destino" } ?: "Destino",

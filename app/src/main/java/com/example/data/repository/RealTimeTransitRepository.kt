@@ -11,6 +11,8 @@ import com.example.ui.bus.EmtBusTime
 import com.example.ui.cercanias.LiveVehicleInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
@@ -56,6 +58,8 @@ object RealTimeTransitRepository {
     private val emtArrivalsCache = ConcurrentHashMap<String, Pair<Long, List<EmtBusTime>>>()
     private val metroDeparturesCache = ConcurrentHashMap<String, Pair<Long, List<MetroArrival>>>()
     private val aforoBloqueadoCache = ConcurrentHashMap<String, com.example.ui.metro.AforoBloqueado>()
+    private val emtStopMutexes = ConcurrentHashMap<String, Mutex>()
+    private val metroStationMutexes = ConcurrentHashMap<String, Mutex>()
 
     fun getAforoBloqueadoForStation(stationId: String): com.example.ui.metro.AforoBloqueado? {
         val cleanStation = stationId.trimStart('0')
@@ -63,7 +67,7 @@ object RealTimeTransitRepository {
     }
 
     private val gtfsCacheManager by lazy {
-        GtfsCacheManager(appContext ?: com.example.MainApplication.instance)
+        GtfsCacheManager.getInstance(appContext ?: com.example.MainApplication.instance)
     }
 
     private val standardHttpClient: OkHttpClient by lazy {
@@ -130,6 +134,31 @@ object RealTimeTransitRepository {
     // 1. EMT BUS REAL-TIME ARRIVALS
     // ==========================================
 
+    private fun getValidCachedEmtLive(cleanStop: String, now: Long): List<EmtBusTime>? {
+        val (timestamp, data) = emtArrivalsCache[cleanStop] ?: return null
+        if (now - timestamp >= CACHE_TTL_MS) return null
+        val filteredData = data.filter { it.isRealTime }
+        if (filteredData.isEmpty()) return null
+        val elapsedSec = ((now - timestamp) / 1000L).toInt()
+        val adjusted = filteredData.mapNotNull { bus ->
+            if (bus.secondsRemaining > 0) {
+                val remainingSec = bus.secondsRemaining - elapsedSec
+                if (remainingSec >= -30) {
+                    val safeSec = remainingSec.coerceAtLeast(0)
+                    val safeMins = safeSec / 60
+                    val minStr = if (safeMins <= 0) "1" else safeMins.toString()
+                    bus.copy(
+                        secondsRemaining = safeSec,
+                        minutos = minStr
+                    )
+                } else null
+            } else {
+                bus
+            }
+        }
+        return adjusted.ifEmpty { null }
+    }
+
     suspend fun getEmtLiveArrivals(
         stopNumber: String,
         stopName: String? = null,
@@ -141,48 +170,35 @@ object RealTimeTransitRepository {
         val cleanStop = stopNumber.trim()
         if (cleanStop.isBlank()) return@withContext emptyList()
 
-        val now = System.currentTimeMillis()
-        if (!forceRefresh && !includeScheduled) {
-            emtArrivalsCache[cleanStop]?.let { (timestamp, data) ->
-                if (now - timestamp < CACHE_TTL_MS) {
-                    val filteredData = data.filter { it.isRealTime }
-                    if (filteredData.isNotEmpty()) {
-                        val elapsedSec = ((now - timestamp) / 1000L).toInt()
-                        val adjusted = filteredData.mapNotNull { bus ->
-                            if (bus.secondsRemaining > 0) {
-                                val remainingSec = bus.secondsRemaining - elapsedSec
-                                if (remainingSec >= -30) {
-                                    val safeSec = remainingSec.coerceAtLeast(0)
-                                    val safeMins = safeSec / 60
-                                    val minStr = if (safeMins <= 0) "1" else safeMins.toString()
-                                    bus.copy(
-                                        secondsRemaining = safeSec,
-                                        minutos = minStr
-                                    )
-                                } else null
-                            } else {
-                                bus
-                            }
-                        }
-                        if (adjusted.isNotEmpty()) {
-                            return@withContext adjusted
-                        }
-                    }
-                }
-            }
+        val initialCached = if (!forceRefresh) getValidCachedEmtLive(cleanStop, System.currentTimeMillis()) else null
+        if (initialCached != null && !includeScheduled) {
+            return@withContext initialCached
         }
 
-        val url = "https://www.emtvalencia.es/EMT/mapfunctions/MapUtilsPetitions.php?sec=getSAE&parada=$cleanStop"
-        val headers = mapOf(
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Accept" to "*/*",
-            "Referer" to "https://www.emtvalencia.es"
-        )
-
-        val xml = executeGetRequest(url, headers, useFastTimeout)
-        val liveList = if (xml != null) BusMapper.parseEmtXml(xml).filter { it.isRealTime } else emptyList()
-        if (liveList.isNotEmpty()) {
-            emtArrivalsCache[cleanStop] = Pair(now, liveList)
+        val liveList = if (initialCached != null) {
+            initialCached
+        } else {
+            val stopMutex = emtStopMutexes.getOrPut(cleanStop) { Mutex() }
+            stopMutex.withLock {
+                if (!forceRefresh) {
+                    val rechecked = getValidCachedEmtLive(cleanStop, System.currentTimeMillis())
+                    if (rechecked != null) {
+                        return@withLock rechecked
+                    }
+                }
+                val url = "https://www.emtvalencia.es/EMT/mapfunctions/MapUtilsPetitions.php?sec=getSAE&parada=$cleanStop"
+                val headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                    "Accept" to "*/*",
+                    "Referer" to "https://www.emtvalencia.es"
+                )
+                val xml = executeGetRequest(url, headers, useFastTimeout)
+                val parsedLive = if (xml != null) BusMapper.parseEmtXml(xml).filter { it.isRealTime } else emptyList()
+                if (parsedLive.isNotEmpty()) {
+                    emtArrivalsCache[cleanStop] = Pair(System.currentTimeMillis(), parsedLive)
+                }
+                parsedLive
+            }
         }
 
         if (liveList.isEmpty()) {
@@ -249,6 +265,28 @@ object RealTimeTransitRepository {
     // 2. METROVALENCIA REAL-TIME ARRIVALS
     // ==========================================
 
+    private fun getValidCachedMetroArrivals(cleanStation: String, now: Long): List<MetroArrival> {
+        val cached = metroDeparturesCache[cleanStation] ?: return emptyList()
+        val (timestamp, data) = cached
+        if (now - timestamp < CACHE_TTL_MS) {
+            val elapsedSec = ((now - timestamp) / 1000L).toInt()
+            return data.mapNotNull { arrival ->
+                val remainingSec = arrival.seconds - elapsedSec
+                if (remainingSec >= -65) {
+                    val safeSec = remainingSec.coerceAtLeast(0)
+                    val safeMin = if (safeSec <= 20) 0 else ((safeSec + 30) / 60)
+                    arrival.copy(
+                        seconds = safeSec,
+                        minutes = safeMin
+                    )
+                } else null
+            }
+        } else {
+            metroDeparturesCache.remove(cleanStation)
+            return emptyList()
+        }
+    }
+
     suspend fun getMetroLiveArrivals(
         stationId: String,
         forceRefresh: Boolean = false,
@@ -257,48 +295,33 @@ object RealTimeTransitRepository {
         val cleanStation = stationId.trim()
         if (cleanStation.isBlank()) return@withContext emptyList()
 
-        val now = System.currentTimeMillis()
-
-        fun getValidCachedArrivals(): List<MetroArrival> {
-            val cached = metroDeparturesCache[cleanStation] ?: return emptyList()
-            val (timestamp, data) = cached
-            if (now - timestamp < CACHE_TTL_MS) {
-                val elapsedSec = ((now - timestamp) / 1000L).toInt()
-                return data.mapNotNull { arrival ->
-                    val remainingSec = arrival.seconds - elapsedSec
-                    if (remainingSec >= -65) {
-                        val safeSec = remainingSec.coerceAtLeast(0)
-                        val safeMin = if (safeSec <= 20) 0 else ((safeSec + 30) / 60)
-                        arrival.copy(
-                            seconds = safeSec,
-                            minutes = safeMin
-                        )
-                    } else null
-                }
-            } else {
-                metroDeparturesCache.remove(cleanStation)
-                return emptyList()
-            }
-        }
-
         if (!forceRefresh) {
-            val validCached = getValidCachedArrivals()
+            val validCached = getValidCachedMetroArrivals(cleanStation, System.currentTimeMillis())
             if (validCached.isNotEmpty()) {
                 return@withContext validCached
             }
         }
 
-        val url = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/estaciones/$cleanStation/llegadas"
-        val headers = mapOf("User-Agent" to com.example.data.network.NetworkModule.USER_AGENT)
-
-        val bodyStr = executeGetRequest(url, headers, useFastTimeout)
-        
-        if (bodyStr == null) {
-            val validCached = getValidCachedArrivals()
-            if (validCached.isNotEmpty()) {
-                return@withContext validCached
+        val stationMutex = metroStationMutexes.getOrPut(cleanStation) { Mutex() }
+        stationMutex.withLock {
+            if (!forceRefresh) {
+                val validCached = getValidCachedMetroArrivals(cleanStation, System.currentTimeMillis())
+                if (validCached.isNotEmpty()) {
+                    return@withLock validCached
+                }
             }
-        }
+
+            val url = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/estaciones/$cleanStation/llegadas"
+            val headers = mapOf("User-Agent" to com.example.data.network.NetworkModule.USER_AGENT)
+
+            val bodyStr = executeGetRequest(url, headers, useFastTimeout)
+
+            if (bodyStr == null) {
+                val validCached = getValidCachedMetroArrivals(cleanStation, System.currentTimeMillis())
+                if (validCached.isNotEmpty()) {
+                    return@withLock validCached
+                }
+            }
 
         val list = mutableListOf<MetroArrival>()
         if (!bodyStr.isNullOrBlank() && !bodyStr.trim().startsWith("<")) {
@@ -408,11 +431,12 @@ object RealTimeTransitRepository {
         }
 
         if (list.isNotEmpty()) {
-            metroDeparturesCache[cleanStation] = Pair(now, list)
-            return@withContext list
+            metroDeparturesCache[cleanStation] = Pair(System.currentTimeMillis(), list)
+            return@withLock list
         }
 
         emptyList()
+        }
     }
 
     // ==========================================

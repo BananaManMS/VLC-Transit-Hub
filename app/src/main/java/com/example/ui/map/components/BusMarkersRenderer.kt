@@ -23,8 +23,37 @@ import com.example.util.LocationUtils
  */
 object BusMarkersRenderer {
 
-    private val normalizedNameCache = LruCache<String, String>(1024)
-    private val mergeMatchCache = LruCache<String, Boolean>(2048)
+    private data class MergePairKey(val busId: String, val mbId: String)
+    private data class CachedMergePair(val isMatch: Boolean, val distanceMeters: Double)
+
+    private val normalizedNameCache = LruCache<String, String>(2048)
+    private val parsedComponentsCache = LruCache<String, ParsedStopComponents>(2048)
+    private val mergeMatchCache = LruCache<MergePairKey, CachedMergePair>(16384)
+
+    private val REGEX_NON_ALNUM = Regex("[^A-Z0-9 ]")
+    private val REGEX_MULTI_SPACE = Regex("\\s+")
+    private val REGEX_HOUSE_NUM = Regex("\\b(\\d{1,3})\\b")
+    private val REGEX_SEPARATORS = Regex("[-/,]")
+    private val REGEX_STOP_MODIFIERS = Regex("\\b(ANDEN|ANDAN|PARADA|MARQUESINA|POSTE|PLATFORM|BUS|METROBUS|MB|EMT)\\b")
+
+    private fun stripAccentsUppercase(input: String): String {
+        val sb = StringBuilder(input.length)
+        for (i in 0 until input.length) {
+            val ch = input[i].uppercaseChar()
+            sb.append(
+                when (ch) {
+                    'Á', 'À', 'Ä' -> 'A'
+                    'É', 'È', 'Ë' -> 'E'
+                    'Í', 'Ì', 'Ï' -> 'I'
+                    'Ó', 'Ò', 'Ö' -> 'O'
+                    'Ú', 'Ù', 'Ü' -> 'U'
+                    'Ç' -> 'C'
+                    else -> ch
+                }
+            )
+        }
+        return sb.toString()
+    }
 
     data class MergedBusStopGroup(
         val busStop: GeoportalStopEntity,
@@ -58,19 +87,7 @@ object BusMarkersRenderer {
         val cached = normalizedNameCache.get(name)
         if (cached != null) return cached
 
-        val accents = mapOf(
-            'Á' to 'A', 'À' to 'A', 'Ä' to 'A',
-            'É' to 'E', 'È' to 'E', 'Ë' to 'E',
-            'Í' to 'I', 'Ì' to 'I', 'Ï' to 'I',
-            'Ó' to 'O', 'Ò' to 'O', 'Ö' to 'O',
-            'Ú' to 'U', 'Ù' to 'U', 'Ü' to 'U',
-            'Ç' to 'C'
-        )
-        val sb = StringBuilder()
-        for (ch in name.uppercase()) {
-            sb.append(accents[ch] ?: ch)
-        }
-        val result = sb.toString()
+        val result = stripAccentsUppercase(name)
             .replace("AVENIDA", "AV")
             .replace("AVDA", "AV")
             .replace("PLAZA", "PZA")
@@ -94,8 +111,8 @@ object BusMarkersRenderer {
             .replace("HOSPITAL", "HOSPITAL")
             .replace("POLITECNIC", "POLITECNIC")
             .replace("POLITECNICO", "POLITECNIC")
-            .replace("[^A-Z0-9 ]".toRegex(), " ")
-            .replace("\\s+".toRegex(), " ")
+            .replace(REGEX_NON_ALNUM, " ")
+            .replace(REGEX_MULTI_SPACE, " ")
             .trim()
 
         normalizedNameCache.put(name, result)
@@ -111,47 +128,46 @@ object BusMarkersRenderer {
 
     private data class ParsedStopComponents(
         val primaryNorm: String,
+        val primaryNoSpaces: String,
         val secondaryNorm: String?,
+        val secondaryWords: List<String>,
         val houseNumber: Int?
     )
 
     private fun parseStopComponents(rawName: String): ParsedStopComponents {
-        val accents = mapOf(
-            'Á' to 'A', 'À' to 'A', 'Ä' to 'A',
-            'É' to 'E', 'È' to 'E', 'Ë' to 'E',
-            'Í' to 'I', 'Ì' to 'I', 'Ï' to 'I',
-            'Ó' to 'O', 'Ò' to 'O', 'Ö' to 'O',
-            'Ú' to 'U', 'Ù' to 'U', 'Ü' to 'U',
-            'Ç' to 'C'
-        )
-        val upper = rawName.uppercase().map { accents[it] ?: it }.joinToString("")
+        parsedComponentsCache.get(rawName)?.let { return it }
 
-        val numMatch = Regex("\\b(\\d{1,3})\\b").find(upper)
+        val upper = stripAccentsUppercase(rawName)
+        val numMatch = REGEX_HOUSE_NUM.find(upper)
         val houseNumber = numMatch?.groupValues?.get(1)?.toIntOrNull()
 
-        val parts = upper.split(Regex("[-/,]")).map { it.trim() }.filter { it.isNotBlank() }
+        val parts = upper.split(REGEX_SEPARATORS).map { it.trim() }.filter { it.isNotBlank() }
 
         val primaryRaw = if (parts.isNotEmpty()) parts[0] else upper
         val secondaryRaw = if (parts.size > 1) parts.subList(1, parts.size).joinToString(" ") else null
 
         val primaryNorm = normalizeStopTokens(primaryRaw)
-            .replace(Regex("\\b\\d{1,3}\\b"), "")
+            .replace(REGEX_HOUSE_NUM, "")
             .trim()
 
         val secondaryNorm = if (secondaryRaw != null) {
             val norm = normalizeStopTokens(secondaryRaw)
-                .replace(Regex("\\b(ANDEN|ANDAN|PARADA|MARQUESINA|POSTE|PLATFORM|BUS|METROBUS|MB|EMT)\\b"), "")
+                .replace(REGEX_STOP_MODIFIERS, "")
                 .trim()
             norm.ifBlank { null }
         } else {
             null
         }
 
-        return ParsedStopComponents(
+        val parsed = ParsedStopComponents(
             primaryNorm = primaryNorm,
+            primaryNoSpaces = primaryNorm.replace(" ", ""),
             secondaryNorm = secondaryNorm,
+            secondaryWords = secondaryNorm?.split(" ")?.filter { it.length > 1 } ?: emptyList(),
             houseNumber = houseNumber
         )
+        parsedComponentsCache.put(rawName, parsed)
+        return parsed
     }
 
     private fun areStopNamesSimilar(name1: String, name2: String, distMeters: Double): Boolean {
@@ -166,7 +182,7 @@ object BusMarkersRenderer {
         val s2 = norm2.replace(" ", "")
         if (s1 == s2) return true
 
-        // 2. Parse structural parts (Primary street/location, secondary modifier/cross-street/number)
+        // 2. Parse structural parts (cached)
         val parsed1 = parseStopComponents(name1)
         val parsed2 = parseStopComponents(name2)
 
@@ -174,12 +190,11 @@ object BusMarkersRenderer {
         val primary2Norm = parsed2.primaryNorm
 
         if (primary1Norm.isNotBlank() && primary2Norm.isNotBlank()) {
-            val primaryLev = calculateLevenshteinDistance(primary1Norm.replace(" ", ""), primary2Norm.replace(" ", ""))
-            val maxPrimaryLen = maxOf(primary1Norm.length, primary2Norm.length)
-            val primaryMatch = primary1Norm == primary2Norm ||
-                    (primaryLev <= 2 && maxPrimaryLen > 5)
-            if (!primaryMatch) {
-                return false
+            if (primary1Norm != primary2Norm) {
+                val maxPrimaryLen = maxOf(primary1Norm.length, primary2Norm.length)
+                if (maxPrimaryLen <= 5) return false
+                val primaryLev = calculateLevenshteinDistance(parsed1.primaryNoSpaces, parsed2.primaryNoSpaces)
+                if (primaryLev > 2) return false
             }
         }
 
@@ -190,15 +205,14 @@ object BusMarkersRenderer {
         val num2 = parsed2.houseNumber
 
         if (num1 != null && num2 != null) {
-            val numDiff = Math.abs(num1 - num2)
-            if (numDiff > 2) {
+            if (Math.abs(num1 - num2) > 2) {
                 return false
             }
         }
 
         if (sec1 != null && sec2 != null) {
-            val sec1Words = sec1.split(" ").filter { it.length > 1 }
-            val sec2Words = sec2.split(" ").filter { it.length > 1 }
+            val sec1Words = parsed1.secondaryWords
+            val sec2Words = parsed2.secondaryWords
 
             val secOverlap = sec1Words.count { w1 ->
                 sec2Words.any { w2 ->
@@ -254,8 +268,8 @@ object BusMarkersRenderer {
         val selectedBusStopId = (selectedMapItem as? SelectedMapItem.BusStop)?.stop?.id_parada
         val selectedMbStopId = (selectedMapItem as? SelectedMapItem.MetrobusStopItem)?.stop?.id_parada
 
-        val result = mutableListOf<MergedBusStopGroup>()
-        val matchedMbIds = mutableSetOf<String>()
+        val result = ArrayList<MergedBusStopGroup>(minOf(busStopsInViewport.size, metrobusStopsInViewport.size))
+        val matchedMbIds = HashSet<String>(metrobusStopsInViewport.size)
 
         // Fast spatial grid bucketing for Metrobús stops (~200m cells)
         val gridSize = 0.002
@@ -264,7 +278,7 @@ object BusMarkersRenderer {
             val gx = (mb.lat / gridSize).toInt()
             val gy = (mb.lon / gridSize).toInt()
             val cellKey = (gx.toLong() shl 32) or (gy.toLong() and 0xFFFFFFFFL)
-            mbGrid.getOrPut(cellKey) { mutableListOf() }.add(mb)
+            mbGrid.getOrPut(cellKey) { ArrayList(4) }.add(mb)
         }
 
         for (busStop in busStopsInViewport) {
@@ -287,34 +301,32 @@ object BusMarkersRenderer {
                         // When an individual Metrobús stop is selected, do not merge it into a joint badge
                         if (selectedMbStopId != null && mb.id_parada == selectedMbStopId) continue
 
-                        // Fast bounding-box pre-check: 85 meters in Valencia latitude is ~0.0008 deg lat, ~0.0011 deg lon
+                        // Fast bounding-box & conservative circular pre-check before allocating cache key
                         val dLat = Math.abs(busStop.lat - mb.lat)
                         if (dLat > 0.0009) continue
                         val dLon = Math.abs(busStop.lon - mb.lon)
                         if (dLon > 0.0012) continue
+                        val approxLatM = dLat * 110500.0
+                        val approxLonM = dLon * 80000.0
+                        if (approxLatM * approxLatM + approxLonM * approxLonM > 95.0 * 95.0) continue
 
-                        val cacheKey = "${busStop.id_parada}_${mb.id_parada}"
-                        val cachedMatch = mergeMatchCache.get(cacheKey)
+                        val cacheKey = MergePairKey(busStop.id_parada, mb.id_parada)
+                        var cachedPair = mergeMatchCache.get(cacheKey)
 
-                        val isMatch = if (cachedMatch != null) {
-                            cachedMatch
-                        } else {
+                        if (cachedPair == null) {
                             val distMeters = LocationUtils.calculateDistanceMeters(busStop.lat, busStop.lon, mb.lat, mb.lon)
                             val match = if (distMeters <= 85.0) {
                                 areStopNamesSimilar(busStop.denominacion, mb.denominacion, distMeters)
                             } else {
                                 false
                             }
-                            mergeMatchCache.put(cacheKey, match)
-                            match
+                            cachedPair = CachedMergePair(match, distMeters)
+                            mergeMatchCache.put(cacheKey, cachedPair)
                         }
 
-                        if (isMatch) {
-                            val distMeters = LocationUtils.calculateDistanceMeters(busStop.lat, busStop.lon, mb.lat, mb.lon)
-                            if (distMeters < bestDistance) {
-                                bestDistance = distMeters
-                                bestCandidate = mb
-                            }
+                        if (cachedPair.isMatch && cachedPair.distanceMeters < bestDistance) {
+                            bestDistance = cachedPair.distanceMeters
+                            bestCandidate = mb
                         }
                     }
                 }

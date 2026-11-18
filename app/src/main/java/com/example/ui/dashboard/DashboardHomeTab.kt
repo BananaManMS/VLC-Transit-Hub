@@ -135,6 +135,7 @@ fun DashboardHomeTab(
 
     // Stations & Real-Time Location
     val dashLocation by dashboardViewModel.lastLocation.collectAsState()
+    val isNearbyContextReady by dashboardViewModel.isNearbyContextReady.collectAsState()
     val metroLocation by (metroViewModel?.lastLocation ?: remember { kotlinx.coroutines.flow.MutableStateFlow<android.location.Location?>(null) }).collectAsState()
     val allMetroStations by (metroViewModel?.allNetworkStations ?: dashboardViewModel.allMetroStations).collectAsState()
     val allCercaniasStations by (cercaniasViewModel?.allCercaniasStations ?: dashboardViewModel.allCercaniasStations).collectAsState()
@@ -471,7 +472,8 @@ fun DashboardHomeTab(
                                     onNavigateToTab(DashboardTab.Bus, 1)
                                 },
                                 onOpenHabitualLines = { showHabitualLinesSheet = true },
-                                onRequestLocationPermission = onRequestLocationPermission
+                                onRequestLocationPermission = onRequestLocationPermission,
+                                isLocationAndStationsReady = isNearbyContextReady
                             )
 
                             // Tarjetas de Transporte
@@ -567,7 +569,8 @@ fun DashboardHomeTab(
                             onNavigateToTab(DashboardTab.Bus, 1)
                         },
                         onOpenHabitualLines = { showHabitualLinesSheet = true },
-                        onRequestLocationPermission = onRequestLocationPermission
+                        onRequestLocationPermission = onRequestLocationPermission,
+                        isLocationAndStationsReady = isNearbyContextReady
                     )
 
                     IncidenciasWidget(

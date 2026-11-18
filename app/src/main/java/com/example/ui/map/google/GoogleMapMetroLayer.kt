@@ -25,32 +25,70 @@ internal fun GoogleMapMetroLayer(
     activeMetroLines: Set<String>,
     isDarkMode: Boolean,
     settledZoom: Float,
+    minLat: Double = -90.0,
+    maxLat: Double = 90.0,
+    minLon: Double = -180.0,
+    maxLon: Double = 180.0,
     context: Context,
     handleTransitItemTap: (GoogleMapTransitItem, Double, Double) -> Unit
 ) {
     val isMetroActiveFilter = showMetroStations && (mapFilter.isFavorites || mapFilter.showMetro)
     if (isMetroActiveFilter) {
-        metroStationsToRender.forEach { station ->
-            val isSelected = (selectedItem as? GoogleMapTransitItem.Metro)?.station?.id == station.id ||
-                             (selectedMapItem as? SelectedMapItem.Metro)?.station?.id == station.id
-            if (!isSelected && !isZoomForMetro && !mapFilter.isFavorites) return@forEach
+        val selectedMetroId = (selectedItem as? GoogleMapTransitItem.Metro)?.station?.id
+            ?: (selectedMapItem as? SelectedMapItem.Metro)?.station?.id
+        val hasBounds = maxLat > minLat && maxLon > minLon && minLat > -89.0
+        val latPad = if (hasBounds) ((maxLat - minLat) * 0.5).coerceAtLeast(0.025) else 0.0
+        val lonPad = if (hasBounds) ((maxLon - minLon) * 0.5).coerceAtLeast(0.025) else 0.0
+        val pMinLat = minLat - latPad
+        val pMaxLat = maxLat + latPad
+        val pMinLon = minLon - lonPad
+        val pMaxLon = maxLon + lonPad
+
+        val visibleStations = remember(
+            metroStationsToRender,
+            isZoomForMetro,
+            mapFilter.isFavorites,
+            selectedMetroId,
+            hasBounds,
+            pMinLat,
+            pMaxLat,
+            pMinLon,
+            pMaxLon
+        ) {
+            if (!isZoomForMetro && !mapFilter.isFavorites) {
+                if (selectedMetroId == null) emptyList()
+                else metroStationsToRender.filter { it.id == selectedMetroId }
+            } else if (!hasBounds || mapFilter.isFavorites) {
+                metroStationsToRender
+            } else {
+                metroStationsToRender.filter { station ->
+                    station.id == selectedMetroId ||
+                        (station.latitude in pMinLat..pMaxLat && station.longitude in pMinLon..pMaxLon)
+                }
+            }
+        }
+
+        val isDimmedByOtherMode = isBusActive || isCercaniasActive
+        val metroLod = when {
+            settledZoom < 13.5f -> 0
+            settledZoom < 15.0f -> 1
+            settledZoom < 16.0f -> 2
+            else -> 3
+        }
+        val hasActiveHighlight = activeMetroLines.isNotEmpty()
+
+        visibleStations.forEach { station ->
+            val isSelected = station.id == selectedMetroId
 
             key("METRO_${station.id}") {
                 val isFav = favoriteMetroStations.contains(station.id)
-                val isDimmedByOtherMode = isBusActive || isCercaniasActive
-                val isDimmedByMetroHighlight = activeMetroLines.isNotEmpty() && !activeMetroLines.any { station.lines.contains(it) }
+                val matchesHighlight = hasActiveHighlight && station.lines.any { activeMetroLines.contains(it) }
+                val isDimmedByMetroHighlight = hasActiveHighlight && !matchesHighlight
                 val isDimmed = !isSelected && (isDimmedByOtherMode || isDimmedByMetroHighlight)
-                val isConnected = !isSelected && activeMetroLines.isNotEmpty() && activeMetroLines.any { station.lines.contains(it) }
+                val isConnected = !isSelected && matchesHighlight
 
                 val metroAlpha = if (isSelected) 1.0f else if (isDimmed) 0.20f else 1.0f
                 val metroZIndex = if (isSelected) 45f else if (isDimmed) 2f else if (isConnected) 34f else 26f
-
-                val metroLod = when {
-                    settledZoom < 13.5f -> 0
-                    settledZoom < 15.0f -> 1
-                    settledZoom < 16.0f -> 2
-                    else -> 3
-                }
 
                 val iconInfo = remember(station.name, station.lines, isDarkMode, isFav, metroLod, isSelected) {
                     if (isSelected) {

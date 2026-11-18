@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,6 +64,7 @@ import com.example.ui.map.google.GoogleMapViewContainer
 import com.example.ui.map.MapEngine
 import com.example.ui.map.components.SaveFavoriteDialog
 import com.example.ui.map.components.SheetState
+import com.example.ui.map.components.computeNearbyRestingHeightPx
 import com.example.ui.metro.MetroViewModel
 import com.example.ui.routing.PlannerLocation
 import com.example.ui.routing.components.RouteDetailBottomSheet
@@ -180,6 +182,16 @@ fun MapScreen(
     var addressDetailSheetHeightPx by remember { mutableFloatStateOf(defaultAddressHalfHeightPx) }
     var nearbySheetState by remember { mutableStateOf(SheetState.COLLAPSED) }
     var detailSheetState by remember { mutableStateOf(DetailSheetState.HALF_EXPANDED) }
+    var detailSheetDismissSignal by remember { mutableIntStateOf(0) }
+
+    val resetDetailSheetHeightsToDefaults = {
+        busStopDetailSheetHeightPx = defaultDetailHalfHeightPx
+        metroStationDetailSheetHeightPx = defaultDetailHalfHeightPx
+        cercaniasStationDetailSheetHeightPx = defaultDetailHalfHeightPx
+        valenbisiStationDetailSheetHeightPx = defaultDetailHalfHeightPx
+        metrobusStopDetailSheetHeightPx = defaultDetailHalfHeightPx
+        addressDetailSheetHeightPx = defaultAddressHalfHeightPx
+    }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, context) {
@@ -258,7 +270,7 @@ fun MapScreen(
                 showRouteDetailSheet = false
             }
             selectedItem != null -> {
-                mapViewModel.selectItem(null)
+                detailSheetDismissSignal++
             }
             selectedItinerary != null -> {
                 onClearItinerary?.invoke()
@@ -299,6 +311,13 @@ fun MapScreen(
             isNearbySheetActive -> nearbySheetHeightPx
             else -> 0f
         }
+
+        val nearbyRestingHeightPx = computeNearbyRestingHeightPx(
+            isSearchActive = searchQuery.isNotEmpty() || isSearchFocused,
+            nearbySheetState = nearbySheetState,
+            collapsedHeightPx = with(density) { (240.dp + activeTripBottomPadding).toPx() },
+            expandedHeightPx = with(density) { (maxExpandedSheetHeight + activeTripBottomPadding).toPx() }
+        )
 
         val animatedBottomOffsetPx by animateFloatAsState(
             targetValue = rawBottomOffsetPx,
@@ -347,6 +366,8 @@ fun MapScreen(
                 isCellTowerLocation = isCellTowerLocation,
                 onSelectItem = { item ->
                     if (selectedItinerary == null) {
+                        detailSheetState = DetailSheetState.HALF_EXPANDED
+                        resetDetailSheetHeightsToDefaults()
                         mapViewModel.selectItem(item)
                     }
                 },
@@ -358,12 +379,13 @@ fun MapScreen(
                         keyboardController?.hide()
                     }
                     mapViewModel.clearDestination()
-                    if (selectedItem !is SelectedMapItem.BusStop &&
+                    if (selectedItem != null &&
+                        selectedItem !is SelectedMapItem.BusStop &&
                         selectedItem !is SelectedMapItem.Metro &&
                         selectedItem !is SelectedMapItem.Cercanias &&
                         selectedItem !is SelectedMapItem.Valenbisi &&
                         selectedItem !is SelectedMapItem.MetrobusStopItem) {
-                        mapViewModel.selectItem(null)
+                        detailSheetDismissSignal++
                     }
                     if (nearbySheetState == SheetState.EXPANDED) {
                         nearbySheetState = SheetState.COLLAPSED
@@ -633,6 +655,8 @@ fun MapScreen(
                     isSearchFocused = false
                     focusManager.clearFocus()
                     keyboardController?.hide()
+                    detailSheetState = DetailSheetState.HALF_EXPANDED
+                    resetDetailSheetHeightsToDefaults()
                     mapViewModel.selectItemFromSearch(result)
                 },
                 isSearching = isSearching,
@@ -732,6 +756,8 @@ fun MapScreen(
                 selectedTab = selectedNearbyTab,
                 onTabSelected = { mapViewModel.setSelectedNearbyTab(it) },
                 onSelectItem = { item ->
+                    detailSheetState = DetailSheetState.HALF_EXPANDED
+                    resetDetailSheetHeightsToDefaults()
                     mapViewModel.selectItem(item)
                 },
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -810,7 +836,11 @@ fun MapScreen(
                     locationToSave = res
                     showSaveFavoriteDialog = true
                 },
-                onDismissItem = { mapViewModel.selectItem(null) },
+                onDismissItem = {
+                    detailSheetState = DetailSheetState.HALF_EXPANDED
+                    resetDetailSheetHeightsToDefaults()
+                    mapViewModel.selectItem(null)
+                },
                 onBusStopDetailHeightPxChanged = { busStopDetailSheetHeightPx = it },
                 onMetroStationDetailHeightPxChanged = { metroStationDetailSheetHeightPx = it },
                 onCercaniasStationDetailHeightPxChanged = { cercaniasStationDetailSheetHeightPx = it },
@@ -820,7 +850,9 @@ fun MapScreen(
                 maxExpandedSheetHeight = maxExpandedSheetHeight,
                 detailSheetState = detailSheetState,
                 onDetailSheetStateChanged = { detailSheetState = it },
-                activeTripBottomPadding = activeTripBottomPadding
+                activeTripBottomPadding = activeTripBottomPadding,
+                dismissTargetHeightPx = nearbyRestingHeightPx,
+                dismissSignal = detailSheetDismissSignal
             )
         }
 
@@ -847,6 +879,8 @@ fun MapScreen(
                 appLanguage = appLanguage,
                 busStopAliases = busStopAliases,
                 onSelectItem = { item: SelectedMapItem ->
+                    detailSheetState = DetailSheetState.HALF_EXPANDED
+                    resetDetailSheetHeightsToDefaults()
                     mapViewModel.selectItem(item)
                 },
                 onDismiss = { disambiguationItems = null }

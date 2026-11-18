@@ -36,11 +36,23 @@ class MetroRepository(private val context: Context) {
         @Volatile
         private var cachedLineMap: Map<String, List<LineStationInfo>>? = null
 
+        @Volatile
+        private var isStationsDbVerified: Boolean = false
+
         private val stationsLock = Any()
         private val lineMapLock = Any()
 
+        fun isStationsDbVerified(): Boolean = isStationsDbVerified
+
+        fun markStationsDbVerified() {
+            isStationsDbVerified = true
+        }
+
         fun clearCache() {
-            synchronized(stationsLock) { cachedStations = null }
+            synchronized(stationsLock) {
+                cachedStations = null
+                isStationsDbVerified = false
+            }
             synchronized(lineMapLock) { cachedLineMap = null }
         }
     }

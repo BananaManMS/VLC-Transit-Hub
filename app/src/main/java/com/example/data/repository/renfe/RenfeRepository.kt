@@ -23,7 +23,7 @@ class RenfeRepository(
 ) {
     private val stationDao: CercaniasStationDao = database.cercaniasStationDao()
     val syncManager: RenfeScheduleSyncManager = RenfeScheduleSyncManager(context, database)
-    val gtfsCacheManager: GtfsCacheManager = GtfsCacheManager(context)
+    val gtfsCacheManager: GtfsCacheManager = GtfsCacheManager.getInstance(context)
 
     suspend fun syncScheduleFromRemoteIfNeeded() {
         syncManager.syncScheduleFromRemoteIfNeeded()
@@ -55,15 +55,6 @@ class RenfeRepository(
 
     suspend fun fetchGtfsRtTripUpdates(): Map<String, GtfsRtTripUpdate> {
         return gtfsCacheManager.getLiveTripUpdates()
-    }
-
-    init {
-        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-            try {
-                kotlinx.coroutines.delay(4000L)
-                syncManager.ensureScheduleLoadedInMemory()
-            } catch (_: Exception) {}
-        }
     }
 
     suspend fun getDeparturesForStation(

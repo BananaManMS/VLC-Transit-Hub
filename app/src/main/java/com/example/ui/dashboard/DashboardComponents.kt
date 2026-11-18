@@ -114,25 +114,11 @@ fun WeatherCard(
                     .fillMaxWidth()
                     .padding(vertical = 2.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = cardTextSecondaryColor,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Text(
-                        text = (data?.cityName ?: "VALENCIA").uppercase(),
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = cardTextSecondaryColor,
-                        letterSpacing = 1.sp
-                    )
-                }
+                Text(
+                    text = data?.cityName ?: "Valencia",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = cardTextColor
+                )
                 Icon(
                     imageVector = Icons.Default.OpenInNew,
                     contentDescription = null,

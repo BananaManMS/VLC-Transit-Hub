@@ -8,6 +8,10 @@ import com.example.data.database.PreferenceEntity
 import com.example.data.network.NetworkModule
 import com.example.data.repository.StaticTransitDataCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONArray
@@ -24,10 +28,15 @@ class EmtDataSyncManager(private val context: Context) {
     companion object {
         private const val TAG = "EmtDataSyncManager"
         private const val PREF_LAST_SYNC = "last_emt_data_sync"
+        private const val PREFS_SYNC = "emt_sync_prefs"
+        private const val KEY_STOPS_ETAG = "emt_stops_etag"
+        private const val KEY_SHAPES_ETAG = "emt_shapes_etag"
         private const val SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
 
         private const val STOPS_URL = "https://raw.githubusercontent.com/BananaManMS/EMT_valencia_schedule/refs/heads/data/stops.json"
         private const val SHAPES_URL = "https://raw.githubusercontent.com/BananaManMS/EMT_valencia_schedule/refs/heads/data/shapes.json"
+
+        private val syncMutex = Mutex()
 
         fun getLocalStopsFile(context: Context): File {
             return File(context.filesDir, "emt_stops.json")
@@ -43,77 +52,115 @@ class EmtDataSyncManager(private val context: Context) {
     }
 
     suspend fun syncEmtData(force: Boolean = false) = withContext(Dispatchers.IO) {
-        val db = AppDatabase.getDatabase(context)
-        val prefDao = db.preferenceDao()
-        val now = System.currentTimeMillis()
+        syncMutex.withLock {
+            val db = AppDatabase.getDatabase(context)
+            val prefDao = db.preferenceDao()
+            val syncPrefs = context.getSharedPreferences(PREFS_SYNC, Context.MODE_PRIVATE)
+            val now = System.currentTimeMillis()
 
-        val lastSyncStr = try { prefDao.getPreference(PREF_LAST_SYNC)?.value } catch (_: Exception) { null }
-        val lastSync = lastSyncStr?.toLongOrNull() ?: 0L
+            val lastSyncStr = try { prefDao.getPreference(PREF_LAST_SYNC)?.value } catch (_: Exception) { null }
+            val lastSync = lastSyncStr?.toLongOrNull() ?: 0L
 
-        val stopsFile = getLocalStopsFile(context)
-        val shapesFile = getLocalShapesFile(context)
+            val stopsFile = getLocalStopsFile(context)
+            val shapesFile = getLocalShapesFile(context)
 
-        // If files exist, DB has stops, and less than 24h passed, skip remote sync
-        val stopCount = try { db.geoportalStopDao().getStopCount() } catch (_: Exception) { 0 }
-        if (!force && (now - lastSync < SYNC_INTERVAL_MS) && stopsFile.exists() && stopsFile.length() > 1000 && stopCount > 50) {
-            return@withContext
-        }
-
-        var stopsUpdated = false
-
-        // 1. Sync EMT Stops
-        try {
-            val request = Request.Builder().url(STOPS_URL).build()
-            NetworkModule.okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val parsedStops = parseAndValidateStops(body)
-                    if (parsedStops.isNotEmpty()) {
-                        writeAtomic(stopsFile, body)
-                        db.geoportalStopDao().insertAll(parsedStops)
-                        stopsUpdated = true
-                        Log.i(TAG, "Successfully synced ${parsedStops.size} EMT stops from GitHub.")
-                    } else {
-                        Log.w(TAG, "Downloaded EMT stops failed validation (empty or corrupt).")
-                    }
-                } else {
-                    Log.w(TAG, "EMT stops HTTP request returned code ${response.code}")
-                }
+            // If files exist, DB has stops, and less than 24h passed, skip remote sync
+            val stopCount = try { db.geoportalStopDao().getStopCount() } catch (_: Exception) { 0 }
+            if (!force && (now - lastSync < SYNC_INTERVAL_MS) && stopsFile.exists() && stopsFile.length() > 1000 && stopCount > 50) {
+                return@withLock
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error downloading EMT stops from GitHub: ${e.message}")
-        }
 
-        // 2. Sync EMT Shapes
-        try {
-            val request = Request.Builder().url(SHAPES_URL).build()
-            NetworkModule.okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    if (isValidShapesJson(body)) {
-                        writeAtomic(shapesFile, body)
-                        Log.i(TAG, "Successfully synced EMT shapes from GitHub.")
-                    } else {
-                        Log.w(TAG, "Downloaded EMT shapes failed validation.")
+            var stopsUpdated = false
+
+            coroutineScope {
+                val stopsDeferred = async {
+                    try {
+                        val reqBuilder = Request.Builder().url(STOPS_URL)
+                        val cachedEtag = syncPrefs.getString(KEY_STOPS_ETAG, null)
+                        if (!force && stopsFile.exists() && stopsFile.length() > 1000 && !cachedEtag.isNullOrBlank()) {
+                            reqBuilder.header("If-None-Match", cachedEtag)
+                        }
+                        NetworkModule.okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                            when {
+                                response.code == 304 -> {
+                                    Log.d(TAG, "EMT stops unchanged on GitHub (304 Not Modified).")
+                                }
+                                response.isSuccessful -> {
+                                    val newEtag = response.header("ETag")
+                                    val body = response.body?.string() ?: ""
+                                    val parsedStops = parseAndValidateStops(body)
+                                    if (parsedStops.isNotEmpty()) {
+                                        writeAtomic(stopsFile, body)
+                                        db.geoportalStopDao().insertAll(parsedStops)
+                                        if (!newEtag.isNullOrBlank()) {
+                                            syncPrefs.edit().putString(KEY_STOPS_ETAG, newEtag).apply()
+                                        }
+                                        stopsUpdated = true
+                                        Log.i(TAG, "Successfully synced ${parsedStops.size} EMT stops from GitHub.")
+                                    } else {
+                                        Log.w(TAG, "Downloaded EMT stops failed validation (empty or corrupt).")
+                                    }
+                                }
+                                else -> {
+                                    Log.w(TAG, "EMT stops HTTP request returned code ${response.code}")
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error downloading EMT stops from GitHub: ${e.message}")
                     }
-                } else {
-                    Log.w(TAG, "EMT shapes HTTP request returned code ${response.code}")
                 }
+
+                val shapesDeferred = async {
+                    try {
+                        val reqBuilder = Request.Builder().url(SHAPES_URL)
+                        val cachedEtag = syncPrefs.getString(KEY_SHAPES_ETAG, null)
+                        if (!force && shapesFile.exists() && shapesFile.length() > 500 && !cachedEtag.isNullOrBlank()) {
+                            reqBuilder.header("If-None-Match", cachedEtag)
+                        }
+                        NetworkModule.okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                            when {
+                                response.code == 304 -> {
+                                    Log.d(TAG, "EMT shapes unchanged on GitHub (304 Not Modified).")
+                                }
+                                response.isSuccessful -> {
+                                    val newEtag = response.header("ETag")
+                                    val body = response.body?.string() ?: ""
+                                    if (isValidShapesJson(body)) {
+                                        writeAtomic(shapesFile, body)
+                                        if (!newEtag.isNullOrBlank()) {
+                                            syncPrefs.edit().putString(KEY_SHAPES_ETAG, newEtag).apply()
+                                        }
+                                        Log.i(TAG, "Successfully synced EMT shapes from GitHub.")
+                                    } else {
+                                        Log.w(TAG, "Downloaded EMT shapes failed validation.")
+                                    }
+                                }
+                                else -> {
+                                    Log.w(TAG, "EMT shapes HTTP request returned code ${response.code}")
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error downloading EMT shapes from GitHub: ${e.message}")
+                    }
+                }
+
+                stopsDeferred.await()
+                shapesDeferred.await()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error downloading EMT shapes from GitHub: ${e.message}")
-        }
 
-        // 3. Update Last Sync timestamp in preferences
-        try {
-            prefDao.insertPreference(PreferenceEntity(PREF_LAST_SYNC, now.toString()))
-        } catch (e: Exception) {
-            Log.e(TAG, "Error saving last EMT sync preference: ${e.message}")
-        }
+            // 3. Update Last Sync timestamp in preferences
+            try {
+                prefDao.insertPreference(PreferenceEntity(PREF_LAST_SYNC, now.toString()))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving last EMT sync preference: ${e.message}")
+            }
 
-        // 4. If stops were updated, notify memory cache
-        if (stopsUpdated) {
-            StaticTransitDataCache.getOrLoadEmtStops(context)
+            // 4. If stops were updated, notify memory cache
+            if (stopsUpdated) {
+                StaticTransitDataCache.getOrLoadEmtStops(context)
+            }
         }
     }
 

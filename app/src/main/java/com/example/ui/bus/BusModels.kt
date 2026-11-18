@@ -2,8 +2,7 @@ package com.example.ui.bus
 
 enum class BusFilterSource {
     GPS_USER,
-    FAVORITES_BUS,
-    METRO_STATION
+    FAVORITES_BUS
 }
 
 enum class EmtQuickFilter {

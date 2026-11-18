@@ -93,7 +93,9 @@ fun CercaniasStationBottomSheet(
     onSheetStateChanged: (DetailSheetState) -> Unit = {},
     onHeightPxChanged: ((Float) -> Unit)? = null,
     activeTripBottomPadding: Dp = 0.dp,
-    dismissOnCollapse: Boolean = false
+    dismissOnCollapse: Boolean = false,
+    dismissTargetHeightPx: Float = 0f,
+    dismissSignal: Int = 0
 ) {
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
@@ -126,7 +128,16 @@ fun CercaniasStationBottomSheet(
         )
     }
 
+    val dismissController = rememberBottomSheetDismissController(
+        heightAnimatable = heightAnimatable,
+        dismissTargetHeightPx = dismissTargetHeightPx,
+        onDismiss = onDismiss,
+        resetKey = station.stop_id,
+        dismissSignal = dismissSignal
+    )
+
     LaunchedEffect(sheetState, collapsedPx, halfExpandedPx, fullyExpandedPx) {
+        if (dismissController.isDismissing) return@LaunchedEffect
         val target = when (sheetState) {
             DetailSheetState.COLLAPSED -> collapsedPx
             DetailSheetState.HALF_EXPANDED -> halfExpandedPx
@@ -145,19 +156,14 @@ fun CercaniasStationBottomSheet(
 
     val currentHeightPx = heightAnimatable.value
     val panelHeight = with(density) { currentHeightPx.toDp() }
+    val reportedHeightPx = dismissController.reportedHeightPx(currentHeightPx)
 
     SideEffect {
-        onHeightPxChanged?.invoke(currentHeightPx)
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            onHeightPxChanged?.invoke(0f)
-        }
+        onHeightPxChanged?.invoke(reportedHeightPx)
     }
 
     val dismissSheet: () -> Unit = {
-        onDismiss()
+        dismissController.triggerDismiss()
     }
 
     val listState = rememberLazyListState()
@@ -185,7 +191,7 @@ fun CercaniasStationBottomSheet(
     }
 
     LaunchedEffect(listState.isScrollInProgress) {
-        if (!listState.isScrollInProgress && !heightAnimatable.isRunning) {
+        if (!dismissController.isDismissing && !listState.isScrollInProgress && !heightAnimatable.isRunning) {
             val currentHeight = heightAnimatable.value
             val isStable = kotlin.math.abs(currentHeight - collapsedPx) < 2f ||
                            kotlin.math.abs(currentHeight - halfExpandedPx) < 2f ||

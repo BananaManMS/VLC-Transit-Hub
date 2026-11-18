@@ -32,9 +32,6 @@ class LiveReconciliationEngine(
 ) {
     private val nearbyStopCache = ConcurrentHashMap<String, String>()
 
-    @Volatile
-    private var cachedActiveStops: List<com.example.data.database.GeoportalStopEntity>? = null
-
     companion object {
         private const val TAG = "LiveReconciliationEng"
     }
@@ -770,19 +767,19 @@ class LiveReconciliationEngine(
         nearbyStopCache[cacheKey]?.let { return@withContext it }
 
         try {
-            var activeStops = cachedActiveStops
-            if (activeStops == null) {
-                try {
-                    val db = com.example.data.database.AppDatabase.getDatabase(ctx)
-                    activeStops = db.geoportalStopDao().getAllActiveStops()
+            var activeStops = com.example.data.repository.StaticTransitDataCache
+                .getOrLoadEmtStops(ctx)
+                .filter { it.suprimida == 0 }
+            if (activeStops.isEmpty()) {
+                activeStops = try {
+                    com.example.data.database.AppDatabase.getDatabase(ctx).geoportalStopDao().getAllActiveStops()
                 } catch (e: Exception) {
                     Log.w(TAG, "Error fetching stops from DB: ${e.message}")
+                    emptyList()
                 }
-
-                if (activeStops.isNullOrEmpty()) {
-                    activeStops = BusMapper.loadStopsFromAssets(ctx)
-                }
-                cachedActiveStops = activeStops
+            }
+            if (activeStops.isEmpty()) {
+                activeStops = BusMapper.loadStopsFromAssets(ctx)
             }
 
             if (activeStops.isNullOrEmpty()) return@withContext null

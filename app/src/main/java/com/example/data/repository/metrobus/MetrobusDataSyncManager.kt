@@ -8,6 +8,10 @@ import com.example.data.database.PreferenceEntity
 import com.example.data.network.NetworkModule
 import com.example.data.repository.StaticTransitDataCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONArray
@@ -24,11 +28,17 @@ object MetrobusDataSyncManager {
 
     private const val TAG = "MetrobusDataSyncManager"
     private const val PREF_LAST_SYNC = "last_metrobus_data_sync"
+    private const val PREFS_SYNC = "metrobus_sync_prefs"
+    private const val KEY_STOPS_ETAG = "metrobus_stops_etag"
+    private const val KEY_LINES_ETAG = "metrobus_lines_etag"
+    private const val KEY_SHAPES_ETAG = "metrobus_shapes_etag"
     private const val SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
 
     private const val STOPS_URL = "https://raw.githubusercontent.com/BananaManMS/metrobus_valencia_schedule/refs/heads/main/data/metrobus_stops.json"
     private const val LINES_URL = "https://raw.githubusercontent.com/BananaManMS/metrobus_valencia_schedule/refs/heads/main/data/metrobus_lines.json"
     private const val SHAPES_URL = "https://raw.githubusercontent.com/BananaManMS/metrobus_valencia_schedule/refs/heads/main/data/metrobus_shapes.json"
+
+    private val syncMutex = Mutex()
 
     fun getLocalStopsFile(context: Context): File {
         return File(context.filesDir, "metrobus_stops.json")
@@ -62,86 +72,146 @@ object MetrobusDataSyncManager {
     }
 
     suspend fun syncIfNeeded(context: Context, force: Boolean = false) = withContext(Dispatchers.IO) {
-        val db = AppDatabase.getDatabase(context)
-        val prefDao = db.preferenceDao()
-        val now = System.currentTimeMillis()
+        syncMutex.withLock {
+            val db = AppDatabase.getDatabase(context)
+            val prefDao = db.preferenceDao()
+            val syncPrefs = context.getSharedPreferences(PREFS_SYNC, Context.MODE_PRIVATE)
+            val now = System.currentTimeMillis()
 
-        val lastSyncStr = try { prefDao.getPreference(PREF_LAST_SYNC)?.value } catch (_: Exception) { null }
-        val lastSync = lastSyncStr?.toLongOrNull() ?: 0L
+            val lastSyncStr = try { prefDao.getPreference(PREF_LAST_SYNC)?.value } catch (_: Exception) { null }
+            val lastSync = lastSyncStr?.toLongOrNull() ?: 0L
 
-        val stopsFile = getLocalStopsFile(context)
-        val linesFile = getLocalLinesFile(context)
-        val shapesFile = getLocalShapesFile(context)
+            val stopsFile = getLocalStopsFile(context)
+            val linesFile = getLocalLinesFile(context)
+            val shapesFile = getLocalShapesFile(context)
 
-        val stopCount = try { db.metrobusStopDao().getStopCount() } catch (_: Exception) { 0 }
+            val stopCount = try { db.metrobusStopDao().getStopCount() } catch (_: Exception) { 0 }
 
-        // If local files exist, DB is seeded, and last sync is within 24h, skip
-        if (!force && (now - lastSync < SYNC_INTERVAL_MS) && stopsFile.exists() && linesFile.exists() && stopCount > 50) {
-            return@withContext
-        }
+            // If local files exist, DB is seeded, and last sync is within 24h, skip
+            if (!force && (now - lastSync < SYNC_INTERVAL_MS) && stopsFile.exists() && linesFile.exists() && stopCount > 50) {
+                return@withLock
+            }
 
-        var stopsUpdated = false
+            var stopsUpdated = false
+            var linesOrShapesUpdated = false
 
-        // 1. Sync Stops
-        try {
-            val request = Request.Builder().url(STOPS_URL).build()
-            NetworkModule.okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val stops = parseStopsJson(body)
-                    if (stops.isNotEmpty()) {
-                        writeAtomic(stopsFile, body)
-                        db.metrobusStopDao().insertAll(stops)
-                        stopsUpdated = true
-                        Log.i(TAG, "Successfully synced ${stops.size} Metrobús stops from GitHub.")
+            coroutineScope {
+                val stopsDeferred = async {
+                    try {
+                        val reqBuilder = Request.Builder().url(STOPS_URL)
+                        val cachedEtag = syncPrefs.getString(KEY_STOPS_ETAG, null)
+                        if (!force && stopsFile.exists() && stopsFile.length() > 500 && !cachedEtag.isNullOrBlank()) {
+                            reqBuilder.header("If-None-Match", cachedEtag)
+                        }
+                        NetworkModule.okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                            when {
+                                response.code == 304 -> {
+                                    Log.d(TAG, "Metrobús stops unchanged on GitHub (304 Not Modified).")
+                                }
+                                response.isSuccessful -> {
+                                    val newEtag = response.header("ETag")
+                                    val body = response.body?.string() ?: ""
+                                    val stops = parseStopsJson(body)
+                                    if (stops.isNotEmpty()) {
+                                        writeAtomic(stopsFile, body)
+                                        db.metrobusStopDao().insertAll(stops)
+                                        if (!newEtag.isNullOrBlank()) {
+                                            syncPrefs.edit().putString(KEY_STOPS_ETAG, newEtag).apply()
+                                        }
+                                        stopsUpdated = true
+                                        Log.i(TAG, "Successfully synced ${stops.size} Metrobús stops from GitHub.")
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error downloading Metrobús stops from GitHub: ${e.message}")
                     }
                 }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error downloading Metrobús stops from GitHub: ${e.message}")
-        }
 
-        // 2. Sync Lines
-        try {
-            val request = Request.Builder().url(LINES_URL).build()
-            NetworkModule.okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    if (isValidJson(body)) {
-                        writeAtomic(linesFile, body)
-                        Log.i(TAG, "Successfully synced Metrobús lines from GitHub.")
+                val linesDeferred = async {
+                    try {
+                        val reqBuilder = Request.Builder().url(LINES_URL)
+                        val cachedEtag = syncPrefs.getString(KEY_LINES_ETAG, null)
+                        if (!force && linesFile.exists() && linesFile.length() > 200 && !cachedEtag.isNullOrBlank()) {
+                            reqBuilder.header("If-None-Match", cachedEtag)
+                        }
+                        NetworkModule.okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                            when {
+                                response.code == 304 -> {
+                                    Log.d(TAG, "Metrobús lines unchanged on GitHub (304 Not Modified).")
+                                }
+                                response.isSuccessful -> {
+                                    val newEtag = response.header("ETag")
+                                    val body = response.body?.string() ?: ""
+                                    if (isValidJson(body)) {
+                                        writeAtomic(linesFile, body)
+                                        if (!newEtag.isNullOrBlank()) {
+                                            syncPrefs.edit().putString(KEY_LINES_ETAG, newEtag).apply()
+                                        }
+                                        linesOrShapesUpdated = true
+                                        Log.i(TAG, "Successfully synced Metrobús lines from GitHub.")
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error downloading Metrobús lines from GitHub: ${e.message}")
                     }
                 }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error downloading Metrobús lines from GitHub: ${e.message}")
-        }
 
-        // 3. Sync Shapes
-        try {
-            val request = Request.Builder().url(SHAPES_URL).build()
-            NetworkModule.okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    if (isValidJson(body)) {
-                        writeAtomic(shapesFile, body)
-                        Log.i(TAG, "Successfully synced Metrobús shapes from GitHub.")
+                val shapesDeferred = async {
+                    try {
+                        val reqBuilder = Request.Builder().url(SHAPES_URL)
+                        val cachedEtag = syncPrefs.getString(KEY_SHAPES_ETAG, null)
+                        if (!force && shapesFile.exists() && shapesFile.length() > 200 && !cachedEtag.isNullOrBlank()) {
+                            reqBuilder.header("If-None-Match", cachedEtag)
+                        }
+                        NetworkModule.okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                            when {
+                                response.code == 304 -> {
+                                    Log.d(TAG, "Metrobús shapes unchanged on GitHub (304 Not Modified).")
+                                }
+                                response.isSuccessful -> {
+                                    val newEtag = response.header("ETag")
+                                    val body = response.body?.string() ?: ""
+                                    if (isValidJson(body)) {
+                                        writeAtomic(shapesFile, body)
+                                        if (!newEtag.isNullOrBlank()) {
+                                            syncPrefs.edit().putString(KEY_SHAPES_ETAG, newEtag).apply()
+                                        }
+                                        linesOrShapesUpdated = true
+                                        Log.i(TAG, "Successfully synced Metrobús shapes from GitHub.")
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error downloading Metrobús shapes from GitHub: ${e.message}")
                     }
                 }
+
+                stopsDeferred.await()
+                linesDeferred.await()
+                shapesDeferred.await()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error downloading Metrobús shapes from GitHub: ${e.message}")
-        }
 
-        // 4. Update last sync timestamp
-        try {
-            prefDao.insertPreference(PreferenceEntity(PREF_LAST_SYNC, now.toString()))
-        } catch (e: Exception) {
-            Log.e(TAG, "Error saving last Metrobús sync preference: ${e.message}")
-        }
+            // 4. Update last sync timestamp
+            try {
+                prefDao.insertPreference(PreferenceEntity(PREF_LAST_SYNC, now.toString()))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving last Metrobús sync preference: ${e.message}")
+            }
 
-        if (stopsUpdated) {
-            StaticTransitDataCache.getOrLoadMetrobusStops(context)
+            if (linesOrShapesUpdated) {
+                com.example.data.repository.MetrobusRepository.invalidateLinesAndShapesCache()
+            }
+
+            if (stopsUpdated) {
+                com.example.data.repository.MetrobusRepository.invalidateStopsCache()
+                StaticTransitDataCache.invalidateMetrobusCache()
+                StaticTransitDataCache.getOrLoadMetrobusStops(context)
+            }
         }
     }
 

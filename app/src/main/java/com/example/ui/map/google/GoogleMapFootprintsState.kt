@@ -19,6 +19,33 @@ data class GoogleMapFootprintsState(
     val isFootprintsLoading: Boolean = false
 )
 
+private object GoogleMapFootprintsConversionCache {
+    @Volatile
+    var cachedPolygonsRef: List<MetroStationFootprintsOverlayManager.StationPolygonData>? = null
+    @Volatile
+    var cachedFootprints: List<GoogleMapStationFootprint> = emptyList()
+
+    fun getOrConvert(
+        polygons: List<MetroStationFootprintsOverlayManager.StationPolygonData>
+    ): List<GoogleMapStationFootprint> {
+        if (cachedPolygonsRef === polygons) return cachedFootprints
+        synchronized(this) {
+            if (cachedPolygonsRef === polygons) return cachedFootprints
+            val converted = polygons.map { data ->
+                GoogleMapStationFootprint(
+                    points = data.points.map { LatLng(it.latitude, it.longitude) },
+                    stationName = data.stationName,
+                    centerLat = data.centerLat,
+                    centerLon = data.centerLon
+                )
+            }
+            cachedFootprints = converted
+            cachedPolygonsRef = polygons
+            return converted
+        }
+    }
+}
+
 /**
  * Manages asynchronous loading and caching of Metro station footprints (polygons)
  * and station access points (escaleras, ascensores).
@@ -34,33 +61,35 @@ fun rememberGoogleMapFootprints(
     var metroAccessPoints by remember(showMetroFootprints) {
         mutableStateOf<List<MetroStationFootprintsOverlayManager.AccessPointData>>(emptyList())
     }
-    var isFootprintsLoading by remember { mutableStateOf(showMetroFootprints) }
+    var isFootprintsLoading by remember {
+        mutableStateOf(showMetroFootprints && !MetroStationFootprintsOverlayManager.isLoadedState.value)
+    }
 
     LaunchedEffect(showMetroFootprints) {
         if (showMetroFootprints) {
             if (metroStationFootprints.isEmpty()) {
-                isFootprintsLoading = true
-                withContext(Dispatchers.IO) {
-                    try {
-                        val polygons = MetroStationFootprintsOverlayManager.ensureLoaded(context)
-                        val convertedFootprints = polygons.map { data ->
-                            GoogleMapStationFootprint(
-                                points = data.points.map { LatLng(it.latitude, it.longitude) },
-                                stationName = data.stationName,
-                                centerLat = data.centerLat,
-                                centerLon = data.centerLon
-                            )
+                if (MetroStationFootprintsOverlayManager.isLoadedState.value) {
+                    val polygons = MetroStationFootprintsOverlayManager.getLoadedPolygonsData()
+                    metroStationFootprints = GoogleMapFootprintsConversionCache.getOrConvert(polygons)
+                    metroAccessPoints = MetroStationFootprintsOverlayManager.getLoadedAccessPointsData()
+                    isFootprintsLoading = false
+                } else {
+                    isFootprintsLoading = true
+                    withContext(Dispatchers.IO) {
+                        try {
+                            val polygons = MetroStationFootprintsOverlayManager.ensureLoaded(context)
+                            val convertedFootprints = GoogleMapFootprintsConversionCache.getOrConvert(polygons)
+                            val accesses = MetroStationFootprintsOverlayManager.getLoadedAccessPointsData()
+                            withContext(Dispatchers.Main) {
+                                metroStationFootprints = convertedFootprints
+                                metroAccessPoints = accesses
+                                isFootprintsLoading = false
+                            }
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Log.e("GoogleMapFootprints", "Error loading footprints", e)
+                            withContext(Dispatchers.Main) { isFootprintsLoading = false }
                         }
-                        val accesses = MetroStationFootprintsOverlayManager.getLoadedAccessPointsData()
-                        withContext(Dispatchers.Main) {
-                            metroStationFootprints = convertedFootprints
-                            metroAccessPoints = accesses
-                            isFootprintsLoading = false
-                        }
-                    } catch (e: Exception) {
-                        if (e is kotlinx.coroutines.CancellationException) throw e
-                        Log.e("GoogleMapFootprints", "Error loading footprints", e)
-                        withContext(Dispatchers.Main) { isFootprintsLoading = false }
                     }
                 }
             }

@@ -28,8 +28,10 @@ object MetroStationFootprintsOverlayManager {
     private val _isLoadedState = kotlinx.coroutines.flow.MutableStateFlow(false)
     val isLoadedState: kotlinx.coroutines.flow.StateFlow<Boolean> = _isLoadedState
 
-    private val stationPolygonsData = java.util.concurrent.CopyOnWriteArrayList<StationPolygonData>()
-    private val accessPointsData = java.util.concurrent.CopyOnWriteArrayList<AccessPointData>()
+    @Volatile
+    private var stationPolygonsData: List<StationPolygonData> = emptyList()
+    @Volatile
+    private var accessPointsData: List<AccessPointData> = emptyList()
 
     private val cachedStationPolygons = mutableListOf<Pair<Polygon, StationPolygonData>>()
     private val cachedAccessMarkers = mutableListOf<Pair<Marker, AccessPointData>>()
@@ -50,14 +52,14 @@ object MetroStationFootprintsOverlayManager {
         val stationAreaId: String = ""
     )
 
-    fun getLoadedPolygonsData(): List<StationPolygonData> = stationPolygonsData.toList()
-    fun getLoadedAccessPointsData(): List<AccessPointData> = accessPointsData.toList()
+    fun getLoadedPolygonsData(): List<StationPolygonData> = stationPolygonsData
+    fun getLoadedAccessPointsData(): List<AccessPointData> = accessPointsData
 
     suspend fun ensureLoaded(context: Context): List<StationPolygonData> {
-        if (isLoaded) return stationPolygonsData.toList()
+        if (isLoaded) return stationPolygonsData
         return withContext(Dispatchers.IO) {
             loadGeoJsonDataInternal(context.applicationContext)
-            stationPolygonsData.toList()
+            stationPolygonsData
         }
     }
 
@@ -114,9 +116,13 @@ object MetroStationFootprintsOverlayManager {
                         val ring = coordsArray.optJSONArray(0) ?: continue
                         val pts = parseRingCoordinates(ring)
                         if (pts.isNotEmpty()) {
-                            val avgLat = pts.map { it.latitude }.average()
-                            val avgLon = pts.map { it.longitude }.average()
-                            loadedPolygonsList.add(StationPolygonData(pts, stationName, avgLat, avgLon))
+                            var sumLat = 0.0
+                            var sumLon = 0.0
+                            for (p in pts) {
+                                sumLat += p.latitude
+                                sumLon += p.longitude
+                            }
+                            loadedPolygonsList.add(StationPolygonData(pts, stationName, sumLat / pts.size, sumLon / pts.size))
                         }
                     } else if (geomType == "MultiPolygon") {
                         for (j in 0 until coordsArray.length()) {
@@ -124,9 +130,13 @@ object MetroStationFootprintsOverlayManager {
                             val ring = polyArray.optJSONArray(0) ?: continue
                             val pts = parseRingCoordinates(ring)
                             if (pts.isNotEmpty()) {
-                                val avgLat = pts.map { it.latitude }.average()
-                                val avgLon = pts.map { it.longitude }.average()
-                                loadedPolygonsList.add(StationPolygonData(pts, stationName, avgLat, avgLon))
+                                var sumLat = 0.0
+                                var sumLon = 0.0
+                                for (p in pts) {
+                                    sumLat += p.latitude
+                                    sumLon += p.longitude
+                                }
+                                loadedPolygonsList.add(StationPolygonData(pts, stationName, sumLat / pts.size, sumLon / pts.size))
                             }
                         }
                     }
@@ -178,10 +188,8 @@ object MetroStationFootprintsOverlayManager {
                 }
             }
 
-            stationPolygonsData.clear()
-            stationPolygonsData.addAll(loadedPolygonsList)
-            accessPointsData.clear()
-            accessPointsData.addAll(loadedAccessPoints)
+            stationPolygonsData = loadedPolygonsList
+            accessPointsData = loadedAccessPoints
 
             isLoaded = true
             _isLoadedState.value = true

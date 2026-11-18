@@ -11,6 +11,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +38,7 @@ internal fun GoogleMapUserLocationMarker(
     userBearing: Float?,
     isCellTowerLocation: Boolean,
     context: Context,
-    cameraBearing: Float = 0f
+    cameraBearingProvider: () -> Float = { 0f }
 ) {
     // 1. Smooth sliding position animation (duration 450ms matching OSMdroid UserLocationMarker)
     val targetLatLng = remember(userLocation.latitude, userLocation.longitude) {
@@ -62,12 +63,14 @@ internal fun GoogleMapUserLocationMarker(
         }
     }
 
-    val animatedLatLng = remember(animProgress.value, prevLatLng, currentTargetLatLng) {
-        val f = animProgress.value.toDouble()
-        LatLng(
-            prevLatLng.latitude + (currentTargetLatLng.latitude - prevLatLng.latitude) * f,
-            prevLatLng.longitude + (currentTargetLatLng.longitude - prevLatLng.longitude) * f
-        )
+    val animatedLatLng by remember {
+        derivedStateOf {
+            val f = animProgress.value.toDouble()
+            LatLng(
+                prevLatLng.latitude + (currentTargetLatLng.latitude - prevLatLng.latitude) * f,
+                prevLatLng.longitude + (currentTargetLatLng.longitude - prevLatLng.longitude) * f
+            )
+        }
     }
 
     // 2. Hardware Orientation Sensor for real-time heading
@@ -140,7 +143,11 @@ internal fun GoogleMapUserLocationMarker(
         markerState.position = animatedLatLng
     }
 
-    val screenBearing = if (isCellTowerLocation) 0f else (smoothedBearing - cameraBearing + 360f) % 360f
+    val screenBearing by remember(isCellTowerLocation) {
+        derivedStateOf {
+            if (isCellTowerLocation) 0f else (smoothedBearing - cameraBearingProvider() + 360f) % 360f
+        }
+    }
 
     // flat = false ensures billboard pass rendering with maximum priority (zIndex = 1000f) above all map elements
     Marker(

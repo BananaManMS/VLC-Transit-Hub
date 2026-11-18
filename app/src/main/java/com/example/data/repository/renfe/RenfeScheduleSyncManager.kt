@@ -21,25 +21,24 @@ class RenfeScheduleSyncManager(
     private val stationDao = database.cercaniasStationDao()
     private val localScheduleFile: File = File(context.filesDir, "cercanias_valencia_schedule.json")
     private val tempScheduleFile: File = File(context.filesDir, "cercanias_valencia_schedule_temp.json")
-
-    private val stationSchedulesMap = java.util.concurrent.ConcurrentHashMap<String, List<RenfeScheduleItem>>()
-    
-    @Volatile
-    private var tripDestinationMap: Map<String, String>? = null
-    
-    private var stationNameMap: Map<String, String>? = null
+    private val syncPrefs by lazy { context.getSharedPreferences("renfe_sync_prefs", Context.MODE_PRIVATE) }
 
     suspend fun ensureScheduleLoadedInMemory() = withContext(Dispatchers.IO) {
         if (stationSchedulesMap.isNotEmpty()) return@withContext
-        try {
-            val jsonString = getScheduleJsonString()
-            if (jsonString.isNotBlank()) {
-                val jsonArray = JSONArray(jsonString)
-                loadAndSaveScheduleJson(jsonArray)
-                buildTripDestinationMapFromAssets()
+        loadScheduleMutex.withLock {
+            if (stationSchedulesMap.isNotEmpty()) return@withLock
+            com.example.util.StartupProfiler.log("RenfeSync", "ensureScheduleLoadedInMemory() parsing schedule JSON")
+            try {
+                val jsonString = getScheduleJsonString()
+                if (jsonString.isNotBlank()) {
+                    val jsonArray = JSONArray(jsonString)
+                    loadAndSaveScheduleJson(jsonArray)
+                    buildTripDestinationMapFromAssets()
+                }
+            } catch (e: Exception) {
+                Log.e("RenfeScheduleSyncManager", "Error loading station horarios into memory: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e("RenfeScheduleSyncManager", "Error loading station horarios into memory: ${e.message}")
+            com.example.util.StartupProfiler.log("RenfeSync", "ensureScheduleLoadedInMemory() done (${stationSchedulesMap.size} stations)")
         }
     }
 
@@ -148,86 +147,109 @@ class RenfeScheduleSyncManager(
     }
 
     suspend fun syncScheduleFromRemoteIfNeeded() = withContext(Dispatchers.IO) {
-        var currentDbCount = try { stationDao.getStationCount() } catch (e: Exception) { 0 }
-        if (currentDbCount < 10) {
-            initDatabaseFromAssetsIfNeeded()
-            currentDbCount = try { stationDao.getStationCount() } catch (e: Exception) { 0 }
-        }
-
-        val lastSyncStr = database.preferenceDao().getPreference("last_schedule_sync")?.value
-        val now = System.currentTimeMillis()
-        val lastSync = lastSyncStr?.toLongOrNull() ?: 0L
-        
-        // Trust existence and size (>1000 bytes) instead of parsing the entire 689KB JSON
-        val isCacheValid = localScheduleFile.exists() && localScheduleFile.length() > 1000
-
-        // Only skip remote sync if DB is complete, local cache is valid, and last sync was less than 12h ago
-        if (now - lastSync < 12 * 60 * 60 * 1000L && currentDbCount >= 10 && isCacheValid) {
-            return@withContext
-        }
-
-        try {
-            val fastSyncClient = com.example.data.network.NetworkModule.okHttpClient.newBuilder()
-                .connectTimeout(4000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                .readTimeout(4000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                .callTimeout(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                .build()
-
-            val request = okhttp3.Request.Builder()
-                .url("https://raw.githubusercontent.com/BananaManMS/cercanias-vlc-schedule/refs/heads/main/cercanias_valencia_schedule.json")
-                .build()
-
-            fastSyncClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val text = response.body?.string() ?: ""
-                    if (isValidScheduleJson(text)) {
-                        if (saveValidatedSchedule(text, now)) {
-                            Log.i("RenfeScheduleSyncManager", "Remote schedule updated and validated successfully.")
-                        }
-                    } else {
-                        Log.w("RenfeScheduleSyncManager", "Downloaded remote schedule failed validation. Retaining local asset/cache.")
-                    }
-                } else {
-                    Log.w("RenfeScheduleSyncManager", "Remote schedule returned HTTP ${response.code}")
-                }
+        syncMutex.withLock {
+            var currentDbCount = try { stationDao.getStationCount() } catch (e: Exception) { 0 }
+            if (currentDbCount < 10) {
+                initDatabaseFromAssetsIfNeeded()
+                currentDbCount = try { stationDao.getStationCount() } catch (e: Exception) { 0 }
             }
-        } catch (e: java.io.FileNotFoundException) {
-            Log.w("RenfeScheduleSyncManager", "Remote schedule file not found (404), keeping local schedule.")
-        } catch (e: Exception) {
-            Log.e("RenfeScheduleSyncManager", "Error syncing schedule: ${e.message}")
-        }
 
-        // Final safeguard: if DB is still empty after attempt, force asset load
-        if (stationDao.getStationCount() == 0) {
-            initDatabaseFromAssetsIfNeeded()
+            val lastSyncStr = database.preferenceDao().getPreference("last_schedule_sync")?.value
+            val now = System.currentTimeMillis()
+            val lastSync = lastSyncStr?.toLongOrNull() ?: 0L
+
+            // Trust existence and size (>1000 bytes) instead of parsing the entire 689KB JSON
+            val isCacheValid = localScheduleFile.exists() && localScheduleFile.length() > 1000
+
+            // Only skip remote sync if DB is complete, local cache is valid, and last sync was less than 12h ago
+            if (now - lastSync < 12 * 60 * 60 * 1000L && currentDbCount >= 10 && isCacheValid) {
+                return@withLock
+            }
+
+            try {
+                val fastSyncClient = com.example.data.network.NetworkModule.okHttpClient.newBuilder()
+                    .connectTimeout(4000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .readTimeout(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .callTimeout(8000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .build()
+
+                val storedEtag = syncPrefs.getString(KEY_SCHEDULE_ETAG, null)
+                val reqBuilder = okhttp3.Request.Builder()
+                    .url("https://raw.githubusercontent.com/BananaManMS/cercanias-vlc-schedule/refs/heads/main/cercanias_valencia_schedule.json")
+                if (isCacheValid && !storedEtag.isNullOrBlank()) {
+                    reqBuilder.header("If-None-Match", storedEtag)
+                }
+
+                fastSyncClient.newCall(reqBuilder.build()).execute().use { response ->
+                    when {
+                        response.code == 304 -> {
+                            database.preferenceDao().insertPreference(
+                                com.example.data.database.PreferenceEntity("last_schedule_sync", now.toString())
+                            )
+                            Log.i("RenfeScheduleSyncManager", "Remote schedule unchanged (304 Not Modified).")
+                        }
+                        response.isSuccessful -> {
+                            val newEtag = response.header("ETag")
+                            val text = response.body?.string() ?: ""
+                            if (isValidScheduleJson(text)) {
+                                if (saveValidatedSchedule(text, now)) {
+                                    if (!newEtag.isNullOrBlank()) {
+                                        syncPrefs.edit().putString(KEY_SCHEDULE_ETAG, newEtag).apply()
+                                    }
+                                    Log.i("RenfeScheduleSyncManager", "Remote schedule updated and validated successfully.")
+                                }
+                            } else {
+                                Log.w("RenfeScheduleSyncManager", "Downloaded remote schedule failed validation. Retaining local asset/cache.")
+                            }
+                        }
+                        else -> {
+                            Log.w("RenfeScheduleSyncManager", "Remote schedule returned HTTP ${response.code}")
+                        }
+                    }
+                }
+            } catch (e: java.io.FileNotFoundException) {
+                Log.w("RenfeScheduleSyncManager", "Remote schedule file not found (404), keeping local schedule.")
+            } catch (e: Exception) {
+                Log.e("RenfeScheduleSyncManager", "Error syncing schedule: ${e.message}")
+            }
+
+            // Final safeguard: if DB is still empty after attempt, force asset load
+            if (stationDao.getStationCount() == 0) {
+                initDatabaseFromAssetsIfNeeded()
+            }
         }
     }
 
     suspend fun forceSyncScheduleFromRemote(): Boolean = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        reloadFromAssets()
+        syncMutex.withLock {
+            val now = System.currentTimeMillis()
+            try {
+                val request = okhttp3.Request.Builder()
+                    .url("https://raw.githubusercontent.com/BananaManMS/cercanias-vlc-schedule/refs/heads/main/cercanias_valencia_schedule.json")
+                    .build()
 
-        try {
-            val request = okhttp3.Request.Builder()
-                .url("https://raw.githubusercontent.com/BananaManMS/cercanias-vlc-schedule/refs/heads/main/cercanias_valencia_schedule.json")
-                .build()
-
-            com.example.data.network.NetworkModule.okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val text = response.body?.string() ?: ""
-                    if (isValidScheduleJson(text)) {
-                        if (saveValidatedSchedule(text, now)) {
-                            Log.i("RenfeScheduleSyncManager", "Force sync remote schedule succeeded.")
-                            return@withContext true
+                com.example.data.network.NetworkModule.okHttpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val newEtag = response.header("ETag")
+                        val text = response.body?.string() ?: ""
+                        if (isValidScheduleJson(text)) {
+                            if (saveValidatedSchedule(text, now)) {
+                                if (!newEtag.isNullOrBlank()) {
+                                    syncPrefs.edit().putString(KEY_SCHEDULE_ETAG, newEtag).apply()
+                                }
+                                Log.i("RenfeScheduleSyncManager", "Force sync remote schedule succeeded.")
+                                return@withLock true
+                            }
                         }
                     }
                 }
+            } catch (e: Exception) {
+                Log.e("RenfeScheduleSyncManager", "Error force syncing schedule: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e("RenfeScheduleSyncManager", "Error force syncing schedule: ${e.message}")
-        }
 
-        return@withContext true
+            reloadFromAssets()
+            return@withLock true
+        }
     }
 
     private suspend fun saveValidatedSchedule(text: String, timestamp: Long): Boolean {
@@ -252,6 +274,7 @@ class RenfeScheduleSyncManager(
             database.preferenceDao().insertPreference(
                 com.example.data.database.PreferenceEntity("last_schedule_sync", timestamp.toString())
             )
+            invalidateMemoryCache()
             reloadFromAssets()
             true
         } catch (e: Exception) {
@@ -261,12 +284,15 @@ class RenfeScheduleSyncManager(
     }
 
     suspend fun initDatabaseFromAssetsIfNeeded() = withContext(Dispatchers.IO) {
-        if (isAssetsInitCompleted) return@withContext
+        val dbHash = System.identityHashCode(database)
+        if (initializedDbHash == dbHash) return@withContext
         initMutex.withLock {
-            if (isAssetsInitCompleted) return@withLock
+            if (initializedDbHash == dbHash) return@withLock
+            var versionUpgraded = false
             try {
                 val currentAssetsVersion = database.preferenceDao().getPreference("cercanias_assets_version")?.value ?: "0"
                 if (currentAssetsVersion != "19") {
+                    versionUpgraded = true
                     try {
                         if (localScheduleFile.exists()) {
                             localScheduleFile.delete()
@@ -278,40 +304,68 @@ class RenfeScheduleSyncManager(
                     database.preferenceDao().insertPreference(
                         com.example.data.database.PreferenceEntity("cercanias_assets_version", "19")
                     )
+                    database.preferenceDao().insertPreference(
+                        com.example.data.database.PreferenceEntity("cercanias_db_healthy_v19", "false")
+                    )
+                } else {
+                    val count = try { stationDao.getStationCount() } catch (_: Exception) { 0 }
+                    val fastHealthy = try {
+                        database.preferenceDao().getPreference("cercanias_db_healthy_v19")?.value == "true"
+                    } catch (_: Exception) { false }
+                    if (count >= 10 && fastHealthy) {
+                        initializedDbHash = dbHash
+                        return@withLock
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("RenfeScheduleSyncManager", "Error checking/updating cercanias assets version preference", e)
             }
 
+            val existingStations = if (!versionUpgraded) {
+                try { stationDao.getAllStations() } catch (e: Exception) { emptyList() }
+            } else emptyList()
+            val count = existingStations.size
+            val hasMojibake = existingStations.any { it.nombre.contains("ã") }
+            val hasTorreblanca = existingStations.any { it.nombre.contains("Torreblanca del Sol") }
+            val hasOldAlcudia = existingStations.any { it.nombre.equals("l'Alcudia", ignoreCase = true) }
+            val hasUnnormalizedStations = existingStations.any {
+                it.nombre.contains("Estació del Nord") ||
+                it.nombre.contains("Estacio del Nord") ||
+                it.nombre == "València Sant Isidre" ||
+                it.nombre == "València-Sant Isidre" ||
+                it.nombre == "València Cabanyal" ||
+                it.nombre == "València-Cabanyal" ||
+                it.nombre == "València-La Font de Sant Lluís" ||
+                it.nombre == "Valencia-La Font de Sant Lluis"
+            }
+            val hasEmptyHorarios = existingStations.isEmpty() || existingStations.any { it.horarios.isEmpty() }
+
+            if (count >= 10 && !hasMojibake && !hasTorreblanca && !hasOldAlcudia && !hasUnnormalizedStations && !hasEmptyHorarios) {
+                try {
+                    database.preferenceDao().insertPreference(
+                        com.example.data.database.PreferenceEntity("cercanias_db_healthy_v19", "true")
+                    )
+                } catch (_: Exception) {}
+                initializedDbHash = dbHash
+                return@withLock
+            }
+
             val jsonString = getScheduleJsonString()
             if (jsonString.isBlank()) {
                 Log.e("RenfeScheduleSyncManager", "JSON file is empty")
-                isAssetsInitCompleted = true
+                initializedDbHash = dbHash
                 return@withLock
             }
             try {
                 val jsonArray = JSONArray(jsonString)
-                val count = stationDao.getStationCount()
-                val existingStations = try { stationDao.getAllStations() } catch (e: Exception) { emptyList() }
-                val hasMojibake = existingStations.any { it.nombre.contains("ã") }
-                val hasTorreblanca = existingStations.any { it.nombre.contains("Torreblanca del Sol") }
-                val hasOldAlcudia = existingStations.any { it.nombre.equals("l'Alcudia", ignoreCase = true) }
-                val hasUnnormalizedStations = existingStations.any {
-                    it.nombre.contains("Estació del Nord") ||
-                    it.nombre.contains("Estacio del Nord") ||
-                    it.nombre == "València Sant Isidre" ||
-                    it.nombre == "València-Sant Isidre" ||
-                    it.nombre == "València Cabanyal" ||
-                    it.nombre == "València-Cabanyal" ||
-                    it.nombre == "València-La Font de Sant Lluís" ||
-                    it.nombre == "Valencia-La Font de Sant Lluis"
-                }
-                val hasEmptyHorarios = existingStations.isEmpty() || existingStations.any { it.horarios.isEmpty() }
-                if (count != jsonArray.length() || count == 0 || hasMojibake || hasTorreblanca || hasOldAlcudia || hasUnnormalizedStations || hasEmptyHorarios) {
-                    loadAndSaveScheduleJson(jsonArray)
-                    buildTripDestinationMapFromAssets()
-                }
-                isAssetsInitCompleted = true
+                loadAndSaveScheduleJson(jsonArray)
+                buildTripDestinationMapFromAssets()
+                try {
+                    database.preferenceDao().insertPreference(
+                        com.example.data.database.PreferenceEntity("cercanias_db_healthy_v19", "true")
+                    )
+                } catch (_: Exception) {}
+                initializedDbHash = dbHash
             } catch (e: Exception) {
                 Log.e("RenfeScheduleSyncManager", "Error initializing Cercanías database", e)
             }
@@ -319,11 +373,13 @@ class RenfeScheduleSyncManager(
     }
 
     suspend fun reloadFromAssets() = withContext(Dispatchers.IO) {
-        try {
-            val jsonString = getScheduleJsonString()
-            val jsonArray = JSONArray(jsonString)
-            loadAndSaveScheduleJson(jsonArray)
-        } catch (e: Exception) {}
+        loadScheduleMutex.withLock {
+            try {
+                val jsonString = getScheduleJsonString()
+                val jsonArray = JSONArray(jsonString)
+                loadAndSaveScheduleJson(jsonArray)
+            } catch (e: Exception) {}
+        }
     }
 
     private suspend fun loadAndSaveScheduleJson(jsonArray: JSONArray) = withContext(Dispatchers.IO) {
@@ -538,8 +594,23 @@ class RenfeScheduleSyncManager(
     }
 
     companion object {
+        private const val KEY_SCHEDULE_ETAG = "schedule_etag"
         private val initMutex = Mutex()
+        private val loadScheduleMutex = Mutex()
+        private val syncMutex = Mutex()
         @Volatile
-        private var isAssetsInitCompleted = false
+        private var initializedDbHash: Int = 0
+
+        private val stationSchedulesMap = java.util.concurrent.ConcurrentHashMap<String, List<RenfeScheduleItem>>()
+        @Volatile
+        private var tripDestinationMap: Map<String, String>? = null
+        @Volatile
+        private var stationNameMap: Map<String, String>? = null
+
+        private fun invalidateMemoryCache() {
+            stationSchedulesMap.clear()
+            tripDestinationMap = null
+            stationNameMap = null
+        }
     }
 }

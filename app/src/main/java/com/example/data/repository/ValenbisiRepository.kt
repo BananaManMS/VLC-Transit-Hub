@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.example.ui.map.components.ValenbisiStation
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -278,6 +280,7 @@ class ValenbisiRepository {
         val sortedList = list.distinctBy { it.number }.sortedBy { it.number }
         cachedStationsList = sortedList
         lastFetchTimestamp = System.currentTimeMillis()
+        _sharedStationsFlow.value = sortedList
         sortedList
         }
     }
@@ -299,6 +302,9 @@ class ValenbisiRepository {
 
         @Volatile
         private var cachedStationsList: List<ValenbisiStation> = emptyList()
+
+        private val _sharedStationsFlow = MutableStateFlow<List<ValenbisiStation>>(emptyList())
+        val sharedStationsFlow = _sharedStationsFlow.asStateFlow()
 
         fun getCachedStations(): List<ValenbisiStation> {
             return cachedStationsList

@@ -17,33 +17,49 @@ import java.util.concurrent.TimeUnit
 
 class GtfsCacheManager(private val context: Context) {
 
-    private val mutex = Mutex()
+    companion object {
+        @Volatile
+        private var instance: GtfsCacheManager? = null
 
-    @Volatile
-    private var cachedTripUpdates: Map<String, GtfsRtTripUpdate> = emptyMap()
+        fun getInstance(context: Context): GtfsCacheManager {
+            return instance ?: synchronized(this) {
+                instance ?: GtfsCacheManager(context.applicationContext).also { instance = it }
+            }
+        }
 
-    @Volatile
-    private var cachedVehiclePositions: Map<String, LiveVehicleInfo> = emptyMap()
+        private val mutex = Mutex()
 
-    @Volatile
-    private var lastFetchTimeMs: Long = 0L
+        @Volatile
+        private var cachedTripUpdates: Map<String, GtfsRtTripUpdate> = emptyMap()
 
-    @Volatile
-    private var lastFlotaEmissionTimestamp: String = ""
+        @Volatile
+        private var cachedVehiclePositions: Map<String, LiveVehicleInfo> = emptyMap()
 
-    @Volatile
-    private var lastTripUpdatesEmissionTimestamp: Long = 0L
+        @Volatile
+        private var lastFetchTimeMs: Long = 0L
 
-    @Volatile
-    private var lastVehiclePositionsEmissionTimestamp: Long = 0L
+        @Volatile
+        private var lastTripUpdatesFetchTimeMs: Long = 0L
 
-    private val cacheTtlMs = 15_000L // 15s official update cadence
+        @Volatile
+        private var lastFlotaEmissionTimestamp: String = ""
 
-    private val fastClient = NetworkModule.okHttpClient.newBuilder()
-        .connectTimeout(2500, TimeUnit.MILLISECONDS)
-        .readTimeout(2500, TimeUnit.MILLISECONDS)
-        .callTimeout(3000, TimeUnit.MILLISECONDS)
-        .build()
+        @Volatile
+        private var lastTripUpdatesEmissionTimestamp: Long = 0L
+
+        @Volatile
+        private var lastVehiclePositionsEmissionTimestamp: Long = 0L
+
+        private const val CACHE_TTL_MS = 15_000L // 15s official update cadence
+
+        private val fastClient by lazy {
+            NetworkModule.okHttpClient.newBuilder()
+                .connectTimeout(2500, TimeUnit.MILLISECONDS)
+                .readTimeout(2500, TimeUnit.MILLISECONDS)
+                .callTimeout(3000, TimeUnit.MILLISECONDS)
+                .build()
+        }
+    }
 
     suspend fun getLiveTripUpdates(): Map<String, GtfsRtTripUpdate> = withContext(Dispatchers.IO) {
         ensureTripUpdatesOnlyUpdated()
@@ -105,16 +121,14 @@ class GtfsCacheManager(private val context: Context) {
         Pair(vehicles, hasNewData)
     }
 
-    @Volatile
-    private var lastTripUpdatesFetchTimeMs = 0L
-
     private suspend fun ensureTripUpdatesOnlyUpdated(force: Boolean = false): Boolean {
         val now = System.currentTimeMillis()
-        if (!force && now - lastTripUpdatesFetchTimeMs < cacheTtlMs && cachedTripUpdates.isNotEmpty()) {
+        if (!force && now - lastTripUpdatesFetchTimeMs < CACHE_TTL_MS && cachedTripUpdates.isNotEmpty()) {
             return false
         }
         return mutex.withLock {
-            if (!force && now - lastTripUpdatesFetchTimeMs < cacheTtlMs && cachedTripUpdates.isNotEmpty()) {
+            val lockNow = System.currentTimeMillis()
+            if (!force && lockNow - lastTripUpdatesFetchTimeMs < CACHE_TTL_MS && cachedTripUpdates.isNotEmpty()) {
                 return@withLock false
             }
             try {
@@ -124,19 +138,22 @@ class GtfsCacheManager(private val context: Context) {
                     .header("User-Agent", NetworkModule.USER_AGENT)
                     .build()
 
+                var isFresh = false
                 fastClient.newCall(req).execute().use { response ->
                     if (response.isSuccessful) {
                         val body = response.body?.string()
                         if (!body.isNullOrBlank()) {
-                            parseTripUpdatesJson(body, tripUpdatesMap)
+                            isFresh = parseTripUpdatesJson(body, tripUpdatesMap)
                         }
                     }
                 }
-                if (tripUpdatesMap.isNotEmpty()) {
-                    cachedTripUpdates = tripUpdatesMap
+                if (isFresh && tripUpdatesMap.isNotEmpty()) {
+                    val merged = cachedTripUpdates.toMutableMap()
+                    merged.putAll(tripUpdatesMap)
+                    cachedTripUpdates = merged
                 }
                 lastTripUpdatesFetchTimeMs = System.currentTimeMillis()
-                true
+                isFresh
             } catch (e: Exception) {
                 Log.w("GtfsCacheManager", "Error fetching trip_updates.json: ${e.message}")
                 false
@@ -146,18 +163,21 @@ class GtfsCacheManager(private val context: Context) {
 
     private suspend fun ensureCacheUpdated(force: Boolean = false): Boolean {
         val now = System.currentTimeMillis()
-        if (!force && now - lastFetchTimeMs < cacheTtlMs && (cachedTripUpdates.isNotEmpty() || cachedVehiclePositions.isNotEmpty())) {
+        if (!force && now - lastFetchTimeMs < CACHE_TTL_MS && (cachedTripUpdates.isNotEmpty() || cachedVehiclePositions.isNotEmpty())) {
             return false
         }
 
         return mutex.withLock {
-            if (!force && now - lastFetchTimeMs < cacheTtlMs && (cachedTripUpdates.isNotEmpty() || cachedVehiclePositions.isNotEmpty())) {
+            val lockNow = System.currentTimeMillis()
+            if (!force && lockNow - lastFetchTimeMs < CACHE_TTL_MS && (cachedTripUpdates.isNotEmpty() || cachedVehiclePositions.isNotEmpty())) {
                 return@withLock false
             }
 
             try {
                 val hasNewData = fetchRealTimeFeeds()
-                lastFetchTimeMs = System.currentTimeMillis()
+                val finishNow = System.currentTimeMillis()
+                lastFetchTimeMs = finishNow
+                lastTripUpdatesFetchTimeMs = finishNow
                 hasNewData
             } catch (e: Exception) {
                 Log.w("GtfsCacheManager", "Error fetching Renfe GTFS-RT: ${e.message}")

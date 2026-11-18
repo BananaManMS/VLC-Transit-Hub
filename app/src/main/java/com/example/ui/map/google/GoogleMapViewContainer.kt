@@ -52,7 +52,7 @@ fun GoogleMapViewContainer(
     isDarkMode: Boolean = false,
     isSatelliteMode: Boolean = false,
     cameraTarget: GeoPoint = org.osmdroid.util.GeoPoint(39.4699, -0.3763),
-    cameraZoom: Double = 13.5,
+    cameraZoom: Double = 15.5,
     cameraAnimTrigger: Int = 0,
     zoomInTrigger: Int = 0,
     zoomOutTrigger: Int = 0,
@@ -116,6 +116,84 @@ fun GoogleMapViewContainer(
         }
     }
 
+    val handleItemClick = remember(onSelectItem, metroStations) {
+        { item: GoogleMapTransitItem ->
+            when (item) {
+                is GoogleMapTransitItem.Metro -> {
+                    onSelectItem(SelectedMapItem.Metro(item.station))
+                }
+                is GoogleMapTransitItem.Cercanias -> {
+                    onSelectItem(SelectedMapItem.Cercanias(item.station))
+                }
+                is GoogleMapTransitItem.Bus -> {
+                    val linesList = (item.stop.lineas ?: "").split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .map { EmtRoute(id_linea = it, SN = it) }
+                    val emtModel = EmtBusStop(
+                        t = item.stop.denominacion,
+                        n = item.stop.denominacion,
+                        me = item.stop.denominacion,
+                        utes = linesList,
+                        opId = item.stop.id_parada,
+                        ica = item.stop.id_parada
+                    )
+                    onSelectItem(SelectedMapItem.BusStop(item.stop, emtModel))
+                }
+                is GoogleMapTransitItem.Metrobus -> {
+                    val linesList = (item.stop.lineas ?: "").split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                    val metrobusModel = MetrobusStop(
+                        idParada = item.stop.id,
+                        denominacion = item.stop.denominacion,
+                        lat = item.stop.latitud,
+                        lon = item.stop.longitud,
+                        lineas = linesList
+                    )
+                    onSelectItem(SelectedMapItem.MetrobusStopItem(item.stop, metrobusModel))
+                }
+                is GoogleMapTransitItem.Merged -> {
+                    val linesList = (item.busStop.lineas ?: "").split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .map { EmtRoute(id_linea = it, SN = it) }
+                    val emtModel = EmtBusStop(
+                        t = item.busStop.denominacion,
+                        n = item.busStop.denominacion,
+                        me = item.busStop.denominacion,
+                        utes = linesList,
+                        opId = item.busStop.id_parada,
+                        ica = item.busStop.id_parada
+                    )
+                    onSelectItem(SelectedMapItem.BusStop(item.busStop, emtModel))
+                }
+                is GoogleMapTransitItem.Valenbisi -> {
+                    onSelectItem(SelectedMapItem.Valenbisi(item.station))
+                }
+                is GoogleMapTransitItem.CustomPlace -> {
+                    onSelectItem(item.item)
+                }
+                is GoogleMapTransitItem.Train -> {
+                    onSelectItem(SelectedMapItem.LiveTrain(item.vehicle))
+                }
+                is GoogleMapTransitItem.AccessPoint -> {
+                    val match = metroStations.find {
+                        MetroStationAccessMatcher.matchesStation(item.access.stationName, it)
+                    }
+                    if (match != null) {
+                        onSelectItem(SelectedMapItem.Metro(match))
+                    }
+                }
+                else -> {}
+            }
+        }
+    }
+
+    val handleMapReady = remember {
+        { isMapLoaded = true }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -165,77 +243,7 @@ fun GoogleMapViewContainer(
             favoriteMetroStations = favoriteMetroStations,
             favoriteCercaniasStations = favoriteCercaniasStations,
             favoriteValenbisiStations = favoriteValenbisiStations,
-            onItemClick = { item ->
-                when (item) {
-                    is GoogleMapTransitItem.Metro -> {
-                        onSelectItem(SelectedMapItem.Metro(item.station))
-                    }
-                    is GoogleMapTransitItem.Cercanias -> {
-                        onSelectItem(SelectedMapItem.Cercanias(item.station))
-                    }
-                    is GoogleMapTransitItem.Bus -> {
-                        val linesList = (item.stop.lineas ?: "").split(",")
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() }
-                            .map { EmtRoute(id_linea = it, SN = it) }
-                        val emtModel = EmtBusStop(
-                            t = item.stop.denominacion,
-                            n = item.stop.denominacion,
-                            me = item.stop.denominacion,
-                            utes = linesList,
-                            opId = item.stop.id_parada,
-                            ica = item.stop.id_parada
-                        )
-                        onSelectItem(SelectedMapItem.BusStop(item.stop, emtModel))
-                    }
-                    is GoogleMapTransitItem.Metrobus -> {
-                        val linesList = (item.stop.lineas ?: "").split(",")
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() }
-                        val metrobusModel = MetrobusStop(
-                            idParada = item.stop.id,
-                            denominacion = item.stop.denominacion,
-                            lat = item.stop.latitud,
-                            lon = item.stop.longitud,
-                            lineas = linesList
-                        )
-                        onSelectItem(SelectedMapItem.MetrobusStopItem(item.stop, metrobusModel))
-                    }
-                    is GoogleMapTransitItem.Merged -> {
-                        val linesList = (item.busStop.lineas ?: "").split(",")
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() }
-                            .map { EmtRoute(id_linea = it, SN = it) }
-                        val emtModel = EmtBusStop(
-                            t = item.busStop.denominacion,
-                            n = item.busStop.denominacion,
-                            me = item.busStop.denominacion,
-                            utes = linesList,
-                            opId = item.busStop.id_parada,
-                            ica = item.busStop.id_parada
-                        )
-                        onSelectItem(SelectedMapItem.BusStop(item.busStop, emtModel))
-                    }
-                    is GoogleMapTransitItem.Valenbisi -> {
-                        onSelectItem(SelectedMapItem.Valenbisi(item.station))
-                    }
-                    is GoogleMapTransitItem.CustomPlace -> {
-                        onSelectItem(item.item)
-                    }
-                    is GoogleMapTransitItem.Train -> {
-                        onSelectItem(SelectedMapItem.LiveTrain(item.vehicle))
-                    }
-                    is GoogleMapTransitItem.AccessPoint -> {
-                        val match = metroStations.find {
-                            MetroStationAccessMatcher.matchesStation(item.access.stationName, it)
-                        }
-                        if (match != null) {
-                            onSelectItem(SelectedMapItem.Metro(match))
-                        }
-                    }
-                    else -> {}
-                }
-            },
+            onItemClick = handleItemClick,
             onMapClick = onMapClick,
             onMapLongClick = onMapLongClick,
             onShowDisambiguationMenu = onShowDisambiguationMenu,
@@ -243,9 +251,8 @@ fun GoogleMapViewContainer(
             onMapPan = onMapPan,
             onCameraPositionChanged = onCameraPositionChanged,
             onZoomLevelChanged = onZoomLevelChanged,
-            onMapReady = {
-                isMapLoaded = true
-            }
+            onMapReady = handleMapReady,
+            isMapLoaded = isMapLoaded
         )
 
         // Smooth skeleton/mask layer with exact map ground background to prevent white surface flash

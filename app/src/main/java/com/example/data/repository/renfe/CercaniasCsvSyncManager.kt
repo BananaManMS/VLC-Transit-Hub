@@ -7,6 +7,8 @@ import com.example.data.database.CercaniasStationEntity
 import com.example.data.database.PreferenceEntity
 import com.example.data.network.NetworkModule
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
@@ -21,8 +23,12 @@ class CercaniasCsvSyncManager(private val context: Context) {
     companion object {
         private const val TAG = "CercaniasCsvSync"
         private const val PREF_LAST_CSV_SYNC = "last_cercanias_csv_sync"
+        private const val PREFS_SYNC = "cercanias_csv_sync_prefs"
+        private const val KEY_CSV_ETAG = "cercanias_csv_etag"
         private const val CSV_URL = "https://raw.githubusercontent.com/BananaManMS/cercanias-vlc-schedule/refs/heads/main/estaciones_cercanias_valencia.csv"
         private const val SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000L
+
+        private val syncMutex = Mutex()
 
         fun getLocalCsvFile(context: Context): File {
             return File(context.filesDir, "estaciones_cercanias_valencia.csv")
@@ -34,46 +40,64 @@ class CercaniasCsvSyncManager(private val context: Context) {
     }
 
     suspend fun syncWeeklyCsv(force: Boolean = false) = withContext(Dispatchers.IO) {
-        val db = AppDatabase.getDatabase(context)
-        val prefDao = db.preferenceDao()
-        val now = System.currentTimeMillis()
+        syncMutex.withLock {
+            val db = AppDatabase.getDatabase(context)
+            val prefDao = db.preferenceDao()
+            val syncPrefs = context.getSharedPreferences(PREFS_SYNC, Context.MODE_PRIVATE)
+            val now = System.currentTimeMillis()
 
-        val lastSyncStr = try { prefDao.getPreference(PREF_LAST_CSV_SYNC)?.value } catch (_: Exception) { null }
-        val lastSync = lastSyncStr?.toLongOrNull() ?: 0L
+            val lastSyncStr = try { prefDao.getPreference(PREF_LAST_CSV_SYNC)?.value } catch (_: Exception) { null }
+            val lastSync = lastSyncStr?.toLongOrNull() ?: 0L
 
-        val cal = Calendar.getInstance()
-        val isMonday = cal.get(Calendar.DAY_OF_WEEK) == Calendar.MONDAY
-        val daysSinceLastSync = (now - lastSync) / (24 * 60 * 60 * 1000L)
+            val cal = Calendar.getInstance()
+            val isMonday = cal.get(Calendar.DAY_OF_WEEK) == Calendar.MONDAY
+            val daysSinceLastSync = (now - lastSync) / (24 * 60 * 60 * 1000L)
 
-        // Only sync if forced, or if it's Monday and hasn't synced today, or if more than 7 days passed
-        val shouldSync = force || (isMonday && daysSinceLastSync >= 1) || (daysSinceLastSync >= 7) || (lastSync == 0L)
-        if (!shouldSync) {
-            return@withContext
-        }
+            // Only sync if forced, or if it's Monday and hasn't synced today, or if more than 7 days passed
+            val shouldSync = force || (isMonday && daysSinceLastSync >= 1) || (daysSinceLastSync >= 7) || (lastSync == 0L)
+            if (!shouldSync) {
+                return@withLock
+            }
 
-        val csvFile = getLocalCsvFile(context)
+            val csvFile = getLocalCsvFile(context)
 
-        try {
-            val request = Request.Builder().url(CSV_URL).build()
-            NetworkModule.okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val csvText = response.body?.string() ?: ""
-                    if (csvText.isNotBlank()) {
-                        val parsedStations = parseCsv(csvText, db)
-                        if (parsedStations.isNotEmpty()) {
-                            writeAtomic(csvFile, csvText)
-                            // Merge stations preserving existing favorites and schedules
-                            mergeStationsIntoDb(db, parsedStations)
+            try {
+                val reqBuilder = Request.Builder().url(CSV_URL)
+                val cachedEtag = syncPrefs.getString(KEY_CSV_ETAG, null)
+                if (!force && csvFile.exists() && csvFile.length() > 100 && !cachedEtag.isNullOrBlank()) {
+                    reqBuilder.header("If-None-Match", cachedEtag)
+                }
+                NetworkModule.okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                    when {
+                        response.code == 304 -> {
                             prefDao.insertPreference(PreferenceEntity(PREF_LAST_CSV_SYNC, now.toString()))
-                            Log.i(TAG, "Successfully synced and updated ${parsedStations.size} Cercanías stations from weekly CSV.")
+                            Log.d(TAG, "Cercanías CSV unchanged on GitHub (304 Not Modified).")
+                        }
+                        response.isSuccessful -> {
+                            val newEtag = response.header("ETag")
+                            val csvText = response.body?.string() ?: ""
+                            if (csvText.isNotBlank()) {
+                                val parsedStations = parseCsv(csvText, db)
+                                if (parsedStations.isNotEmpty()) {
+                                    writeAtomic(csvFile, csvText)
+                                    // Merge stations preserving existing favorites and schedules
+                                    mergeStationsIntoDb(db, parsedStations)
+                                    if (!newEtag.isNullOrBlank()) {
+                                        syncPrefs.edit().putString(KEY_CSV_ETAG, newEtag).apply()
+                                    }
+                                    prefDao.insertPreference(PreferenceEntity(PREF_LAST_CSV_SYNC, now.toString()))
+                                    Log.i(TAG, "Successfully synced and updated ${parsedStations.size} Cercanías stations from weekly CSV.")
+                                }
+                            }
+                        }
+                        else -> {
+                            Log.w(TAG, "Cercanías CSV request returned code ${response.code}")
                         }
                     }
-                } else {
-                    Log.w(TAG, "Cercanías CSV request returned code ${response.code}")
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error syncing Cercanías CSV from GitHub: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error syncing Cercanías CSV from GitHub: ${e.message}")
         }
     }
 

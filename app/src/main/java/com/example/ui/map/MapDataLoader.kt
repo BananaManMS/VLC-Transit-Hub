@@ -84,14 +84,15 @@ class MapDataLoader(
         }
 
         scope.launch(Dispatchers.IO) {
-            // Load Metrobús Stops from Room DB / Repo
+            // Load Metrobús Stops via shared StaticTransitDataCache
             try {
-                var activeStops = database.metrobusStopDao().getAllActiveStops()
+                var activeStops = com.example.data.repository.StaticTransitDataCache.getOrLoadMetrobusStops(application)
+                    .filter { it.suprimida == 0 }
                 if (activeStops.isEmpty() || activeStops.none { !it.lineas.isNullOrEmpty() }) {
-                    metrobusRepository.syncStops(forceRefresh = true)
-                    activeStops = database.metrobusStopDao().getAllActiveStops()
-                } else {
-                    metrobusRepository.ensureStopsCached()
+                    metrobusRepository.ensureStopsCached(forceRefresh = false)
+                    com.example.data.repository.StaticTransitDataCache.invalidateMetrobusCache()
+                    activeStops = com.example.data.repository.StaticTransitDataCache.getOrLoadMetrobusStops(application)
+                        .filter { it.suprimida == 0 }
                 }
                 metrobusStops.value = activeStops
             } catch (e: Exception) {
@@ -102,14 +103,17 @@ class MapDataLoader(
         }
 
         scope.launch(Dispatchers.IO) {
-            // Load Bus Stops from Room DB, only falling back to JSON seeding if empty
+            // Load Bus Stops via shared StaticTransitDataCache, only seeding Room DB if empty
             try {
-                var activeStops = database.geoportalStopDao().getAllActiveStops()
+                var activeStops = com.example.data.repository.StaticTransitDataCache.getOrLoadEmtStops(application)
+                    .filter { it.suprimida == 0 }
                 if (activeStops.isEmpty() || activeStops.size < 50) {
                     val loadedFromSync = BusMapper.parseStopsFromJsonDirect(application)
                     if (loadedFromSync.isNotEmpty()) {
                         database.geoportalStopDao().replaceAllStops(loadedFromSync)
-                        activeStops = database.geoportalStopDao().getAllActiveStops()
+                        com.example.data.repository.StaticTransitDataCache.invalidateEmtCache()
+                        activeStops = com.example.data.repository.StaticTransitDataCache.getOrLoadEmtStops(application)
+                            .filter { it.suprimida == 0 }
                     }
                 }
                 busStops.value = activeStops
@@ -134,8 +138,7 @@ class MapDataLoader(
             }
         }
 
-        // Load Valenbisi stations
-        refreshValenbisiStations(force = false)
+        // Valenbisi stations are fetched when _mapFilter.showValenbisi is enabled in MapViewModel.init
     }
 
     fun startValenbisiPeriodicRefresh() {
@@ -382,7 +385,8 @@ class MapDataLoader(
         metrobusTimesLoading: MutableStateFlow<Boolean>? = null,
         limitPerLine: Int = 3,
         isLoadMore: Boolean = false,
-        includeScheduled: Boolean = false
+        includeScheduled: Boolean = false,
+        forceRefresh: Boolean = false
     ) {
         metrobusTimesJob?.cancel()
         metrobusTimesJob = scope.launch(Dispatchers.IO) {
@@ -395,7 +399,8 @@ class MapDataLoader(
                 val results = metrobusRepository.getMetrobusArrivals(
                     stopId = stopId,
                     limitPerLine = limitPerLine,
-                    includeScheduled = includeScheduled
+                    includeScheduled = includeScheduled,
+                    forceRefresh = forceRefresh
                 )
                 metrobusTimes.value = results
             } catch (e: Exception) {

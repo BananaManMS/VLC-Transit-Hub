@@ -11,7 +11,7 @@ import com.example.ui.map.SelectedMapItem
 import com.example.ui.map.components.CustomPlaceType
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
+import com.google.maps.android.compose.rememberMarkerState
 
 @Composable
 internal fun GoogleMapPlacesLayer(
@@ -31,14 +31,17 @@ internal fun GoogleMapPlacesLayer(
     val isDimmedCustom = isBusActive || isMetroActive || isCercaniasActive
     val customAlpha = if (isDimmedCustom) 0.15f else 1.0f
     val customZIndex = if (isDimmedCustom) 2f else 15f
+    val placeZoomBucket = (settledZoom * 2f).toInt()
+    val placeZoom = placeZoomBucket / 2.0
 
     destinationLocation?.let { dest ->
-        key("DESTINATION_PIN_${dest.latitude}_${dest.longitude}") {
+        val destKey = "DESTINATION_PIN_${dest.latitude}_${dest.longitude}"
+        key(destKey) {
             val destIcon = remember(isDarkMode) {
                 GoogleMapsMarkerCache.getOrCreateDestinationMarkerIcon(context, isDarkMode)
             }
             Marker(
-                state = MarkerState(position = LatLng(dest.latitude, dest.longitude)),
+                state = rememberMarkerState(key = destKey, position = LatLng(dest.latitude, dest.longitude)),
                 icon = destIcon.descriptor,
                 anchor = destIcon.anchor,
                 title = destinationTitle ?: "Destino",
@@ -48,20 +51,14 @@ internal fun GoogleMapPlacesLayer(
     }
 
     if (homeLocation != null && homeLocation.showOnMap) {
-        key("HOME_PIN_${homeLocation.latitude}_${homeLocation.longitude}") {
-            val homeIcon = remember(isDarkMode, settledZoom) {
-                GoogleMapsMarkerCache.getOrCreateCustomPlaceMarkerIcon(context, CustomPlaceType.HOME, settledZoom.toDouble(), isDarkMode, homeLocation.colorHex)
+        val homeKey = "HOME_PIN_${homeLocation.latitude}_${homeLocation.longitude}"
+        key(homeKey) {
+            val homeIcon = remember(isDarkMode, placeZoomBucket, homeLocation.colorHex) {
+                GoogleMapsMarkerCache.getOrCreateCustomPlaceMarkerIcon(context, CustomPlaceType.HOME, placeZoom, isDarkMode, homeLocation.colorHex)
             }
-            Marker(
-                state = MarkerState(position = LatLng(homeLocation.latitude, homeLocation.longitude)),
-                icon = homeIcon.descriptor,
-                anchor = homeIcon.anchor,
-                alpha = customAlpha,
-                title = homeLocation.title.ifBlank { "Casa" },
-                snippet = homeLocation.subtitle.ifBlank { null },
-                zIndex = customZIndex,
-                onClick = {
-                    val addrItem = SelectedMapItem.Address(
+            val homeTransitItem = remember(homeLocation) {
+                GoogleMapTransitItem.CustomPlace(
+                    SelectedMapItem.Address(
                         NominatimResult(
                             display_name = if (homeLocation.subtitle.isNotEmpty() && !homeLocation.subtitle.equals(homeLocation.title, ignoreCase = true)) "${homeLocation.title}, ${homeLocation.subtitle}" else homeLocation.title,
                             lat = homeLocation.latitude.toString(),
@@ -81,7 +78,18 @@ internal fun GoogleMapPlacesLayer(
                             postcode = homeLocation.postcode
                         )
                     )
-                    onItemClick?.invoke(GoogleMapTransitItem.CustomPlace(addrItem))
+                )
+            }
+            Marker(
+                state = rememberMarkerState(key = homeKey, position = LatLng(homeLocation.latitude, homeLocation.longitude)),
+                icon = homeIcon.descriptor,
+                anchor = homeIcon.anchor,
+                alpha = customAlpha,
+                title = homeLocation.title.ifBlank { "Casa" },
+                snippet = homeLocation.subtitle.ifBlank { null },
+                zIndex = customZIndex,
+                onClick = {
+                    onItemClick?.invoke(homeTransitItem)
                     true
                 }
             )
@@ -89,20 +97,14 @@ internal fun GoogleMapPlacesLayer(
     }
 
     if (workLocation != null && workLocation.showOnMap) {
-        key("WORK_PIN_${workLocation.latitude}_${workLocation.longitude}") {
-            val workIcon = remember(isDarkMode, settledZoom) {
-                GoogleMapsMarkerCache.getOrCreateCustomPlaceMarkerIcon(context, CustomPlaceType.WORK, settledZoom.toDouble(), isDarkMode, workLocation.colorHex)
+        val workKey = "WORK_PIN_${workLocation.latitude}_${workLocation.longitude}"
+        key(workKey) {
+            val workIcon = remember(isDarkMode, placeZoomBucket, workLocation.colorHex) {
+                GoogleMapsMarkerCache.getOrCreateCustomPlaceMarkerIcon(context, CustomPlaceType.WORK, placeZoom, isDarkMode, workLocation.colorHex)
             }
-            Marker(
-                state = MarkerState(position = LatLng(workLocation.latitude, workLocation.longitude)),
-                icon = workIcon.descriptor,
-                anchor = workIcon.anchor,
-                alpha = customAlpha,
-                title = workLocation.title.ifBlank { "Trabajo" },
-                snippet = workLocation.subtitle.ifBlank { null },
-                zIndex = customZIndex,
-                onClick = {
-                    val addrItem = SelectedMapItem.Address(
+            val workTransitItem = remember(workLocation) {
+                GoogleMapTransitItem.CustomPlace(
+                    SelectedMapItem.Address(
                         NominatimResult(
                             display_name = if (workLocation.subtitle.isNotEmpty() && !workLocation.subtitle.equals(workLocation.title, ignoreCase = true)) "${workLocation.title}, ${workLocation.subtitle}" else workLocation.title,
                             lat = workLocation.latitude.toString(),
@@ -122,28 +124,36 @@ internal fun GoogleMapPlacesLayer(
                             postcode = workLocation.postcode
                         )
                     )
-                    onItemClick?.invoke(GoogleMapTransitItem.CustomPlace(addrItem))
+                )
+            }
+            Marker(
+                state = rememberMarkerState(key = workKey, position = LatLng(workLocation.latitude, workLocation.longitude)),
+                icon = workIcon.descriptor,
+                anchor = workIcon.anchor,
+                alpha = customAlpha,
+                title = workLocation.title.ifBlank { "Trabajo" },
+                snippet = workLocation.subtitle.ifBlank { null },
+                zIndex = customZIndex,
+                onClick = {
+                    onItemClick?.invoke(workTransitItem)
                     true
                 }
             )
         }
     }
 
-    customFavorites.filter { it.showOnMap }.forEach { fav ->
-        key("CUSTOM_FAV_${fav.id}_${fav.latitude}_${fav.longitude}") {
-            val favIcon = remember(isDarkMode, settledZoom, fav.colorHex) {
-                GoogleMapsMarkerCache.getOrCreateCustomPlaceMarkerIcon(context, CustomPlaceType.FAVORITE, settledZoom.toDouble(), isDarkMode, fav.colorHex)
+    val visibleCustomFavorites = remember(customFavorites) {
+        customFavorites.filter { it.showOnMap }
+    }
+    visibleCustomFavorites.forEach { fav ->
+        val favKey = "CUSTOM_FAV_${fav.id}_${fav.latitude}_${fav.longitude}"
+        key(favKey) {
+            val favIcon = remember(isDarkMode, placeZoomBucket, fav.colorHex) {
+                GoogleMapsMarkerCache.getOrCreateCustomPlaceMarkerIcon(context, CustomPlaceType.FAVORITE, placeZoom, isDarkMode, fav.colorHex)
             }
-            Marker(
-                state = MarkerState(position = LatLng(fav.latitude, fav.longitude)),
-                icon = favIcon.descriptor,
-                anchor = favIcon.anchor,
-                alpha = customAlpha,
-                title = fav.title,
-                snippet = fav.subtitle.ifBlank { null },
-                zIndex = customZIndex,
-                onClick = {
-                    val addrItem = SelectedMapItem.Address(
+            val favTransitItem = remember(fav) {
+                GoogleMapTransitItem.CustomPlace(
+                    SelectedMapItem.Address(
                         NominatimResult(
                             display_name = if (fav.subtitle.isNotEmpty() && !fav.subtitle.equals(fav.title, ignoreCase = true)) "${fav.title}, ${fav.subtitle}" else fav.title,
                             lat = fav.latitude.toString(),
@@ -163,7 +173,18 @@ internal fun GoogleMapPlacesLayer(
                             postcode = fav.postcode
                         )
                     )
-                    onItemClick?.invoke(GoogleMapTransitItem.CustomPlace(addrItem))
+                )
+            }
+            Marker(
+                state = rememberMarkerState(key = favKey, position = LatLng(fav.latitude, fav.longitude)),
+                icon = favIcon.descriptor,
+                anchor = favIcon.anchor,
+                alpha = customAlpha,
+                title = fav.title,
+                snippet = fav.subtitle.ifBlank { null },
+                zIndex = customZIndex,
+                onClick = {
+                    onItemClick?.invoke(favTransitItem)
                     true
                 }
             )

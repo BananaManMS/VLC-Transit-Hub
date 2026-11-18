@@ -27,7 +27,7 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory
  * custom places, Valenbisi, station accesses, and route chevrons.
  */
 internal object GoogleMapSpecialMarkerHelper {
-    private val specialCache = LruCache<String, CachedMarkerIcon>(128)
+    private val specialCache = LruCache<String, CachedMarkerIcon>(512)
 
     fun drawableToCachedMarkerIcon(
         drawable: Drawable,
@@ -191,7 +191,16 @@ internal object GoogleMapSpecialMarkerHelper {
         isDarkMode: Boolean,
         showPill: Boolean
     ): CachedMarkerIcon {
-        val cleanKey = "VALENBISI_BADGE_${available}_${free}_${isDarkMode}_$showPill"
+        val cleanKey = if (showPill) {
+            "VALENBISI_BADGE_${available}_${isDarkMode}_true"
+        } else {
+            val stateBucket = when {
+                available == 0 -> 0
+                available < 3 -> 1
+                else -> 2
+            }
+            "VALENBISI_NO_PILL_${stateBucket}_$isDarkMode"
+        }
         val cached = specialCache.get(cleanKey)
         if (cached != null) return cached
 
@@ -205,7 +214,12 @@ internal object GoogleMapSpecialMarkerHelper {
         context: Context,
         available: Int
     ): CachedMarkerIcon {
-        val cleanKey = "VALENBISI_DOT_$available"
+        val stateBucket = when {
+            available == 0 -> 0
+            available < 3 -> 1
+            else -> 2
+        }
+        val cleanKey = "VALENBISI_DOT_$stateBucket"
         val cached = specialCache.get(cleanKey)
         if (cached != null) return cached
 

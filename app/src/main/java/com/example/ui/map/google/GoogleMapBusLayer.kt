@@ -1,7 +1,7 @@
 package com.example.ui.map.google
 
 import android.content.Context
-import android.graphics.Color as AndroidColor
+import android.util.LruCache
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -15,9 +15,23 @@ import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberMarkerState
 import kotlinx.coroutines.launch
+
+private const val COLOR_EMT_RED = 0xFFE53935.toInt()
+private const val COLOR_MB_AMBER = 0xFFFFB300.toInt()
+
+private val normalizedStopLinesCache = LruCache<String, List<String>>(512)
+
+internal fun getNormalizedStopLines(lineas: String?): List<String> {
+    if (lineas.isNullOrBlank()) return emptyList()
+    normalizedStopLinesCache.get(lineas)?.let { return it }
+    val parsed = lineas.split(",")
+        .map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() }
+        .filter { it.isNotEmpty() }
+    normalizedStopLinesCache.put(lineas, parsed)
+    return parsed
+}
 
 @Composable
 internal fun GoogleMapBusLayer(
@@ -48,15 +62,16 @@ internal fun GoogleMapBusLayer(
     handleTransitItemTap: (GoogleMapTransitItem, Double, Double) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val hasActiveLineIsolation = activeIsolatedBusLines.isNotEmpty()
 
     // 1. LOD 1 (Zoom < 13.5): Draw EMT & Metrobús Clusters
-    if (isZoomForClusters && activeIsolatedBusLines.isEmpty()) {
+    if (isZoomForClusters && !hasActiveLineIsolation) {
         if (showBusStops) {
             busClusters.forEachIndexed { idx, cluster ->
                 val clusterKey = "BUS_CLUSTER_${idx}_${cluster.centerLat}_${cluster.centerLon}"
                 key(clusterKey) {
                     val iconInfo = remember(cluster.count) {
-                        GoogleMapsMarkerCache.getOrCreateClusterIcon(context, cluster.count, AndroidColor.parseColor("#E53935"))
+                        GoogleMapsMarkerCache.getOrCreateClusterIcon(context, cluster.count, COLOR_EMT_RED)
                     }
                     val markerState = rememberMarkerState(
                         key = clusterKey,
@@ -90,7 +105,7 @@ internal fun GoogleMapBusLayer(
                 val clusterKey = "MB_CLUSTER_${idx}_${cluster.centerLat}_${cluster.centerLon}"
                 key(clusterKey) {
                     val iconInfo = remember(cluster.count) {
-                        GoogleMapsMarkerCache.getOrCreateClusterIcon(context, cluster.count, AndroidColor.parseColor("#FFB300"))
+                        GoogleMapsMarkerCache.getOrCreateClusterIcon(context, cluster.count, COLOR_MB_AMBER)
                     }
                     val markerState = rememberMarkerState(
                         key = clusterKey,
@@ -120,162 +135,98 @@ internal fun GoogleMapBusLayer(
         }
     }
 
-    // 2. LOD 2 (Zoom 13.5..15.2): Draw Compact Dots
-    if (isZoomForBusDots) {
-        val emtDot = remember { GoogleMapsMarkerCache.getOrCreateCompactDotIcon(context, AndroidColor.parseColor("#E53935")) }
-        val mbDot = remember { GoogleMapsMarkerCache.getOrCreateCompactDotIcon(context, AndroidColor.parseColor("#FFB300")) }
+    // 2..4. Unified LOD tier (1 = Dots, 2 = Clean Badges, 3 = Full Detailed Pins).
+    // Sharing canonical keys across tiers updates icons/anchors in-place instead of destroying & recreating native Markers.
+    val busLodTier = when {
+        isZoomForBusDetailed -> 3
+        isZoomForBusBadges -> 2
+        isZoomForBusDots -> 1
+        else -> 0
+    }
+
+    if (busLodTier > 0) {
+        val isDimmedByOtherMode = selectedMapItem is SelectedMapItem.Metro || selectedMapItem is SelectedMapItem.Cercanias
+        val emtDot = remember { GoogleMapsMarkerCache.getOrCreateCompactDotIcon(context, COLOR_EMT_RED) }
+        val mbDot = remember { GoogleMapsMarkerCache.getOrCreateCompactDotIcon(context, COLOR_MB_AMBER) }
         val mergedDot = remember { GoogleMapsMarkerCache.getOrCreateMergedDotIcon(context) }
-        val isDimmedByOtherMode = selectedMapItem is SelectedMapItem.Metro || selectedMapItem is SelectedMapItem.Cercanias
-
-        // Merged dots (only if both EMT and Metrobús are visible)
-        if (showBusStops && showMetrobusStops) {
-            currentMergedGroups.forEach { group ->
-                val isSelected = (selectedItem as? GoogleMapTransitItem.Merged)?.busStop?.id_parada == group.busStop.id_parada ||
-                                 (selectedMapItem as? SelectedMapItem.BusStop)?.stop?.id_parada == group.busStop.id_parada ||
-                                 (selectedMapItem as? SelectedMapItem.MetrobusStopItem)?.stop?.id == group.mbStop.id
-                if (isSelected) return@forEach
-
-                val stopLines = remember(group) {
-                    ((group.busStop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() } +
-                     (group.mbStop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() }).filter { it.isNotEmpty() }.toSet()
-                }
-                val sharesLine = stopLines.any { activeIsolatedBusLines.contains(it) }
-                if (activeIsolatedBusLines.isNotEmpty() && !sharesLine) return@forEach
-
-                val isDimmedByBusHighlight = activeIsolatedBusLines.isNotEmpty() && !sharesLine
-                val isDimmed = isDimmedByBusHighlight || isDimmedByOtherMode
-                val isHighlightedRoute = activeIsolatedBusLines.isNotEmpty() && sharesLine
-
-                val markerAlpha = if (isDimmed) 0.25f else 1.0f
-                val markerZIndex = if (isDimmed) 2f else if (isHighlightedRoute) 32f else 24f
-
-                key("MERGED_DOT_${group.busStop.id_parada}_${group.mbStop.id}") {
-                    Marker(
-                        state = rememberMarkerState(key = "MERGED_DOT_${group.busStop.id_parada}_${group.mbStop.id}", position = LatLng(group.busStop.lat, group.busStop.lon)),
-                        icon = mergedDot.descriptor,
-                        anchor = mergedDot.anchor,
-                        alpha = markerAlpha,
-                        title = "${group.busStop.denominacion} (EMT + Metrobús)",
-                        zIndex = markerZIndex,
-                        onClick = {
-                            val item = GoogleMapTransitItem.Merged(group.busStop, group.mbStop)
-                            handleTransitItemTap(item, group.busStop.lat, group.busStop.lon)
-                            true
-                        }
-                    )
-                }
-            }
+        val emtBadge = remember { GoogleMapsMarkerCache.getOrCreateBusIconBadge(context, isMetrobus = false) }
+        val mbBadge = remember { GoogleMapsMarkerCache.getOrCreateBusIconBadge(context, isMetrobus = true) }
+        val mergedCleanBadge = remember(isDarkMode) {
+            GoogleMapsMarkerCache.getOrCreateMergedCompactIconBadge(context, isDarkMode)
         }
 
-        // Standalone EMT dots
-        if (showBusStops) {
-            sampledDotsBus.forEach { stop ->
-                val isSelected = (selectedItem as? GoogleMapTransitItem.Bus)?.stop?.id_parada == stop.id_parada ||
-                                 (selectedMapItem as? SelectedMapItem.BusStop)?.stop?.id_parada == stop.id_parada
-                if (isSelected) return@forEach
-
-                val stopLines = remember(stop.lineas) { (stop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() }.filter { it.isNotEmpty() } }
-                val sharesLine = stopLines.any { activeIsolatedBusLines.contains(it) }
-                if (activeIsolatedBusLines.isNotEmpty() && !sharesLine) return@forEach
-
-                val isDimmedByBusHighlight = activeIsolatedBusLines.isNotEmpty() && !sharesLine
-                val isDimmed = isDimmedByBusHighlight || isDimmedByOtherMode
-                val isHighlightedRoute = activeIsolatedBusLines.isNotEmpty() && sharesLine
-
-                val markerAlpha = if (isDimmed) 0.25f else 1.0f
-                val markerZIndex = if (isDimmed) 2f else if (isHighlightedRoute) 32f else 24f
-
-                key("BUS_DOT_${stop.id_parada}") {
-                    Marker(
-                        state = rememberMarkerState(key = "BUS_DOT_${stop.id_parada}", position = LatLng(stop.lat, stop.lon)),
-                        icon = emtDot.descriptor,
-                        anchor = emtDot.anchor,
-                        alpha = markerAlpha,
-                        title = stop.denominacion,
-                        zIndex = markerZIndex,
-                        onClick = {
-                            val item = GoogleMapTransitItem.Bus(stop)
-                            handleTransitItemTap(item, stop.lat, stop.lon)
-                            true
-                        }
-                    )
-                }
-            }
-        }
-
-        // Standalone Metrobús dots
-        if (showMetrobusStops) {
-            sampledDotsMb.forEach { stop ->
-                val isSelected = (selectedItem as? GoogleMapTransitItem.Metrobus)?.stop?.id == stop.id ||
-                                 (selectedMapItem as? SelectedMapItem.MetrobusStopItem)?.stop?.id == stop.id
-                if (isSelected) return@forEach
-
-                val stopLines = remember(stop.lineas) { (stop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() }.filter { it.isNotEmpty() } }
-                val sharesLine = stopLines.any { activeIsolatedBusLines.contains(it) }
-                if (activeIsolatedBusLines.isNotEmpty() && !sharesLine) return@forEach
-
-                val isDimmedByBusHighlight = activeIsolatedBusLines.isNotEmpty() && !sharesLine
-                val isDimmed = isDimmedByBusHighlight || isDimmedByOtherMode
-                val isHighlightedRoute = activeIsolatedBusLines.isNotEmpty() && sharesLine
-
-                val markerAlpha = if (isDimmed) 0.25f else 1.0f
-                val markerZIndex = if (isDimmed) 2f else if (isHighlightedRoute) 32f else 24f
-
-                key("MB_DOT_${stop.id}") {
-                    Marker(
-                        state = rememberMarkerState(key = "MB_DOT_${stop.id}", position = LatLng(stop.lat, stop.lon)),
-                        icon = mbDot.descriptor,
-                        anchor = mbDot.anchor,
-                        alpha = markerAlpha,
-                        title = stop.denominacion,
-                        zIndex = markerZIndex,
-                        onClick = {
-                            val item = GoogleMapTransitItem.Metrobus(stop)
-                            handleTransitItemTap(item, stop.lat, stop.lon)
-                            true
-                        }
-                    )
-                }
-            }
-        }
-    }
-
-    // 3. LOD 3A (Zoom 15.2..17.8): Draw Clean Icon Badges (WITHOUT text name and WITHOUT line pills)
-    if (isZoomForBusBadges) {
-        val isDimmedByOtherMode = selectedMapItem is SelectedMapItem.Metro || selectedMapItem is SelectedMapItem.Cercanias
+        val selectedBusId = (selectedItem as? GoogleMapTransitItem.Bus)?.stop?.id_parada
+            ?: (selectedMapItem as? SelectedMapItem.BusStop)?.stop?.id_parada
+        val selectedMbId = (selectedItem as? GoogleMapTransitItem.Metrobus)?.stop?.id
+            ?: (selectedMapItem as? SelectedMapItem.MetrobusStopItem)?.stop?.id
+        val selectedMergedBusId = (selectedItem as? GoogleMapTransitItem.Merged)?.busStop?.id_parada
 
         // Merged stops (only if both EMT and Metrobús are visible)
         if (showBusStops && showMetrobusStops) {
             currentMergedGroups.forEach { group ->
-                val isSelected = (selectedItem as? GoogleMapTransitItem.Merged)?.busStop?.id_parada == group.busStop.id_parada ||
-                                 (selectedMapItem as? SelectedMapItem.BusStop)?.stop?.id_parada == group.busStop.id_parada ||
-                                 (selectedMapItem as? SelectedMapItem.MetrobusStopItem)?.stop?.id == group.mbStop.id
+                val isSelected = selectedMergedBusId == group.busStop.id_parada ||
+                    selectedBusId == group.busStop.id_parada ||
+                    selectedMbId == group.mbStop.id
                 if (isSelected) return@forEach
 
-                val stopLines = remember(group) {
-                    ((group.busStop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() } +
-                     (group.mbStop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() }).filter { it.isNotEmpty() }.toSet()
+                val sharesLine = if (hasActiveLineIsolation) {
+                    getNormalizedStopLines(group.busStop.lineas).any { activeIsolatedBusLines.contains(it) } ||
+                        getNormalizedStopLines(group.mbStop.lineas).any { activeIsolatedBusLines.contains(it) }
+                } else {
+                    false
                 }
-                val sharesLine = stopLines.any { activeIsolatedBusLines.contains(it) }
-                if (activeIsolatedBusLines.isNotEmpty() && !sharesLine) return@forEach
+                if (hasActiveLineIsolation && !sharesLine) return@forEach
 
-                val isDimmedByBusHighlight = activeIsolatedBusLines.isNotEmpty() && !sharesLine
-                val isDimmed = isDimmedByBusHighlight || isDimmedByOtherMode
-                val isHighlightedRoute = activeIsolatedBusLines.isNotEmpty() && sharesLine
-
+                val isDimmed = isDimmedByOtherMode
+                val isHighlightedRoute = hasActiveLineIsolation && sharesLine
                 val markerAlpha = if (isDimmed) 0.25f else 1.0f
                 val markerZIndex = if (isDimmed) 2f else if (isHighlightedRoute) 32f else 24f
 
-                key("MERGED_BADGE_CLEAN_${group.busStop.id_parada}_${group.mbStop.id}") {
-                    val iconInfo = remember(isDarkMode) {
-                        GoogleMapsMarkerCache.getOrCreateMergedCompactIconBadge(context, isDarkMode)
+                val markerKey = "MERGED_${group.busStop.id_parada}_${group.mbStop.id}"
+                key(markerKey) {
+                    val isFav = if (busLodTier == 3) {
+                        favoriteBusStops.contains(group.busStop.id_parada) || favoriteBusStops.contains(group.mbStop.id)
+                    } else false
+                    val alias = if (busLodTier == 3) {
+                        busStopAliases[group.busStop.id_parada] ?: busStopAliases[group.mbStop.id]
+                    } else null
+
+                    val iconInfo = when (busLodTier) {
+                        1 -> mergedDot
+                        2 -> mergedCleanBadge
+                        else -> remember(
+                            group.busStop.denominacion,
+                            group.busStop.lineas,
+                            group.mbStop.lineas,
+                            isDarkMode,
+                            alias,
+                            isFav,
+                            isDimmed
+                        ) {
+                            if (isDimmed) {
+                                mergedDot
+                            } else {
+                                GoogleMapsMarkerCache.getOrCreateMergedStopIcon(
+                                    context = context,
+                                    stopName = group.busStop.denominacion,
+                                    emtLinesString = group.busStop.lineas,
+                                    metrobusLinesString = group.mbStop.lineas,
+                                    isDarkMode = isDarkMode,
+                                    alias = alias,
+                                    isFavorite = isFav
+                                )
+                            }
+                        }
                     }
+
+                    val title = if (busLodTier == 3) group.busStop.denominacion else "${group.busStop.denominacion} (EMT + Metrobús)"
+
                     Marker(
-                        state = rememberMarkerState(key = "MERGED_BADGE_CLEAN_${group.busStop.id_parada}_${group.mbStop.id}", position = LatLng(group.busStop.lat, group.busStop.lon)),
+                        state = rememberMarkerState(key = markerKey, position = LatLng(group.busStop.lat, group.busStop.lon)),
                         icon = iconInfo.descriptor,
                         anchor = iconInfo.anchor,
                         alpha = markerAlpha,
-                        title = "${group.busStop.denominacion} (EMT + Metrobús)",
+                        title = title,
                         zIndex = markerZIndex,
                         onClick = {
                             val item = GoogleMapTransitItem.Merged(group.busStop, group.mbStop)
@@ -287,182 +238,53 @@ internal fun GoogleMapBusLayer(
             }
         }
 
+        val busList = if (busLodTier == 1) sampledDotsBus else standaloneBusDetailed
+        val mbList = if (busLodTier == 1) sampledDotsMb else standaloneMbDetailed
+
         // Standalone EMT Bus stops
         if (showBusStops) {
-            val emtBadge = remember { GoogleMapsMarkerCache.getOrCreateBusIconBadge(context, isMetrobus = false) }
-            standaloneBusDetailed.forEach { stop ->
-                val isSelected = (selectedItem as? GoogleMapTransitItem.Bus)?.stop?.id_parada == stop.id_parada ||
-                                 (selectedMapItem as? SelectedMapItem.BusStop)?.stop?.id_parada == stop.id_parada
-                if (isSelected) return@forEach
+            busList.forEach { stop ->
+                if (selectedBusId == stop.id_parada) return@forEach
 
-                val stopLines = remember(stop.lineas) { (stop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() }.filter { it.isNotEmpty() } }
-                val sharesLine = stopLines.any { activeIsolatedBusLines.contains(it) }
-                if (activeIsolatedBusLines.isNotEmpty() && !sharesLine) return@forEach
+                val sharesLine = if (hasActiveLineIsolation) {
+                    getNormalizedStopLines(stop.lineas).any { activeIsolatedBusLines.contains(it) }
+                } else {
+                    false
+                }
+                if (hasActiveLineIsolation && !sharesLine) return@forEach
 
-                val isDimmedByBusHighlight = activeIsolatedBusLines.isNotEmpty() && !sharesLine
-                val isDimmed = isDimmedByBusHighlight || isDimmedByOtherMode
-                val isHighlightedRoute = activeIsolatedBusLines.isNotEmpty() && sharesLine
-
+                val isDimmed = isDimmedByOtherMode
+                val isHighlightedRoute = hasActiveLineIsolation && sharesLine
                 val markerAlpha = if (isDimmed) 0.25f else 1.0f
                 val markerZIndex = if (isDimmed) 2f else if (isHighlightedRoute) 32f else 24f
 
-                key("BUS_BADGE_CLEAN_${stop.id_parada}") {
-                    Marker(
-                        state = rememberMarkerState(key = "BUS_BADGE_CLEAN_${stop.id_parada}", position = LatLng(stop.lat, stop.lon)),
-                        icon = emtBadge.descriptor,
-                        anchor = emtBadge.anchor,
-                        alpha = markerAlpha,
-                        title = stop.denominacion,
-                        zIndex = markerZIndex,
-                        onClick = {
-                            val item = GoogleMapTransitItem.Bus(stop)
-                            handleTransitItemTap(item, stop.lat, stop.lon)
-                            true
-                        }
-                    )
-                }
-            }
-        }
+                val markerKey = "BUS_${stop.id_parada}"
+                key(markerKey) {
+                    val isFav = if (busLodTier == 3) favoriteBusStops.contains(stop.id_parada) else false
+                    val alias = if (busLodTier == 3) busStopAliases[stop.id_parada] else null
 
-        // Standalone Metrobús stops
-        if (showMetrobusStops) {
-            val mbBadge = remember { GoogleMapsMarkerCache.getOrCreateBusIconBadge(context, isMetrobus = true) }
-            standaloneMbDetailed.forEach { stop ->
-                val isSelected = (selectedItem as? GoogleMapTransitItem.Metrobus)?.stop?.id == stop.id ||
-                                 (selectedMapItem as? SelectedMapItem.MetrobusStopItem)?.stop?.id == stop.id
-                if (isSelected) return@forEach
-
-                val stopLines = remember(stop.lineas) { (stop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() }.filter { it.isNotEmpty() } }
-                val sharesLine = stopLines.any { activeIsolatedBusLines.contains(it) }
-                if (activeIsolatedBusLines.isNotEmpty() && !sharesLine) return@forEach
-
-                val isDimmedByBusHighlight = activeIsolatedBusLines.isNotEmpty() && !sharesLine
-                val isDimmed = isDimmedByBusHighlight || isDimmedByOtherMode
-                val isHighlightedRoute = activeIsolatedBusLines.isNotEmpty() && sharesLine
-
-                val markerAlpha = if (isDimmed) 0.25f else 1.0f
-                val markerZIndex = if (isDimmed) 2f else if (isHighlightedRoute) 32f else 24f
-
-                key("MB_BADGE_CLEAN_${stop.id}") {
-                    Marker(
-                        state = rememberMarkerState(key = "MB_BADGE_CLEAN_${stop.id}", position = LatLng(stop.lat, stop.lon)),
-                        icon = mbBadge.descriptor,
-                        anchor = mbBadge.anchor,
-                        alpha = markerAlpha,
-                        title = stop.denominacion,
-                        zIndex = markerZIndex,
-                        onClick = {
-                            val item = GoogleMapTransitItem.Metrobus(stop)
-                            handleTransitItemTap(item, stop.lat, stop.lon)
-                            true
-                        }
-                    )
-                }
-            }
-        }
-    }
-
-    // 4. LOD 3B (Zoom >= 17.8): Draw Full Detailed Pins WITH Text Station Name and Line Pills
-    if (isZoomForBusDetailed) {
-        val isDimmedByOtherMode = selectedMapItem is SelectedMapItem.Metro || selectedMapItem is SelectedMapItem.Cercanias
-
-        // Merged stops (only if both EMT and Metrobús are visible)
-        if (showBusStops && showMetrobusStops) {
-            currentMergedGroups.forEach { group ->
-                val isSelected = (selectedItem as? GoogleMapTransitItem.Merged)?.busStop?.id_parada == group.busStop.id_parada ||
-                                 (selectedMapItem as? SelectedMapItem.BusStop)?.stop?.id_parada == group.busStop.id_parada ||
-                                 (selectedMapItem as? SelectedMapItem.MetrobusStopItem)?.stop?.id == group.mbStop.id
-                if (isSelected) return@forEach
-
-                val stopLines = remember(group) {
-                    ((group.busStop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() } +
-                     (group.mbStop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() }).filter { it.isNotEmpty() }.toSet()
-                }
-                val sharesLine = stopLines.any { activeIsolatedBusLines.contains(it) }
-                if (activeIsolatedBusLines.isNotEmpty() && !sharesLine) return@forEach
-
-                val isDimmedByBusHighlight = activeIsolatedBusLines.isNotEmpty() && !sharesLine
-                val isDimmed = isDimmedByBusHighlight || isDimmedByOtherMode
-                val isHighlightedRoute = activeIsolatedBusLines.isNotEmpty() && sharesLine
-
-                val markerAlpha = if (isDimmed) 0.25f else 1.0f
-                val markerZIndex = if (isDimmed) 2f else if (isHighlightedRoute) 32f else 24f
-
-                key("MERGED_BADGE_${group.busStop.id_parada}_${group.mbStop.id}") {
-                    val isFav = favoriteBusStops.contains(group.busStop.id_parada) || favoriteBusStops.contains(group.mbStop.id)
-                    val alias = busStopAliases[group.busStop.id_parada] ?: busStopAliases[group.mbStop.id]
-                    val iconInfo = remember(group.busStop.denominacion, group.busStop.lineas, group.mbStop.lineas, isDarkMode, alias, isFav, isDimmed) {
-                        if (isDimmed) {
-                            GoogleMapsMarkerCache.getOrCreateMergedDotIcon(context)
-                        } else {
-                            GoogleMapsMarkerCache.getOrCreateMergedStopIcon(
-                                context = context,
-                                stopName = group.busStop.denominacion,
-                                emtLinesString = group.busStop.lineas,
-                                metrobusLinesString = group.mbStop.lineas,
-                                isDarkMode = isDarkMode,
-                                alias = alias,
-                                isFavorite = isFav
-                            )
+                    val iconInfo = when (busLodTier) {
+                        1 -> emtDot
+                        2 -> emtBadge
+                        else -> remember(stop.denominacion, stop.lineas, isDarkMode, alias, isFav, isDimmed) {
+                            if (isDimmed) {
+                                emtDot
+                            } else {
+                                GoogleMapsMarkerCache.getOrCreateBusStopIcon(
+                                    context = context,
+                                    stopName = stop.denominacion,
+                                    linesString = stop.lineas,
+                                    isDarkMode = isDarkMode,
+                                    isMetrobus = false,
+                                    alias = alias,
+                                    isFavorite = isFav
+                                )
+                            }
                         }
                     }
 
                     Marker(
-                        state = rememberMarkerState(key = "MERGED_BADGE_${group.busStop.id_parada}_${group.mbStop.id}", position = LatLng(group.busStop.lat, group.busStop.lon)),
-                        icon = iconInfo.descriptor,
-                        anchor = iconInfo.anchor,
-                        alpha = markerAlpha,
-                        title = group.busStop.denominacion,
-                        zIndex = markerZIndex,
-                        onClick = {
-                            val item = GoogleMapTransitItem.Merged(group.busStop, group.mbStop)
-                            handleTransitItemTap(item, group.busStop.lat, group.busStop.lon)
-                            true
-                        }
-                    )
-                }
-            }
-        }
-
-        // Standalone EMT Bus stops
-        if (showBusStops) {
-            standaloneBusDetailed.forEach { stop ->
-                val isSelected = (selectedItem as? GoogleMapTransitItem.Bus)?.stop?.id_parada == stop.id_parada ||
-                                 (selectedMapItem as? SelectedMapItem.BusStop)?.stop?.id_parada == stop.id_parada
-                if (isSelected) return@forEach
-
-                val stopLines = remember(stop.lineas) { (stop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() }.filter { it.isNotEmpty() } }
-                val sharesLine = stopLines.any { activeIsolatedBusLines.contains(it) }
-                if (activeIsolatedBusLines.isNotEmpty() && !sharesLine) return@forEach
-
-                val isDimmedByBusHighlight = activeIsolatedBusLines.isNotEmpty() && !sharesLine
-                val isDimmed = isDimmedByBusHighlight || isDimmedByOtherMode
-                val isHighlightedRoute = activeIsolatedBusLines.isNotEmpty() && sharesLine
-
-                val markerAlpha = if (isDimmed) 0.25f else 1.0f
-                val markerZIndex = if (isDimmed) 2f else if (isHighlightedRoute) 32f else 24f
-
-                key("BUS_BADGE_${stop.id_parada}") {
-                    val isFav = favoriteBusStops.contains(stop.id_parada)
-                    val alias = busStopAliases[stop.id_parada]
-                    val iconInfo = remember(stop.denominacion, stop.lineas, isDarkMode, alias, isFav, isDimmed) {
-                        if (isDimmed) {
-                            GoogleMapsMarkerCache.getOrCreateCompactDotIcon(context, AndroidColor.parseColor("#E53935"))
-                        } else {
-                            GoogleMapsMarkerCache.getOrCreateBusStopIcon(
-                                context = context,
-                                stopName = stop.denominacion,
-                                linesString = stop.lineas,
-                                isDarkMode = isDarkMode,
-                                isMetrobus = false,
-                                alias = alias,
-                                isFavorite = isFav
-                            )
-                        }
-                    }
-
-                    Marker(
-                        state = rememberMarkerState(key = "BUS_BADGE_${stop.id_parada}", position = LatLng(stop.lat, stop.lon)),
+                        state = rememberMarkerState(key = markerKey, position = LatLng(stop.lat, stop.lon)),
                         icon = iconInfo.descriptor,
                         anchor = iconInfo.anchor,
                         alpha = markerAlpha,
@@ -480,43 +302,48 @@ internal fun GoogleMapBusLayer(
 
         // Standalone Metrobús stops
         if (showMetrobusStops) {
-            standaloneMbDetailed.forEach { stop ->
-                val isSelected = (selectedItem as? GoogleMapTransitItem.Metrobus)?.stop?.id == stop.id ||
-                                 (selectedMapItem as? SelectedMapItem.MetrobusStopItem)?.stop?.id == stop.id
-                if (isSelected) return@forEach
+            mbList.forEach { stop ->
+                if (selectedMbId == stop.id) return@forEach
 
-                val stopLines = remember(stop.lineas) { (stop.lineas ?: "").split(",").map { MetrobusStationHighlightManager.normalizeLine(it).uppercase() }.filter { it.isNotEmpty() } }
-                val sharesLine = stopLines.any { activeIsolatedBusLines.contains(it) }
-                if (activeIsolatedBusLines.isNotEmpty() && !sharesLine) return@forEach
+                val sharesLine = if (hasActiveLineIsolation) {
+                    getNormalizedStopLines(stop.lineas).any { activeIsolatedBusLines.contains(it) }
+                } else {
+                    false
+                }
+                if (hasActiveLineIsolation && !sharesLine) return@forEach
 
-                val isDimmedByBusHighlight = activeIsolatedBusLines.isNotEmpty() && !sharesLine
-                val isDimmed = isDimmedByBusHighlight || isDimmedByOtherMode
-                val isHighlightedRoute = activeIsolatedBusLines.isNotEmpty() && sharesLine
-
+                val isDimmed = isDimmedByOtherMode
+                val isHighlightedRoute = hasActiveLineIsolation && sharesLine
                 val markerAlpha = if (isDimmed) 0.25f else 1.0f
                 val markerZIndex = if (isDimmed) 2f else if (isHighlightedRoute) 32f else 24f
 
-                key("MB_BADGE_${stop.id}") {
-                    val isFav = favoriteBusStops.contains(stop.id)
-                    val alias = busStopAliases[stop.id]
-                    val iconInfo = remember(stop.denominacion, stop.lineas, isDarkMode, alias, isFav, isDimmed) {
-                        if (isDimmed) {
-                            GoogleMapsMarkerCache.getOrCreateCompactDotIcon(context, AndroidColor.parseColor("#FFB300"))
-                        } else {
-                            GoogleMapsMarkerCache.getOrCreateBusStopIcon(
-                                context = context,
-                                stopName = stop.denominacion,
-                                linesString = stop.lineas,
-                                isDarkMode = isDarkMode,
-                                isMetrobus = true,
-                                alias = alias,
-                                isFavorite = isFav
-                            )
+                val markerKey = "MB_${stop.id}"
+                key(markerKey) {
+                    val isFav = if (busLodTier == 3) favoriteBusStops.contains(stop.id) else false
+                    val alias = if (busLodTier == 3) busStopAliases[stop.id] else null
+
+                    val iconInfo = when (busLodTier) {
+                        1 -> mbDot
+                        2 -> mbBadge
+                        else -> remember(stop.denominacion, stop.lineas, isDarkMode, alias, isFav, isDimmed) {
+                            if (isDimmed) {
+                                mbDot
+                            } else {
+                                GoogleMapsMarkerCache.getOrCreateBusStopIcon(
+                                    context = context,
+                                    stopName = stop.denominacion,
+                                    linesString = stop.lineas,
+                                    isDarkMode = isDarkMode,
+                                    isMetrobus = true,
+                                    alias = alias,
+                                    isFavorite = isFav
+                                )
+                            }
                         }
                     }
 
                     Marker(
-                        state = rememberMarkerState(key = "MB_BADGE_${stop.id}", position = LatLng(stop.lat, stop.lon)),
+                        state = rememberMarkerState(key = markerKey, position = LatLng(stop.lat, stop.lon)),
                         icon = iconInfo.descriptor,
                         anchor = iconInfo.anchor,
                         alpha = markerAlpha,

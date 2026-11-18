@@ -51,7 +51,9 @@ fun BoxScope.GoogleMapStatusBadge(
     cercaniasLinesCount: Int,
     showBusStops: Boolean,
     showMetrobusStops: Boolean,
-    viewportState: GoogleMapViewportTransitState
+    viewportState: GoogleMapViewportTransitState,
+    activeIsolatedBusLines: Set<String> = emptySet(),
+    hasActiveItinerary: Boolean = false
 ) {
     Box(
         modifier = Modifier
@@ -60,13 +62,47 @@ fun BoxScope.GoogleMapStatusBadge(
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), MaterialTheme.shapes.small)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
+        val hasLineIsolation = activeIsolatedBusLines.isNotEmpty()
+        val renderedMergedCount = if (!showBusStops || !showMetrobusStops) {
+            0
+        } else if (!hasLineIsolation) {
+            viewportState.currentMergedGroups.size
+        } else {
+            viewportState.currentMergedGroups.count { group ->
+                getNormalizedStopLines(group.busStop.lineas).any { activeIsolatedBusLines.contains(it) } ||
+                    getNormalizedStopLines(group.mbStop.lineas).any { activeIsolatedBusLines.contains(it) }
+            }
+        }
+        val renderedEmtDetailedCount = if (!showBusStops) {
+            0
+        } else if (!hasLineIsolation) {
+            viewportState.standaloneBusDetailed.size
+        } else {
+            viewportState.standaloneBusDetailed.count { stop ->
+                getNormalizedStopLines(stop.lineas).any { activeIsolatedBusLines.contains(it) }
+            }
+        }
+        val renderedMbDetailedCount = if (!showMetrobusStops) {
+            0
+        } else if (!hasLineIsolation) {
+            viewportState.standaloneMbDetailed.size
+        } else {
+            viewportState.standaloneMbDetailed.count { stop ->
+                getNormalizedStopLines(stop.lineas).any { activeIsolatedBusLines.contains(it) }
+            }
+        }
+        val renderedDotCount = (if (showBusStops) viewportState.sampledDotsBus.size else 0) +
+            (if (showMetrobusStops) viewportState.sampledDotsMb.size else 0) +
+            (if (showBusStops && showMetrobusStops) viewportState.currentMergedGroups.size else 0)
+
         val busStatus = when {
+            hasActiveItinerary -> "Bus: Oculto (ruta)"
             !showBusStops && !showMetrobusStops -> "Bus: Apagado"
             !viewportState.showBusLayer && !viewportState.showMetrobusLayer -> "Bus: Oculto por zoom (<15.2)"
-            viewportState.isZoomForClusters -> "Bus: Clústeres (${viewportState.busClusters.size + viewportState.metrobusClusters.size})"
-            viewportState.isZoomForBusDots -> "Bus: Puntos (${viewportState.sampledDotsBus.size + viewportState.sampledDotsMb.size + viewportState.currentMergedGroups.size})"
-            viewportState.isZoomForBusBadges -> "Bus: Insignias (${viewportState.currentMergedGroups.size} fus., ${viewportState.standaloneBusDetailed.size} EMT, ${viewportState.standaloneMbDetailed.size} MB)"
-            viewportState.isZoomForBusDetailed -> "Bus: Fichas Detalladas (${viewportState.currentMergedGroups.size} fus., ${viewportState.standaloneBusDetailed.size} EMT, ${viewportState.standaloneMbDetailed.size} MB)"
+            viewportState.isZoomForClusters && !hasLineIsolation -> "Bus: Clústeres (${(if (showBusStops) viewportState.busClusters.size else 0) + (if (showMetrobusStops) viewportState.metrobusClusters.size else 0)})"
+            viewportState.isZoomForBusDots -> "Bus: Puntos ($renderedDotCount)"
+            viewportState.isZoomForBusBadges -> "Bus: Insignias ($renderedMergedCount fus., $renderedEmtDetailedCount EMT, $renderedMbDetailedCount MB)"
+            viewportState.isZoomForBusDetailed -> "Bus: Fichas Detalladas ($renderedMergedCount fus., $renderedEmtDetailedCount EMT, $renderedMbDetailedCount MB)"
             else -> "Bus: Apagado"
         }
         Text(

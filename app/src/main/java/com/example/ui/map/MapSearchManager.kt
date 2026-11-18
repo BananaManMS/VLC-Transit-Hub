@@ -54,7 +54,7 @@ class MapSearchManager(
                     null
                 }
             }
-        }.stateIn(scope, SharingStarted.Eagerly, null)
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5000), null)
 
     // Work Location StateFlow
     val workLocation: StateFlow<RecentSearch?> = dashboardRepository.getPreferenceFlow("work_location", "")
@@ -67,7 +67,7 @@ class MapSearchManager(
                     null
                 }
             }
-        }.stateIn(scope, SharingStarted.Eagerly, null)
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5000), null)
 
     // Custom Favorites StateFlow
     val customFavorites: StateFlow<List<RecentSearch>> = dashboardRepository.getPreferenceFlow("custom_favorites", "[]")
@@ -78,7 +78,7 @@ class MapSearchManager(
             } catch (e: Exception) {
                 emptyList()
             }
-        }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun performSearch(
         query: String,

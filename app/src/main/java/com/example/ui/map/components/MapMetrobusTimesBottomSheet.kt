@@ -39,7 +39,9 @@ fun MapMetrobusTimesBottomSheet(
     onLoadMoreScheduled: (() -> Unit)? = null,
     isLoadingMoreScheduled: Boolean = false,
     appLanguage: AppLanguage = AppLanguage.ES,
-    activeTripBottomPadding: Dp = 0.dp
+    activeTripBottomPadding: Dp = 0.dp,
+    dismissTargetHeightPx: Float = 0f,
+    dismissSignal: Int = 0
 ) {
     val unifiedStop = remember(stop, alias, isFavorite) {
         stop.toUnifiedStop(alias = alias, isFavorite = isFavorite)
@@ -79,6 +81,8 @@ fun MapMetrobusTimesBottomSheet(
         onLineFiltersChanged = onLineFiltersChanged,
         onLoadScheduled = onLoadScheduled,
         onLoadMoreScheduled = onLoadMoreScheduled,
-        activeTripBottomPadding = activeTripBottomPadding
+        activeTripBottomPadding = activeTripBottomPadding,
+        dismissTargetHeightPx = dismissTargetHeightPx,
+        dismissSignal = dismissSignal
     )
 }

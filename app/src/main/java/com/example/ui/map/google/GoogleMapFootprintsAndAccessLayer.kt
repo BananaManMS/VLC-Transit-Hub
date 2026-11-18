@@ -13,6 +13,11 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.Polygon
 import com.google.maps.android.compose.rememberMarkerState
 
+private val SELECTED_FP_FILL = Color(0x4DE2001A)
+private val SELECTED_FP_STROKE = Color(0xFFE2001A)
+private val UNSELECTED_FP_FILL = Color(0x33EF4444)
+private val UNSELECTED_FP_STROKE = Color(0x99DC2626)
+
 @Composable
 internal fun GoogleMapFootprintsAndAccessLayer(
     showMetroFootprints: Boolean,
@@ -30,28 +35,34 @@ internal fun GoogleMapFootprintsAndAccessLayer(
     // 1. Draw Station Footprints (Polygons) matching OSMdroid rules
     if (showMetroFootprints && metroStationFootprints.isNotEmpty()) {
         if (selectedMetroStation != null && currentZoom >= 15.2f) {
-            metroStationFootprints.filter {
-                MetroStationAccessMatcher.matchesStation(it.stationName, selectedMetroStation)
-            }.forEachIndexed { idx, fp ->
+            val selectedFootprints = remember(metroStationFootprints, selectedMetroStation) {
+                metroStationFootprints.filter {
+                    MetroStationAccessMatcher.matchesStation(it.stationName, selectedMetroStation)
+                }
+            }
+            selectedFootprints.forEachIndexed { idx, fp ->
                 key("FOOTPRINT_SEL_${fp.stationName}_$idx") {
                     Polygon(
                         points = fp.points,
-                        fillColor = Color(0x4DE2001A),
-                        strokeColor = Color(0xFFE2001A),
+                        fillColor = SELECTED_FP_FILL,
+                        strokeColor = SELECTED_FP_STROKE,
                         strokeWidth = 3.5f,
                         zIndex = 8f
                     )
                 }
             }
         } else if (selectedMetroStation == null && currentZoom >= 15.8f) {
-            metroStationFootprints.filter {
-                it.centerLat in minLat..maxLat && it.centerLon in minLon..maxLon
-            }.forEachIndexed { idx, fp ->
+            val visibleFootprints = remember(metroStationFootprints, minLat, maxLat, minLon, maxLon) {
+                metroStationFootprints.filter {
+                    it.centerLat in minLat..maxLat && it.centerLon in minLon..maxLon
+                }
+            }
+            visibleFootprints.forEachIndexed { idx, fp ->
                 key("FOOTPRINT_UNSEL_${fp.stationName}_$idx") {
                     Polygon(
                         points = fp.points,
-                        fillColor = Color(0x33EF4444),
-                        strokeColor = Color(0x99DC2626),
+                        fillColor = UNSELECTED_FP_FILL,
+                        strokeColor = UNSELECTED_FP_STROKE,
                         strokeWidth = 2.5f,
                         zIndex = 1f
                     )
@@ -66,25 +77,25 @@ internal fun GoogleMapFootprintsAndAccessLayer(
         (selectedMetroStation == null && currentZoom >= 15.8f)
     )
     if (shouldShowAccesses && metroAccessPoints.isNotEmpty()) {
-        val filteredAccesses = remember(metroAccessPoints, selectedMetroStation, currentZoom, minLat, maxLat, minLon, maxLon) {
+        val filteredAccesses = remember(metroAccessPoints, selectedMetroStation, minLat, maxLat, minLon, maxLon) {
             if (selectedMetroStation != null) {
                 metroAccessPoints.filter { MetroStationAccessMatcher.matchesStation(it.stationName, selectedMetroStation) }
             } else {
                 metroAccessPoints.filter { it.geoPoint.latitude in minLat..maxLat && it.geoPoint.longitude in minLon..maxLon }
             }
         }
+        val accessZIndex = if (selectedMetroStation != null) 36f else 24f
 
         filteredAccesses.forEach { access ->
-            key("ACCESS_${access.stationName}_${access.geoPoint.latitude}_${access.geoPoint.longitude}") {
+            val accessKey = "ACCESS_${access.stationName}_${access.geoPoint.latitude}_${access.geoPoint.longitude}"
+            key(accessKey) {
                 val iconInfo = remember(access.typeCas) {
                     GoogleMapsMarkerCache.getOrCreateAccessIcon(context, access.typeCas)
                 }
-                val isAccessSelected = selectedMetroStation != null && MetroStationAccessMatcher.matchesStation(access.stationName, selectedMetroStation)
-                val accessZIndex = if (isAccessSelected) 36f else 24f
 
                 Marker(
                     state = rememberMarkerState(
-                        key = "ACCESS_${access.stationName}_${access.geoPoint.latitude}_${access.geoPoint.longitude}",
+                        key = accessKey,
                         position = LatLng(access.geoPoint.latitude, access.geoPoint.longitude)
                     ),
                     icon = iconInfo.descriptor,

@@ -80,7 +80,7 @@ fun AvisosTab(
     activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     LaunchedEffect(Unit) {
-        metroViewModel.fetchAllAlerts()
+        metroViewModel.fetchAllAlerts(includeNews = true)
     }
 
     val activeIncidents by metroViewModel.activeIncidents.collectAsState()
@@ -277,7 +277,7 @@ fun AvisosTab(
                                 }
                             }
                             FilledTonalButton(
-                                onClick = { metroViewModel.fetchAllAlerts() },
+                                onClick = { metroViewModel.fetchAllAlerts(force = true, includeNews = true) },
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                                 modifier = Modifier.height(34.dp)
                             ) {

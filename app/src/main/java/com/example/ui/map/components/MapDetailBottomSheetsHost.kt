@@ -61,7 +61,9 @@ fun BoxScope.MapDetailBottomSheetsHost(
     maxExpandedSheetHeight: Dp = 560.dp,
     detailSheetState: DetailSheetState = DetailSheetState.HALF_EXPANDED,
     onDetailSheetStateChanged: (DetailSheetState) -> Unit = {},
-    activeTripBottomPadding: Dp = 0.dp
+    activeTripBottomPadding: Dp = 0.dp,
+    dismissTargetHeightPx: Float = 0f,
+    dismissSignal: Int = 0
 ) {
     val busTimes by mapViewModel.busTimes.collectAsState()
     val busTimesLoading by mapViewModel.busTimesLoading.collectAsState()
@@ -125,6 +127,8 @@ fun BoxScope.MapDetailBottomSheetsHost(
                 },
                 isLoadingMoreScheduled = busTimesLoadingMore,
                 activeTripBottomPadding = activeTripBottomPadding,
+                dismissTargetHeightPx = dismissTargetHeightPx,
+                dismissSignal = dismissSignal,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -177,6 +181,8 @@ fun BoxScope.MapDetailBottomSheetsHost(
                 onSheetStateChanged = onDetailSheetStateChanged,
                 onHeightPxChanged = onMetroStationDetailHeightPxChanged,
                 activeTripBottomPadding = activeTripBottomPadding,
+                dismissTargetHeightPx = dismissTargetHeightPx,
+                dismissSignal = dismissSignal,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -229,6 +235,8 @@ fun BoxScope.MapDetailBottomSheetsHost(
                 onSheetStateChanged = onDetailSheetStateChanged,
                 onHeightPxChanged = onCercaniasStationDetailHeightPxChanged,
                 activeTripBottomPadding = activeTripBottomPadding,
+                dismissTargetHeightPx = dismissTargetHeightPx,
+                dismissSignal = dismissSignal,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -279,6 +287,8 @@ fun BoxScope.MapDetailBottomSheetsHost(
                 onSheetStateChanged = onDetailSheetStateChanged,
                 onHeightPxChanged = onValenbisiStationDetailHeightPxChanged,
                 activeTripBottomPadding = activeTripBottomPadding,
+                dismissTargetHeightPx = dismissTargetHeightPx,
+                dismissSignal = dismissSignal,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -321,7 +331,7 @@ fun BoxScope.MapDetailBottomSheetsHost(
                         )
                     )
                 },
-                onRefresh = { mapViewModel.fetchMetrobusTimes(item.stop.id_parada) },
+                onRefresh = { mapViewModel.fetchMetrobusTimes(item.stop.id_parada, forceRefresh = true) },
                 maxExpandedHeight = maxExpandedSheetHeight,
                 sheetState = detailSheetState,
                 onSheetStateChanged = onDetailSheetStateChanged,
@@ -342,6 +352,8 @@ fun BoxScope.MapDetailBottomSheetsHost(
                 isLoadingMoreScheduled = metrobusTimesLoadingMore,
                 appLanguage = appLanguage,
                 activeTripBottomPadding = activeTripBottomPadding,
+                dismissTargetHeightPx = dismissTargetHeightPx,
+                dismissSignal = dismissSignal,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -432,6 +444,8 @@ fun BoxScope.MapDetailBottomSheetsHost(
                 onSheetStateChanged = onDetailSheetStateChanged,
                 onHeightPxChanged = onAddressDetailHeightPxChanged,
                 activeTripBottomPadding = activeTripBottomPadding,
+                dismissTargetHeightPx = dismissTargetHeightPx,
+                dismissSignal = dismissSignal,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -447,6 +461,8 @@ fun BoxScope.MapDetailBottomSheetsHost(
                 },
                 sheetState = detailSheetState,
                 onSheetStateChanged = onDetailSheetStateChanged,
+                dismissTargetHeightPx = dismissTargetHeightPx,
+                dismissSignal = dismissSignal,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
