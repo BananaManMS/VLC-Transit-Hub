@@ -34,10 +34,11 @@ fun TransitCardsSummaryWidget(
     cards: List<TransitCardUiModel>,
     onAddCardClick: () -> Unit,
     onCardClick: (TransitCardUiModel) -> Unit,
-    onManageCardsClick: () -> Unit
+    onManageCardsClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface

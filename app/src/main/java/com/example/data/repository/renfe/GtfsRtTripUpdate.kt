@@ -25,5 +25,6 @@ data class GtfsRtTripUpdate(
     val vehicleLabel: String = "",
     val isIndeterminateDeparture: Boolean = false,
     val isCanceled: Boolean = false,
-    val timestamp: Long = 0L
+    val timestamp: Long = 0L,
+    val hasExplicitDelay: Boolean = false
 )

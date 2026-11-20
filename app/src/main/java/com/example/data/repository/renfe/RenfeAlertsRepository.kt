@@ -47,19 +47,46 @@ class RenfeAlertsRepository(
                     removeAccents(it.nombre.lowercase(Locale.ROOT).trim())
                 }
 
-                val request = Request.Builder()
+                val requestBuilder = Request.Builder()
                     .url("https://gtfsrt.renfe.com/alerts.json")
                     .header("User-Agent", NetworkModule.USER_AGENT)
-                    .build()
+                if (cachedAlertsEtag.isNotBlank()) {
+                    requestBuilder.header("If-None-Match", cachedAlertsEtag)
+                }
 
-                val responseBody = NetworkModule.okHttpClient.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) response.body?.string() else null
+                var isNotModified = false
+                val responseBody = NetworkModule.okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+                    when {
+                        response.code == 304 -> {
+                            isNotModified = true
+                            null
+                        }
+                        response.isSuccessful -> {
+                            response.header("ETag")?.takeIf { it.isNotBlank() }?.let { cachedAlertsEtag = it }
+                            response.body?.string()
+                        }
+                        else -> null
+                    }
+                }
+
+                if (isNotModified && cachedAlerts.isNotEmpty()) {
+                    lastFetchTimestamp = System.currentTimeMillis()
+                    _activeAlerts.value = cachedAlerts
+                    _hasError.value = false
+                    return@withLock cachedAlerts
                 }
 
                 if (!responseBody.isNullOrBlank()) {
                     val jsonObject = JSONObject(responseBody)
                     val headerObj = jsonObject.optJSONObject("header")
                     val headerTimestamp = headerObj?.optLong("timestamp", 0L) ?: 0L
+
+                    if (headerTimestamp > 0L && headerTimestamp == cachedAlertsHeaderTimestamp && cachedAlerts.isNotEmpty()) {
+                        lastFetchTimestamp = System.currentTimeMillis()
+                        _activeAlerts.value = cachedAlerts
+                        _hasError.value = false
+                        return@withLock cachedAlerts
+                    }
 
                     val entitiesArray = jsonObject.optJSONArray("entity") ?: jsonObject.optJSONArray("entities")
                     val list = mutableListOf<CercaniasAlert>()
@@ -121,7 +148,8 @@ class RenfeAlertsRepository(
 
                             var isValencia = false
                             if (hasValenciaRoute || hasValenciaStop) {
-                                isValencia = !hasOtherHubRoute && !hasOtherHubStop
+                                // Keep alerts that explicitly target any Núcleo 40 route or València stop, even if shared with MD/LD corridors
+                                isValencia = true
                             } else if (!hasOtherHubRoute && !hasOtherHubStop) {
                                 val mentionsValenciaOrCastellon = textToSearchNoAccents.contains("valencia") ||
                                         textToSearchNoAccents.contains("valència") ||
@@ -222,15 +250,20 @@ class RenfeAlertsRepository(
         if (textObj == null) return ""
         val transArray = textObj.optJSONArray("translation") ?: textObj.optJSONArray("translations")
         if (transArray != null && transArray.length() > 0) {
+            var caFallback: String? = null
             for (i in 0 until transArray.length()) {
                 val tr = transArray.optJSONObject(i) ?: continue
-                val lang = tr.optString("language", "").lowercase(Locale.ROOT)
-                val text = tr.optString("text", "")
-                if (lang == "es" || lang == "spa" || lang == "ca" || lang == "val") {
-                    return text.trim()
+                val lang = tr.optString("language", "").lowercase(Locale.ROOT).trim()
+                val text = tr.optString("text", "").trim()
+                if (text.isBlank()) continue
+                if (lang == "es" || lang == "spa") {
+                    return text
+                }
+                if (caFallback == null && (lang == "ca" || lang == "val")) {
+                    caFallback = text
                 }
             }
-            return transArray.optJSONObject(0)?.optString("text", "")?.trim() ?: ""
+            return caFallback ?: (transArray.optJSONObject(0)?.optString("text", "")?.trim() ?: "")
         }
         return textObj.optString("text", "").trim()
     }
@@ -307,6 +340,9 @@ class RenfeAlertsRepository(
 
         @Volatile
         private var cachedAlertsHeaderTimestamp: Long = 0L
+
+        @Volatile
+        private var cachedAlertsEtag: String = ""
 
         private val _activeAlerts = MutableStateFlow<List<CercaniasAlert>>(emptyList())
         private val _isLoading = MutableStateFlow(false)

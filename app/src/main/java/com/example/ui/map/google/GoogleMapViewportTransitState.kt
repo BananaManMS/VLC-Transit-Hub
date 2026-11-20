@@ -81,7 +81,8 @@ fun rememberGoogleMapViewportTransit(
     metrobusStops: List<MetrobusStopEntity>,
     valenbisiStations: List<ValenbisiStation>,
     initialTarget: GeoPoint? = null,
-    initialZoom: Float = 15.5f
+    initialZoom: Float = 15.5f,
+    isMapVisible: Boolean = true
 ): GoogleMapViewportTransitState {
     val initialFallbackBox = remember(initialTarget, initialZoom) {
         val lat = initialTarget?.latitude?.takeIf { it != 0.0 } ?: MapConfig.DEFAULT_LATITUDE
@@ -143,14 +144,25 @@ fun rememberGoogleMapViewportTransit(
         }
     }
 
-    // Viewport Transit Filter execution
+    // Viewport Transit Filter execution (paused & cleared while map tab is hidden)
     LaunchedEffect(
         cameraPositionState,
         mapFilter,
         busStops.size,
         metrobusStops.size,
-        valenbisiStations.size
+        valenbisiStations.size,
+        isMapVisible
     ) {
+        if (!isMapVisible) {
+            currentMergedGroups = emptyList()
+            busClusters = emptyList()
+            metrobusClusters = emptyList()
+            sampledDotsBus = emptyList()
+            sampledDotsMb = emptyList()
+            standaloneBusDetailed = emptyList()
+            standaloneMbDetailed = emptyList()
+            return@LaunchedEffect
+        }
         var lastRunTime = 0L
         snapshotFlow {
             val bounds = cameraPositionState.projection?.visibleRegion?.latLngBounds
@@ -165,7 +177,6 @@ fun rememberGoogleMapViewportTransit(
             if (query.isMoving || !isValidMapZoom(query.zoom)) {
                 return@collect
             }
-            delay(50)
 
             val bounds = query.bounds ?: cameraPositionState.projection?.visibleRegion?.latLngBounds
             val curZoom = query.zoom.toDouble()
@@ -185,6 +196,8 @@ fun rememberGoogleMapViewportTransit(
                 }
             }
             currentBoundingBox = bBox
+
+            delay(50)
 
             val currentFilter = query.filter
 

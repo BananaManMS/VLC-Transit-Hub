@@ -2,11 +2,17 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
+    android:viewportWidth="24"
+    android:viewportHeight="24">
 
-    <!-- Icono monocromo blanco de notificaciones (Flecha V→ oficial VLC Transit) -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M 34.97,38.97 L 45.40,61.00 L 54.09,44.18 A 3.75,3.75 0 0,1 57.42,42.15 L 67.37,42.15 L 65.41,40.19 A 3.75,3.75 0 0,1 70.71,34.89 L 79.07,43.25 A 3.75,3.75 0 0,1 79.07,48.55 L 70.71,56.91 A 3.75,3.75 0 0,1 65.41,51.61 L 67.37,49.65 L 59.70,49.65 L 48.59,71.18 A 3.75,3.75 0 0,1 41.87,71.07 L 28.19,42.19 A 3.75,3.75 0 0,1 34.97,38.97 Z" />
+    <!-- Icono de notificación sin padding extra (rellena el espacio de la barra de estado) -->
+    <group
+        android:scaleX="0.393"
+        android:scaleY="0.393"
+        android:translateX="-11.08"
+        android:translateY="-9.5">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 34.97,38.97 L 45.40,61.00 L 54.09,44.18 A 3.75,3.75 0 0,1 57.42,42.15 L 67.37,42.15 L 65.41,40.19 A 3.75,3.75 0 0,1 70.71,34.89 L 79.07,43.25 A 3.75,3.75 0 0,1 79.07,48.55 L 70.71,56.91 A 3.75,3.75 0 0,1 65.41,51.61 L 67.37,49.65 L 59.70,49.65 L 48.59,71.18 A 3.75,3.75 0 0,1 41.87,71.07 L 28.19,42.19 A 3.75,3.75 0 0,1 34.97,38.97 Z" />
+    </group>
 </vector>

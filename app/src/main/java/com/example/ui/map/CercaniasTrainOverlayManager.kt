@@ -73,8 +73,7 @@ class CercaniasTrainOverlayManager(
             val lon = vehicle.longitude!!
             val trainKey = vehicle.tripId.ifBlank { vehicle.trainNum }
 
-            val canonicalNum = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(vehicle.routeId, vehicle.tripId)
-            val lineCode = "C$canonicalNum"
+            val lineCode = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineCode(vehicle.routeId, vehicle.tripId, "CR")
             val lineColorHex = getCercaniasLineColorHex(lineCode)
             val delayMinutes = vehicle.delayMinutes
 

@@ -3,6 +3,8 @@ package com.example.ui.cercanias
 import android.content.Context
 import android.graphics.Color as AndroidColor
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -17,9 +19,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,19 +45,20 @@ import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapType
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberMarkerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlin.math.atan2
 
 /**
  * Dedicated Google Maps view for CercaniasLiveMapDialog.
  * Provides complete visual and functional parity with OSMdroid:
  * 1. C1 to C6 track polylines with line-specific official colors.
  * 2. Cercanías station markers with Renfe roundels and transfer pills.
- * 3. Real-time moving train markers with delay status rings and bearing indicators.
+ * 3. Smoothly interpolated real-time moving train markers with delay status rings and bearing indicators.
  * 4. Interactive station and train selection bottom sheet triggers.
  */
 @Composable
@@ -81,7 +86,6 @@ fun CercaniasGoogleMapView(
         position = CameraPosition.fromLatLngZoom(valenciaCenter, 10.2f)
     }
 
-    // Camera animation trigger from Recenter GPS or station click
     LaunchedEffect(cameraAnimTrigger) {
         if (cameraAnimTrigger > 0 && cameraTarget != null) {
             cameraPositionState.animate(
@@ -91,7 +95,6 @@ fun CercaniasGoogleMapView(
         }
     }
 
-    // Camera focus on selected station/train and instant optical recentering (0ms zero-delay jump)
     LaunchedEffect(selectedStation, selectedTrain, bottomPaddingDp) {
         val target = when {
             selectedStation != null -> LatLng(selectedStation.lat, selectedStation.lon)
@@ -107,7 +110,6 @@ fun CercaniasGoogleMapView(
         }
     }
 
-    // Raw Map Styles
     val lightStyleOptions = remember(context) {
         try {
             MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style_clean_light)
@@ -137,7 +139,6 @@ fun CercaniasGoogleMapView(
         )
     }
 
-    // Load Cercanías track polylines
     var cercaniasPolylineList by remember { mutableStateOf<List<GoogleMapPolyline>>(emptyList()) }
 
     LaunchedEffect(Unit) {
@@ -166,8 +167,27 @@ fun CercaniasGoogleMapView(
         }
     }
 
-    val currentZoom = cameraPositionState.position.zoom
     val isZoomForStations by remember { derivedStateOf { cameraPositionState.position.zoom >= 11.5f } }
+    val stationZoomLod by remember {
+        derivedStateOf {
+            val z = cameraPositionState.position.zoom
+            when {
+                z < 13.5f -> 0
+                z < 15.5f -> 1
+                else -> 2
+            }
+        }
+    }
+    val trainZoomBucket by remember {
+        derivedStateOf {
+            val z = cameraPositionState.position.zoom
+            when {
+                z < 11.0f -> 10.0
+                z < 14.0f -> 12.5
+                else -> 15.5
+            }
+        }
+    }
 
     val activeCercaniasLines = remember(selectedStation) {
         selectedStation?.lineas?.map { it.trim().uppercase() }?.toSet() ?: emptySet()
@@ -206,16 +226,16 @@ fun CercaniasGoogleMapView(
                 }
             }
 
-            // 2. Cercanías Stations (Exact OSMdroid Zoom LOD: Red dot < 13.5, Roundel 13.5..15.5, Full pill >= 15.5)
+            // 2. Cercanías Stations
             if (isZoomForStations) {
                 stations.forEach { station ->
                     key("STATION_${station.stop_id}") {
                         val isFav = favoriteStationIds.contains(station.stop_id)
                         val isSelected = selectedStation?.stop_id == station.stop_id
 
-                        val iconInfo = remember(station.nombre, station.lineas, isDarkMode, isFav, currentZoom, isSelected) {
-                            if (isSelected) {
-                                GoogleMapsMarkerCache.getOrCreateCercaniasStationIcon(
+                        val iconInfo = remember(station.nombre, station.lineas, isDarkMode, isFav, stationZoomLod, isSelected) {
+                            when {
+                                isSelected -> GoogleMapsMarkerCache.getOrCreateCercaniasStationIcon(
                                     context = context,
                                     stationName = station.nombre,
                                     lines = station.lineas,
@@ -223,10 +243,8 @@ fun CercaniasGoogleMapView(
                                     isFavorite = isFav,
                                     showPill = true
                                 )
-                            } else if (currentZoom < 13.5f) {
-                                GoogleMapsMarkerCache.getOrCreateCercaniasRedDotIcon(context, isDarkMode)
-                            } else if (currentZoom < 15.5f) {
-                                GoogleMapsMarkerCache.getOrCreateCercaniasStationIcon(
+                                stationZoomLod == 0 -> GoogleMapsMarkerCache.getOrCreateCercaniasRedDotIcon(context, isDarkMode)
+                                stationZoomLod == 1 -> GoogleMapsMarkerCache.getOrCreateCercaniasStationIcon(
                                     context = context,
                                     stationName = station.nombre,
                                     lines = emptyList(),
@@ -234,8 +252,7 @@ fun CercaniasGoogleMapView(
                                     isFavorite = isFav,
                                     showPill = false
                                 )
-                            } else {
-                                GoogleMapsMarkerCache.getOrCreateCercaniasStationIcon(
+                                else -> GoogleMapsMarkerCache.getOrCreateCercaniasStationIcon(
                                     context = context,
                                     stationName = station.nombre,
                                     lines = station.lineas,
@@ -246,7 +263,7 @@ fun CercaniasGoogleMapView(
                             }
                         }
 
-                        val markerState = com.google.maps.android.compose.rememberMarkerState(
+                        val markerState = rememberMarkerState(
                             key = "STATION_${station.stop_id}",
                             position = LatLng(station.lat, station.lon)
                         )
@@ -266,55 +283,20 @@ fun CercaniasGoogleMapView(
                 }
             }
 
-            // 3. Live Moving Trains
+            // 3. Smoothly Interpolated Live Moving Trains
             if (liveTrains.isNotEmpty()) {
                 liveTrains.forEach { vehicle ->
                     val vLat = vehicle.latitude
                     val vLon = vehicle.longitude
                     if (vLat != null && vLon != null && !vLat.isNaN() && !vLon.isNaN()) {
-                        val canonicalNum = CercaniasRouteUtils.getCanonicalLineNumber(vehicle.routeId, vehicle.tripId)
-                        val lineCode = "C$canonicalNum"
-                        val lineColorHex = AndroidColor.parseColor(
-                            com.example.util.LineColorResolver.getCercaniasLineColorHex(lineCode)
-                        )
-                        val trackPoints = remember(lineCode) {
-                            CercaniasMapOverlayLoader.getLinePoints(lineCode)
-                        }
-                        val snappedPos = remember(vLat, vLon, trackPoints) {
-                            snapToTrackPolyline(vLat, vLon, trackPoints)
-                        }
-
                         key("TRAIN_${vehicle.tripId}_${vehicle.trainNum}") {
-                            val trainIcon = remember(lineCode, lineColorHex, vehicle.delayMinutes, vehicle.bearing, currentZoom) {
-                                GoogleMapsMarkerCache.getOrCreateLiveTrainIcon(
-                                    context = context,
-                                    lineCode = lineCode,
-                                    lineColorHex = lineColorHex,
-                                    delayMinutes = vehicle.delayMinutes,
-                                    bearing = vehicle.bearing ?: 0f,
-                                    zoom = currentZoom.toDouble(),
-                                    showArrow = (vehicle.bearing != null && vehicle.bearing != 0f)
-                                )
-                            }
-                            val markerState = com.google.maps.android.compose.rememberMarkerState(
-                                key = "TRAIN_${vehicle.tripId}_${vehicle.trainNum}",
-                                position = snappedPos
-                            )
-                            LaunchedEffect(snappedPos) {
-                                markerState.position = snappedPos
-                            }
-
-                            Marker(
-                                state = markerState,
-                                icon = trainIcon.descriptor,
-                                anchor = trainIcon.anchor,
-                                title = "Tren ${vehicle.trainNum}",
-                                snippet = "Línea $lineCode • Retraso: ${vehicle.delayMinutes} min",
-                                zIndex = 60f,
-                                onClick = {
-                                    onTrainClick(vehicle)
-                                    true
-                                }
+                            AnimatedGoogleLiveTrainMarker(
+                                context = context,
+                                vehicle = vehicle,
+                                rawLat = vLat,
+                                rawLon = vLon,
+                                zoomBucket = trainZoomBucket,
+                                onTrainClick = onTrainClick
                             )
                         }
                     }
@@ -322,7 +304,6 @@ fun CercaniasGoogleMapView(
             }
         }
 
-        // Anti-flash loading scrim
         AnimatedVisibility(
             visible = !isMapLoaded,
             enter = fadeIn(tween(100)),
@@ -342,6 +323,124 @@ fun CercaniasGoogleMapView(
             }
         }
     }
+}
+
+@Composable
+private fun AnimatedGoogleLiveTrainMarker(
+    context: Context,
+    vehicle: LiveVehicleInfo,
+    rawLat: Double,
+    rawLon: Double,
+    zoomBucket: Double,
+    onTrainClick: (LiveVehicleInfo) -> Unit
+) {
+    val lineCode = CercaniasRouteUtils.getCanonicalLineCode(vehicle.routeId, vehicle.tripId, "CR")
+    val lineColorHex = remember(lineCode) {
+        AndroidColor.parseColor(com.example.util.LineColorResolver.getCercaniasLineColorHex(lineCode))
+    }
+    val trackPoints = remember(lineCode) {
+        CercaniasMapOverlayLoader.getLinePoints(lineCode)
+    }
+    val snappedTarget = remember(rawLat, rawLon, trackPoints) {
+        snapToTrackPolyline(rawLat, rawLon, trackPoints)
+    }
+
+    var startPos by remember { mutableStateOf(snappedTarget) }
+    var endPos by remember { mutableStateOf(snappedTarget) }
+    val progressAnim = remember { Animatable(1f) }
+    var inferredBearing by remember { mutableFloatStateOf(vehicle.bearing ?: 0f) }
+
+    val markerState = rememberMarkerState(
+        key = "TRAIN_${vehicle.tripId}_${vehicle.trainNum}",
+        position = snappedTarget
+    )
+
+    LaunchedEffect(snappedTarget) {
+        val currentT = progressAnim.value.toDouble().coerceIn(0.0, 1.0)
+        val currLat = startPos.latitude + (endPos.latitude - startPos.latitude) * currentT
+        val currLon = startPos.longitude + (endPos.longitude - startPos.longitude) * currentT
+        val dLat = snappedTarget.latitude - currLat
+        val dLon = snappedTarget.longitude - currLon
+        val distSq = dLat * dLat + dLon * dLon
+
+        if (vehicle.bearing != null && vehicle.bearing != 0f) {
+            inferredBearing = vehicle.bearing
+        }
+
+        when {
+            distSq > 0.00008 -> {
+                // Distance > ~1km: snap cleanly without artificial fly-over
+                startPos = snappedTarget
+                endPos = snappedTarget
+                progressAnim.snapTo(1f)
+                markerState.position = snappedTarget
+            }
+            distSq > 1e-10 -> {
+                val curr = LatLng(currLat, currLon)
+                if (vehicle.bearing == null || vehicle.bearing == 0f) {
+                    inferredBearing = computeGeoBearing(currLat, currLon, snappedTarget.latitude, snappedTarget.longitude)
+                }
+                startPos = curr
+                endPos = snappedTarget
+                progressAnim.snapTo(0f)
+                progressAnim.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 25_000, easing = LinearEasing)
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(startPos, endPos) {
+        if (startPos != endPos) {
+            snapshotFlow { progressAnim.value }.collect { t ->
+                val f = t.toDouble().coerceIn(0.0, 1.0)
+                markerState.position = LatLng(
+                    startPos.latitude + (endPos.latitude - startPos.latitude) * f,
+                    startPos.longitude + (endPos.longitude - startPos.longitude) * f
+                )
+            }
+        }
+    }
+
+    val quantizedBearing = remember(inferredBearing) {
+        (((inferredBearing % 360f) + 360f) % 360f / 15f).toInt() * 15f
+    }
+    val showArrow = (vehicle.bearing != null && vehicle.bearing != 0f) || inferredBearing != 0f
+
+    val trainIcon = remember(lineCode, lineColorHex, vehicle.delayMinutes, quantizedBearing, zoomBucket, showArrow) {
+        GoogleMapsMarkerCache.getOrCreateLiveTrainIcon(
+            context = context,
+            lineCode = lineCode,
+            lineColorHex = lineColorHex,
+            delayMinutes = vehicle.delayMinutes,
+            bearing = quantizedBearing,
+            zoom = zoomBucket,
+            showArrow = showArrow
+        )
+    }
+
+    Marker(
+        state = markerState,
+        icon = trainIcon.descriptor,
+        anchor = trainIcon.anchor,
+        title = "Tren ${vehicle.trainNum}",
+        snippet = "Línea $lineCode • Retraso: ${vehicle.delayMinutes} min",
+        zIndex = 60f,
+        onClick = {
+            onTrainClick(vehicle)
+            true
+        }
+    )
+}
+
+private fun computeGeoBearing(startLat: Double, startLon: Double, endLat: Double, endLon: Double): Float {
+    val dLon = Math.toRadians(endLon - startLon)
+    val lat1 = Math.toRadians(startLat)
+    val lat2 = Math.toRadians(endLat)
+    val y = kotlin.math.sin(dLon) * kotlin.math.cos(lat2)
+    val x = kotlin.math.cos(lat1) * kotlin.math.sin(lat2) - kotlin.math.sin(lat1) * kotlin.math.cos(lat2) * kotlin.math.cos(dLon)
+    return ((Math.toDegrees(atan2(y, x)) + 360.0) % 360.0).toFloat()
 }
 
 private fun snapToTrackPolyline(

@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "VLC Transit"
+rootProject.name = "Viatgem"
 include(":app")

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Core Application Name (MANDATORY: Matches metadata.json) -->
-    <string name="app_name">VLC Transit</string>
+    <string name="app_name">Viatgem</string>
 
     <!-- Navigation & Bottom Bar (AVL: Inici, Rodalies, Ajustos) -->
     <string name="tab_inicio">Inici</string>
@@ -526,6 +526,10 @@
     <string name="onboarding_selected_count">%1$d triades</string>
     <string name="onboarding_cards_count">%1$d guardades</string>
     <string name="onboarding_syncing_stops">Actualitzant parades...</string>
+    <string name="onboarding_step_of">Pas %1$d de %2$d</string>
+    <string name="onboarding_action_connect">Connectar</string>
+    <string name="onboarding_habitual_lines_title">Línies habituals</string>
+    <string name="onboarding_calendar_sub">Agenda de hui a Inici</string>
     <!-- Active Trip Banners (Normativa AVL) -->
     <string name="trip_arrived_title">Has arribat al teu destí!</string>
     <string name="trip_completed_format">Viatge completat · %1$s</string>
@@ -849,4 +853,22 @@
     <string name="metrobus_no_stops_title">Sense parades</string>
     <string name="metrobus_no_active_stops">No hi ha parades de metrobús properes</string>
     <string name="metrobus_search_not_found">No s\'han trobat parades per a «%1$s»</string>
+
+    <!-- Onboarding Disclaimer & Privacy Policy (Normativa AVL) -->
+    <string name="onboarding_disclaimer">App independent sense afiliació oficial amb ATMV, FGV (Metrovalencia), Renfe ni EMT València.</string>
+    <string name="setting_privacy_title">Política de privacitat</string>
+    <string name="setting_privacy_sub">Ubicació, calendari, targetes NFC, APIs i control de dades</string>
+    <string name="privacy_dialog_subtitle">Transparència i tractament local de dades</string>
+    <string name="privacy_sec_no_account_title">Sense comptes ni perfils personals</string>
+    <string name="privacy_sec_no_account_body">Viatgem no requerix registre ni recopila noms, correus electrònics ni identificadors personals en servidors propis. Els teus favorits, targetes guardades i preferències de tema o idioma s\'emmagatzemen exclusivament en el teu dispositiu.</string>
+    <string name="privacy_sec_location_title">Ubicació i trajectes actius (opcional)</string>
+    <string name="privacy_sec_location_body">La ubicació (GPS) s\'utilitza únicament quan l\'autoritzes per a ordenar parades properes, centrar el mapa i oferir seguiment en primer pla durant un viatge actiu. Les coordenades no es guarden en cap historial remot.</string>
+    <string name="privacy_sec_calendar_title">Calendari i notificacions (opcional)</string>
+    <string name="privacy_sec_calendar_body">Si connectes el calendari, els pròxims esdeveniments es lligen localment per a mostrar suggeriments d\'eixida en Inici sense enviar-se a servidors externs. Les notificacions només s\'empren per a avisos d\'arribada i trajectes fixats per tu.</string>
+    <string name="privacy_sec_nfc_title">Lectura NFC de targetes SUMA / Mobilis</string>
+    <string name="privacy_sec_nfc_body">La lectura mitjançant NFC es processa íntegrament de manera local i sense connexió. Cap dada de la teua targeta de transport es transmet per Internet.</string>
+    <string name="privacy_sec_third_party_title">Proveïdors de mapes, dades obertes i consentiment</string>
+    <string name="privacy_sec_third_party_body">En consultar temps en viu, clima o mapes, l\'app realitza peticions tècniques directes a les APIs d\'origen (ATMV, FGV, Renfe/NAP, EMT València, Transitous, Open-Meteo, Google Maps i OpenStreetMap/CARTO), subjectes a les seues respectives polítiques. Si futures versions incorporen publicitat o mesurament, se sol·licitarà el teu consentiment previ conforme al RGPD.</string>
+    <string name="privacy_sec_rights_title">Control i revocació de permisos</string>
+    <string name="privacy_sec_rights_body">Pots revocar en qualsevol moment els permisos d\'ubicació, calendari o notificacions des dels ajustos del sistema Android, o eliminar totes les dades guardades esborrant l\'emmagatzematge de l\'aplicació.</string>
 </resources>

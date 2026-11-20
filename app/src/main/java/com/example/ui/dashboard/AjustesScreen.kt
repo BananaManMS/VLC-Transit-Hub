@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -63,8 +64,10 @@ fun AjustesScreen(
     var showStationSelectionPage by remember { mutableStateOf(false) }
     var showCercaniasStationSelectionPage by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
-    var showGoogleMapsSandbox by remember { mutableStateOf(false) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
     var isCalendarConnected by remember { mutableStateOf(false) }
+    var versionTapCount by remember { mutableIntStateOf(0) }
+    var lastVersionTapMs by remember { mutableLongStateOf(0L) }
 
     val allActiveAnnouncements by viewModel.allActiveAnnouncements.collectAsState()
     val isAnnouncementsLoading by viewModel.isAnnouncementsLoading.collectAsState()
@@ -200,75 +203,6 @@ fun AjustesScreen(
                     }
                 }
 
-                // 1.5 MOTOR CARTOGRÁFICO
-                item {
-                    AjustesSectionHeader(
-                        title = if (appLanguage == AppLanguage.ES) "Motor del mapa" else "Motor del mapa"
-                    )
-                    AjustesGroupCard(isDarkMode = isDarkMode) {
-                        AjustesItemRow(
-                            title = if (appLanguage == AppLanguage.ES) "Motor cartográfico principal" else "Motor cartogràfic principal",
-                            subtitle = when (mapEngine) {
-                                MapEngine.GOOGLE_MAPS -> if (appLanguage == AppLanguage.ES)
-                                    "Google Maps • Fluidez a 60 FPS con aceleración gráfica"
-                                else
-                                    "Google Maps • Fluïdesa a 60 FPS amb acceleració gràfica"
-                                MapEngine.OSMDROID -> if (appLanguage == AppLanguage.ES)
-                                    "OSMdroid (OpenStreetMap) • Motor clásico estándar"
-                                else
-                                    "OSMdroid (OpenStreetMap) • Motor clàssic estàndard"
-                            },
-                            icon = Icons.Default.Layers,
-                            iconTint = if (mapEngine == MapEngine.GOOGLE_MAPS) Color(0xFF3B82F6) else Color(0xFF10B981),
-                            iconContainerColor = (if (mapEngine == MapEngine.GOOGLE_MAPS) Color(0xFF3B82F6) else Color(0xFF10B981)).copy(alpha = 0.12f),
-                            trailingContent = {
-                                Row(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                        .padding(2.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val isOsm = mapEngine == MapEngine.OSMDROID
-                                    val isGmaps = mapEngine == MapEngine.GOOGLE_MAPS
-
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isOsm) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                            .clickable { viewModel.setMapEngine(MapEngine.OSMDROID) }
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                                            .testTag("engine_osmdroid_button")
-                                    ) {
-                                        Text(
-                                            text = "OSM",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp,
-                                            color = if (isOsm) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isGmaps) Color(0xFF3B82F6) else Color.Transparent)
-                                            .clickable { viewModel.setMapEngine(MapEngine.GOOGLE_MAPS) }
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                                            .testTag("engine_google_maps_button")
-                                    ) {
-                                        Text(
-                                            text = "Google Maps",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp,
-                                            color = if (isGmaps) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        )
-                    }
-                }
 
                 // 2. TRANSPORTE Y FAVORITOS
                 item {
@@ -471,6 +405,19 @@ fun AjustesScreen(
 
                         AjustesDivider(isDarkMode = isDarkMode)
 
+                        // Política de privacidad
+                        AjustesItemRow(
+                            title = stringResource(R.string.setting_privacy_title),
+                            subtitle = stringResource(R.string.setting_privacy_sub),
+                            icon = Icons.Default.PrivacyTip,
+                            iconTint = Color(0xFF0EA5E9),
+                            iconContainerColor = Color(0xFF0EA5E9).copy(alpha = 0.12f),
+                            onClick = { showPrivacyDialog = true },
+                            modifier = Modifier.testTag("setting_privacy_card")
+                        )
+
+                        AjustesDivider(isDarkMode = isDarkMode)
+
                         // Acerca de la aplicación
                         AjustesItemRow(
                             title = texts.settingAboutTitle,
@@ -478,26 +425,6 @@ fun AjustesScreen(
                             icon = Icons.Default.Info,
                             iconTint = MaterialTheme.colorScheme.primary,
                             onClick = { showAboutDialog = true }
-                        )
-                    }
-                }
-
-                // 4.5 MODO EXPERIMENTAL / LABORATORIO GOOGLE MAPS
-                item {
-                    AjustesSectionHeader(
-                        title = if (appLanguage == AppLanguage.ES) "Laboratorio y pruebas" else "Laboratori i proves"
-                    )
-                    AjustesGroupCard(isDarkMode = isDarkMode) {
-                        AjustesItemRow(
-                            title = "🧪 Laboratorio Google Maps (Beta)",
-                            subtitle = if (appLanguage == AppLanguage.ES)
-                                "Prueba aislada con polylines, huellas y rendimiento 60 FPS"
-                            else
-                                "Prova aïllada amb polylines, petjades i rendiment 60 FPS",
-                            icon = Icons.Default.Map,
-                            iconTint = Color(0xFF3B82F6),
-                            iconContainerColor = Color(0xFF3B82F6).copy(alpha = 0.12f),
-                            onClick = { showGoogleMapsSandbox = true }
                         )
                     }
                 }
@@ -513,14 +440,41 @@ fun AjustesScreen(
                     )
                 }
 
-                // Versión de la app al final
+                // Versión de la app al final (5 toques ocultos sin ripple alterna OSMDroid / Google Maps)
                 item {
+                    val versionInteractionSource = remember { MutableInteractionSource() }
                     Text(
                         text = stringResource(R.string.setting_version_format, BuildConfig.VERSION_NAME),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clickable(
+                                interactionSource = versionInteractionSource,
+                                indication = null
+                            ) {
+                                val now = System.currentTimeMillis()
+                                val nextCount = if (now - lastVersionTapMs <= 3000L) versionTapCount + 1 else 1
+                                lastVersionTapMs = now
+                                if (nextCount >= 5) {
+                                    versionTapCount = 0
+                                    val nextEngine = if (mapEngine == MapEngine.GOOGLE_MAPS) {
+                                        MapEngine.OSMDROID
+                                    } else {
+                                        MapEngine.GOOGLE_MAPS
+                                    }
+                                    viewModel.setMapEngine(nextEngine)
+                                    val engineName = if (nextEngine == MapEngine.OSMDROID) "OSMDroid" else "Google Maps"
+                                    val msg = if (appLanguage == AppLanguage.ES) {
+                                        "Cambiado a $engineName"
+                                    } else {
+                                        "Canviat a $engineName"
+                                    }
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                } else {
+                                    versionTapCount = nextCount
+                                }
+                            }
                             .padding(vertical = 8.dp),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
@@ -535,6 +489,14 @@ fun AjustesScreen(
                 isDarkMode = isDarkMode,
                 appLanguage = appLanguage,
                 onDismiss = { showAboutDialog = false }
+            )
+        }
+
+        if (showPrivacyDialog) {
+            PrivacyPolicyDialog(
+                isDarkMode = isDarkMode,
+                appLanguage = appLanguage,
+                onDismiss = { showPrivacyDialog = false }
             )
         }
 
@@ -564,12 +526,5 @@ fun AjustesScreen(
             )
         }
 
-        if (showGoogleMapsSandbox) {
-            com.example.ui.map.google.GoogleMapsSandboxScreen(
-                metroViewModel = metroViewModel,
-                cercaniasViewModel = cercaniasViewModel,
-                onBackClick = { showGoogleMapsSandbox = false }
-            )
-        }
     }
 }

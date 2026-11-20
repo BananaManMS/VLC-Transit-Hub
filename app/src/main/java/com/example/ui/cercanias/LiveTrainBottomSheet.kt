@@ -64,8 +64,7 @@ fun LiveTrainBottomSheet(
     val sheetSubtextColor = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
 
     // Normalize Line Info
-    val cleanNum = CercaniasRouteUtils.getCanonicalLineNumber(vehicle.routeId, vehicle.tripId)
-    val lineCode = "C$cleanNum"
+    val lineCode = CercaniasRouteUtils.getCanonicalLineCode(vehicle.routeId, vehicle.tripId, vehicle.routeId.ifBlank { "CR" })
     val lineColor = TransitLogoUtils.getCercaniasLineColor(lineCode)
 
     // Fallback terminals based on line

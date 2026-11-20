@@ -92,7 +92,8 @@ fun MapScreen(
     onOpenRouteDetail: (() -> Unit)? = null,
     onStartTrip: ((PlannedItinerary) -> Unit)? = null,
     onOpenNetworkPlans: (() -> Unit)? = null,
-    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
+    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp,
+    isMapVisible: Boolean = true
 ) {
     val context = LocalContext.current
     val mapFilter by mapViewModel.mapFilter.collectAsState()
@@ -194,19 +195,17 @@ fun MapScreen(
     }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, context) {
+    var isLifecycleResumed by remember {
+        mutableStateOf(
+            lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        )
+    }
+    DisposableEffect(lifecycleOwner) {
+        isLifecycleResumed = lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
-                    mapViewModel.startLocationTracking(context)
-                    if (mapFilter.showValenbisi) {
-                        mapViewModel.startValenbisiPeriodicRefresh()
-                    }
-                }
-                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
-                    mapViewModel.stopLocationTracking()
-                    mapViewModel.stopValenbisiPeriodicRefresh()
-                }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> isLifecycleResumed = true
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> isLifecycleResumed = false
                 else -> {}
             }
         }
@@ -215,6 +214,31 @@ fun MapScreen(
             lifecycleOwner.lifecycle.removeObserver(observer)
             mapViewModel.stopLocationTracking()
             mapViewModel.stopValenbisiPeriodicRefresh()
+        }
+    }
+
+    val isActiveInForeground = isLifecycleResumed && isMapVisible
+    LaunchedEffect(isActiveInForeground, mapFilter.showValenbisi, context) {
+        if (isActiveInForeground) {
+            mapViewModel.startLocationTracking(context)
+            if (mapFilter.showValenbisi) {
+                mapViewModel.startValenbisiPeriodicRefresh()
+            } else {
+                mapViewModel.stopValenbisiPeriodicRefresh()
+            }
+        } else {
+            mapViewModel.stopLocationTracking()
+            mapViewModel.stopValenbisiPeriodicRefresh()
+        }
+    }
+
+    LaunchedEffect(isMapVisible) {
+        if (!isMapVisible) {
+            if (isSearchFocused) {
+                isSearchFocused = false
+                focusManager.clearFocus()
+            }
+            keyboardController?.hide()
         }
     }
 
@@ -255,7 +279,7 @@ fun MapScreen(
         isSearchFocused ||
         searchQuery.isNotEmpty()
 
-    BackHandler(enabled = isMapBackHandlerEnabled) {
+    BackHandler(enabled = isMapVisible && isMapBackHandlerEnabled) {
         when {
             isSearchFocused || searchQuery.isNotEmpty() -> {
                 isSearchFocused = false
@@ -364,6 +388,7 @@ fun MapScreen(
                 favoriteCercaniasStations = favoriteCercaniasStations,
                 favoriteValenbisiStations = favoriteValenbisiSet,
                 isCellTowerLocation = isCellTowerLocation,
+                isMapVisible = isMapVisible,
                 onSelectItem = { item ->
                     if (selectedItinerary == null) {
                         detailSheetState = DetailSheetState.HALF_EXPANDED
@@ -812,8 +837,8 @@ fun MapScreen(
             )
         }
 
-        // Bottom Sheets for details
-        if (selectionMode == MapSelectionMode.NORMAL && selectedItinerary == null) {
+        // Bottom Sheets for details (only active while Map tab is visible)
+        if (isMapVisible && selectionMode == MapSelectionMode.NORMAL && selectedItinerary == null) {
             MapDetailBottomSheetsHost(
                 selectedItem = selectedItem,
                 isDarkMode = isDarkMode,

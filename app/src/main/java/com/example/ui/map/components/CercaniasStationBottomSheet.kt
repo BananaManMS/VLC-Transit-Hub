@@ -87,6 +87,7 @@ fun CercaniasStationBottomSheet(
     alerts: List<CercaniasAlert> = emptyList(),
     onNavigateToCercanias: ((String) -> Unit)? = null,
     onDirectionsClick: (() -> Unit)? = null,
+    onSelectDeparture: ((CercaniasDeparture) -> Unit)? = null,
     onDismiss: () -> Unit,
     maxExpandedHeight: Dp = 560.dp,
     sheetState: DetailSheetState = DetailSheetState.HALF_EXPANDED,
@@ -328,7 +329,7 @@ fun CercaniasStationBottomSheet(
                                 alerts = alerts,
                                 isDarkMode = isDarkMode,
                                 appLanguage = appLanguage,
-                                onClick = {}
+                                onClick = { onSelectDeparture?.invoke(departure) }
                             )
                         }
                     }
@@ -388,7 +389,7 @@ fun CercaniasStationBottomSheet(
                                 alerts = alerts,
                                 isDarkMode = isDarkMode,
                                 appLanguage = appLanguage,
-                                onClick = {}
+                                onClick = { onSelectDeparture?.invoke(departure) }
                             )
                         }
                     }

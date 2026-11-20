@@ -89,8 +89,15 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val _hasPlayedLaunchFinishAnimation = MutableStateFlow(false)
     val hasPlayedLaunchFinishAnimation: StateFlow<Boolean> = _hasPlayedLaunchFinishAnimation.asStateFlow()
 
+    private val _isSplashAnimationFinished = MutableStateFlow(false)
+    val isSplashAnimationFinished: StateFlow<Boolean> = _isSplashAnimationFinished.asStateFlow()
+
     fun markLaunchFinishAnimationPlayed() {
         _hasPlayedLaunchFinishAnimation.value = true
+    }
+
+    fun markSplashAnimationFinished() {
+        _isSplashAnimationFinished.value = true
     }
 
     private var nearbyComputeJob: Job? = null
@@ -754,6 +761,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             delay(1200L)
             if (!_isNearbyContextReady.value) {
                 _isNearbyContextReady.value = true
+            }
+            // Respaldo de seguridad por si el listener del SplashScreen no se disparara en algún entorno
+            delay(2200L)
+            if (!_isSplashAnimationFinished.value) {
+                _isSplashAnimationFinished.value = true
             }
         }
 

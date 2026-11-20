@@ -300,7 +300,8 @@ class TripRealTimeReconciler(
                 lastKnownCercaniasDestEpochSec = lastKnownCercaniasDestEpochSec,
                 lastKnownCercaniasDelayMinutes = lastKnownCercaniasDelayMinutes,
                 lastConfirmedBoardedMinsRemaining = lastConfirmedBoardedMinsRemaining,
-                lastBoardedEstimationTimestamp = lastBoardedEstimationTimestamp
+                lastBoardedEstimationTimestamp = lastBoardedEstimationTimestamp,
+                lastKnownCercaniasTripId = lastKnownCercaniasTripId
             )
 
             delayMinutes = boardedResult.delayMinutes

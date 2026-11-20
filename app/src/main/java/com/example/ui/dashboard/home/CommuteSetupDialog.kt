@@ -38,8 +38,9 @@ fun CommuteSetupDialog(
     currentLat: Double = 0.0,
     currentLon: Double = 0.0,
     dashboardViewModel: DashboardViewModel,
+    showSelectOnMap: Boolean = true,
     onDismiss: () -> Unit,
-    onSelectOnMap: () -> Unit,
+    onSelectOnMap: () -> Unit = {},
     onSave: (String, Double, Double) -> Unit
 ) {
     val isDarkMode by dashboardViewModel.isDarkMode.collectAsState()
@@ -353,27 +354,29 @@ fun CommuteSetupDialog(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    if (showSelectOnMap) {
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                    // Select on Map Option
-                    OutlinedButton(
-                        onClick = onSelectOnMap,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Map,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_select_on_map),
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        // Select on Map Option
+                        OutlinedButton(
+                            onClick = onSelectOnMap,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Map,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_select_on_map),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
 
                     // Selected Location Badge

@@ -94,11 +94,13 @@ fun CercaniasDepartureDetails(
     }
 
     val remainingStops = remember(departure, originStationId, originStationName) {
-        CercaniasRouteUtils.getRemainingStops(
+        CercaniasRouteUtils.getRemainingStopsForTrip(
+            tripId = departure.tripId,
             originStationId = originStationId,
             originStationName = originStationName,
             destinationName = departure.destination,
-            routeId = departure.routeId
+            routeId = departure.routeId,
+            allTripIds = departure.allTripIds
         )
     }
 
@@ -355,8 +357,8 @@ fun CercaniasDepartureDetails(
                     ) {
                         remainingStops.forEachIndexed { index, stop ->
                             val isDest = (index == remainingStops.size - 1)
-                            val stopSchedTime = remember(departure.tripId, stop.id, stop.name) {
-                                CercaniasRouteUtils.getStationScheduledTime(departure.tripId, stop.id, stop.name)
+                            val stopSchedTime = remember(departure.tripId, stop.id, stop.name, stop.scheduledTime) {
+                                stop.scheduledTime ?: CercaniasRouteUtils.getStationScheduledTime(departure.tripId, stop.id, stop.name)
                             }
                             val stopEstTime = remember(stopSchedTime, departure.delayMinutes) {
                                 if (stopSchedTime != null) {

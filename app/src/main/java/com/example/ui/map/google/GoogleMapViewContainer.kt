@@ -89,7 +89,8 @@ fun GoogleMapViewContainer(
     onMapTouch: (() -> Unit)? = null,
     onMapPan: (() -> Unit)? = null,
     onCameraPositionChanged: ((GeoPoint, Double) -> Unit)? = null,
-    onZoomLevelChanged: ((Double) -> Unit)? = null
+    onZoomLevelChanged: ((Double) -> Unit)? = null,
+    isMapVisible: Boolean = true
 ) {
     val density = LocalDensity.current
     val bottomPaddingDp = with(density) { bottomPanelOffsetPx.toDp() }
@@ -252,7 +253,8 @@ fun GoogleMapViewContainer(
             onCameraPositionChanged = onCameraPositionChanged,
             onZoomLevelChanged = onZoomLevelChanged,
             onMapReady = handleMapReady,
-            isMapLoaded = isMapLoaded
+            isMapLoaded = isMapLoaded,
+            isMapVisible = isMapVisible
         )
 
         // Smooth skeleton/mask layer with exact map ground background to prevent white surface flash

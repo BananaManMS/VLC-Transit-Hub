@@ -57,7 +57,8 @@ class MainActivity : ComponentActivity() {
             com.example.ui.dashboard.runSumaSplashExitAnimation(
                 splashScreenView = splashScreenView,
                 hasAlreadyPlayed = dashboardViewModel.hasPlayedLaunchFinishAnimation.value,
-                onStarted = { dashboardViewModel.markLaunchFinishAnimationPlayed() }
+                onStarted = { dashboardViewModel.markLaunchFinishAnimationPlayed() },
+                onFinished = { dashboardViewModel.markSplashAnimationFinished() }
             )
         }
 
@@ -105,11 +106,12 @@ class MainActivity : ComponentActivity() {
                 LocalMainActivity provides this@MainActivity
             ) {
                 VlcMetroTheme(darkTheme = isDark) {
+                    val isSplashAnimationFinished by dashboardViewModel.isSplashAnimationFinished.collectAsState()
                     var crashReport by remember { mutableStateOf(CrashCatcher.getCrashReport(applicationContext)) }
                     
                     DashboardScreen(viewModel = dashboardViewModel)
                 
-                if (crashReport != null) {
+                if (isSplashAnimationFinished && crashReport != null) {
                     val currentReport = crashReport!!
                     AlertDialog(
                         onDismissRequest = { /* Prevent dismissal without action */ },

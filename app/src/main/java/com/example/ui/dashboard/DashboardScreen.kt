@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.animation.ExperimentalAnimationApi::class
+)
 
 package com.example.ui.dashboard
 
@@ -15,10 +18,12 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
@@ -39,7 +44,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.example.data.model.MetroStation
 import com.example.data.model.routing.PlannedItinerary
 import com.example.ui.cercanias.CercaniasViewModel
@@ -78,6 +85,7 @@ fun DashboardScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val appLanguage by viewModel.appLanguage.collectAsState()
     val shouldShowOnboarding by viewModel.shouldShowOnboarding.collectAsState()
+    val isSplashAnimationFinished by viewModel.isSplashAnimationFinished.collectAsState()
     val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
 
     val weatherCity by viewModel.weatherCity.collectAsState()
@@ -116,8 +124,12 @@ fun DashboardScreen(
     var userDismissedActiveMapItinerary by remember { mutableStateOf(false) }
     var lastTrackedActiveTripStartMs by remember { mutableStateOf<Long?>(null) }
     var instantTabSwitch by remember { mutableStateOf(false) }
+    var hasVisitedMapTab by remember { mutableStateOf(false) }
 
     LaunchedEffect(activeTab) {
+        if (activeTab == DashboardTab.Mapa) {
+            hasVisitedMapTab = true
+        }
         if (instantTabSwitch) {
             instantTabSwitch = false
         }
@@ -187,24 +199,12 @@ fun DashboardScreen(
     }
 
     var isAppInForeground by remember { mutableStateOf(false) }
-    var hasAutoPromptedNotifications by remember { mutableStateOf(false) }
-    val currentShouldShowOnboarding by androidx.compose.runtime.rememberUpdatedState(shouldShowOnboarding)
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 isAppInForeground = true
                 viewModel.refreshRealTimeTripStatus()
-                if (!currentShouldShowOnboarding && !hasAutoPromptedNotifications && android.os.Build.VERSION.SDK_INT >= 33) {
-                    val hasNotifPerm = androidx.core.content.ContextCompat.checkSelfPermission(
-                        context,
-                        android.Manifest.permission.POST_NOTIFICATIONS
-                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                    if (!hasNotifPerm) {
-                        hasAutoPromptedNotifications = true
-                        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                }
             } else if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
                 isAppInForeground = false
                 viewModel.onAppBackgrounded()
@@ -259,7 +259,6 @@ fun DashboardScreen(
                     },
                     onLaunchNotificationPermission = {
                         if (android.os.Build.VERSION.SDK_INT >= 33) {
-                            hasAutoPromptedNotifications = true
                             notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                         }
                     },
@@ -357,12 +356,181 @@ fun DashboardScreen(
                         label = "dynamicBottomTripPadding"
                     )
 
-                    Crossfade(
+                    val isMapVisible = (activeTab == DashboardTab.Mapa && !isPlannerVisible && !isNetworkPlansVisible)
+
+                    // Persistent warm Google Map host: lazy-mounted on first visit to Mapa and hibernated when hidden
+                    if (hasVisitedMapTab) {
+                        val mapVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.map.MapViewModel>()
+                        val metroVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
+                        val cercaniasVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.cercanias.CercaniasViewModel>()
+                        val plannerVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.routing.RoutePlannerViewModel>()
+
+                        LaunchedEffect(pendingMapSelectionMode) {
+                            pendingMapSelectionMode?.let { mode ->
+                                mapVm.setSelectionMode(mode)
+                                pendingMapSelectionMode = null
+                            }
+                        }
+
+                        LaunchedEffect(lastLocation) {
+                            val currentLoc = lastLocation
+                                ?: com.example.util.LocationUtils.lastKnownLocationCache?.let { Pair(it.latitude, it.longitude) }
+                            currentLoc?.let { (lat, lon) ->
+                                mapVm.updateLocation(lat, lon)
+                                metroVm.setLocation(android.location.Location("gps").apply {
+                                    latitude = lat
+                                    longitude = lon
+                                })
+                                cercaniasVm.updateLocation(lat, lon)
+                            }
+                        }
+
+                        DashboardMapTab(
+                            mapViewModel = mapVm,
+                            dashboardViewModel = viewModel,
+                            metroViewModel = metroVm,
+                            cercaniasViewModel = cercaniasVm,
+                            isDarkMode = isDarkMode,
+                            appLanguage = appLanguage,
+                            isMapVisible = isMapVisible,
+                            onNavigateToMetro = { stationId ->
+                                metroVm.selectRealTimeStation(stationId)
+                                previousTabForBack = DashboardTab.Mapa
+                                activeTab = DashboardTab.Metro
+                            },
+                            onNavigateToCercanias = { stationId ->
+                                cercaniasVm.selectCercaniasStation(stationId)
+                                previousTabForBack = DashboardTab.Mapa
+                                activeTab = DashboardTab.Cercanias
+                            },
+                            onNavigateToRoutePlanner = { location ->
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
+                                plannerInitialDestination = location
+                                val userLoc = mapVm.userLocation.value
+                                if (userLoc != null) {
+                                    plannerVm.setUserLocationAsOrigin(android.location.Location("gps").apply {
+                                        latitude = userLoc.latitude
+                                        longitude = userLoc.longitude
+                                    })
+                                } else {
+                                    plannerVm.useCurrentLocationAsOrigin(context)
+                                }
+                                plannerVm.setDestination(location)
+                                plannerVm.dismissSearchPanel()
+                                isPlannerVisible = true
+                            },
+                            onPlannerLocationPicked = { loc, isOrigin ->
+                                plannerInitialDestination = null
+                                if (isOrigin) {
+                                    plannerVm.setOrigin(loc)
+                                } else {
+                                    plannerVm.setDestination(loc)
+                                }
+                                isPlannerVisible = true
+                            },
+                            onCancelPlannerLocationPicking = {
+                                isPlannerVisible = true
+                            },
+                            onCommuteLocationConfigured = {
+                                activeTab = DashboardTab.Inicio
+                            },
+                            selectedItinerary = activeMapItinerary,
+                            onClearItinerary = {
+                                userDismissedActiveMapItinerary = true
+                                activeMapItinerary = null
+                                plannerInitialDestination = null
+                                if (isViewingPlannerItineraryOnMap && activeTrip == null) {
+                                    isViewingPlannerItineraryOnMap = false
+                                    isPlannerVisible = true
+                                } else {
+                                    isViewingPlannerItineraryOnMap = false
+                                }
+                            },
+                            onStartTrip = { itinerary ->
+                                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                    val hasNotifPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                                        context,
+                                        android.Manifest.permission.POST_NOTIFICATIONS
+                                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    if (!hasNotifPerm) {
+                                        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                }
+                                val origName = itinerary.legs.firstOrNull()?.fromName
+                                    ?: if (appLanguage == AppLanguage.ES) "Tu ubicación" else "La teua ubicació"
+                                val destName = itinerary.legs.lastOrNull()?.toName
+                                    ?: if (appLanguage == AppLanguage.ES) "Destino" else "Destinació"
+                                isViewingPlannerItineraryOnMap = false
+                                userDismissedActiveMapItinerary = false
+                                if (activeTrip != null) {
+                                    pendingTripToStart = Triple(itinerary, origName, destName)
+                                } else {
+                                    mapVm.disableFollowUser()
+                                    viewModel.startActiveTrip(itinerary, origName, destName)
+                                    activeMapItinerary = itinerary
+                                    isPlannerVisible = false
+                                    activeTab = DashboardTab.Mapa
+                                }
+                            },
+                            onOpenNetworkPlans = {
+                                isNetworkPlansVisible = true
+                            },
+                            activeTripBottomPadding = dynamicBottomTripPadding,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .zIndex(0f)
+                                .padding(bottom = innerPadding.calculateBottomPadding())
+                        )
+                    }
+
+                    val tabTransition = updateTransition(
                         targetState = activeTab,
-                        animationSpec = if (instantTabSwitch) snap() else tween(durationMillis = 280),
                         label = "tab_fade_transition"
+                    )
+                    val showOpaqueTabBackdrop =
+                        tabTransition.currentState != DashboardTab.Mapa &&
+                            tabTransition.targetState != DashboardTab.Mapa
+
+                    if (hasVisitedMapTab && showOpaqueTabBackdrop) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .zIndex(0.5f)
+                                .background(MaterialTheme.colorScheme.background)
+                        )
+                    }
+
+                    tabTransition.Crossfade(
+                        animationSpec = if (instantTabSwitch) snap() else tween(durationMillis = 280),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(1f)
                     ) { currentTab ->
-                        when (currentTab) {
+                        if (currentTab != DashboardTab.Mapa) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background)
+                            ) {
+                                // Consume unconsumed taps on whitespace so touches never leak to the hibernated map underneath
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .pointerInput(Unit) {
+                                            awaitPointerEventScope {
+                                                while (true) {
+                                                    val event = awaitPointerEvent()
+                                                    event.changes.forEach { change ->
+                                                        if (!change.isConsumed) {
+                                                            change.consume()
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                )
+                                when (currentTab) {
                         DashboardTab.Inicio -> {
                             DashboardHomeTab(
                                 isRefreshing = isRefreshing,
@@ -475,127 +643,7 @@ fun DashboardScreen(
                                     .padding(bottom = innerPadding.calculateBottomPadding())
                             )
                         }
-                        DashboardTab.Mapa -> {
-                            val mapVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.map.MapViewModel>()
-                            val metroVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.metro.MetroViewModel>()
-                            val cercaniasVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.cercanias.CercaniasViewModel>()
-                            val plannerVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.routing.RoutePlannerViewModel>()
-
-                            LaunchedEffect(pendingMapSelectionMode) {
-                                pendingMapSelectionMode?.let { mode ->
-                                    mapVm.setSelectionMode(mode)
-                                    pendingMapSelectionMode = null
-                                }
-                            }
-                            
-                            LaunchedEffect(lastLocation) {
-                                val currentLoc = lastLocation
-                                    ?: com.example.util.LocationUtils.lastKnownLocationCache?.let { Pair(it.latitude, it.longitude) }
-                                currentLoc?.let { (lat, lon) ->
-                                    mapVm.updateLocation(lat, lon)
-                                    metroVm.setLocation(android.location.Location("gps").apply {
-                                        latitude = lat
-                                        longitude = lon
-                                    })
-                                    cercaniasVm.updateLocation(lat, lon)
-                                }
-                            }
-                            DashboardMapTab(
-                                mapViewModel = mapVm,
-                                dashboardViewModel = viewModel,
-                                metroViewModel = metroVm,
-                                cercaniasViewModel = cercaniasVm,
-                                isDarkMode = isDarkMode,
-                                appLanguage = appLanguage,
-                                onNavigateToMetro = { stationId ->
-                                    metroVm.selectRealTimeStation(stationId)
-                                    previousTabForBack = DashboardTab.Mapa
-                                    activeTab = DashboardTab.Metro
-                                },
-                                onNavigateToCercanias = { stationId ->
-                                    cercaniasVm.selectCercaniasStation(stationId)
-                                    previousTabForBack = DashboardTab.Mapa
-                                    activeTab = DashboardTab.Cercanias
-                                },
-                                onNavigateToRoutePlanner = { location ->
-                                    keyboardController?.hide()
-                                    focusManager.clearFocus()
-                                    plannerInitialDestination = location
-                                    val userLoc = mapVm.userLocation.value
-                                    if (userLoc != null) {
-                                        plannerVm.setUserLocationAsOrigin(android.location.Location("gps").apply {
-                                            latitude = userLoc.latitude
-                                            longitude = userLoc.longitude
-                                        })
-                                    } else {
-                                        plannerVm.useCurrentLocationAsOrigin(context)
-                                    }
-                                    plannerVm.setDestination(location)
-                                    plannerVm.dismissSearchPanel()
-                                    isPlannerVisible = true
-                                },
-                                onPlannerLocationPicked = { loc, isOrigin ->
-                                    plannerInitialDestination = null
-                                    if (isOrigin) {
-                                        plannerVm.setOrigin(loc)
-                                    } else {
-                                        plannerVm.setDestination(loc)
-                                    }
-                                    isPlannerVisible = true
-                                },
-                                onCancelPlannerLocationPicking = {
-                                    isPlannerVisible = true
-                                },
-                                onCommuteLocationConfigured = {
-                                    activeTab = DashboardTab.Inicio
-                                },
-                                selectedItinerary = activeMapItinerary,
-                                onClearItinerary = {
-                                    userDismissedActiveMapItinerary = true
-                                    activeMapItinerary = null
-                                    plannerInitialDestination = null
-                                    if (isViewingPlannerItineraryOnMap && activeTrip == null) {
-                                        isViewingPlannerItineraryOnMap = false
-                                        isPlannerVisible = true
-                                    } else {
-                                        isViewingPlannerItineraryOnMap = false
-                                    }
-                                },
-                                onStartTrip = { itinerary ->
-                                    if (android.os.Build.VERSION.SDK_INT >= 33) {
-                                        val hasNotifPerm = androidx.core.content.ContextCompat.checkSelfPermission(
-                                            context,
-                                            android.Manifest.permission.POST_NOTIFICATIONS
-                                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                        if (!hasNotifPerm) {
-                                            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                                        }
-                                    }
-                                    val origName = itinerary.legs.firstOrNull()?.fromName
-                                        ?: if (appLanguage == AppLanguage.ES) "Tu ubicación" else "La teua ubicació"
-                                    val destName = itinerary.legs.lastOrNull()?.toName
-                                        ?: if (appLanguage == AppLanguage.ES) "Destino" else "Destinació"
-                                    isViewingPlannerItineraryOnMap = false
-                                    userDismissedActiveMapItinerary = false
-                                    if (activeTrip != null) {
-                                        pendingTripToStart = Triple(itinerary, origName, destName)
-                                    } else {
-                                        mapVm.disableFollowUser()
-                                        viewModel.startActiveTrip(itinerary, origName, destName)
-                                        activeMapItinerary = itinerary
-                                        isPlannerVisible = false
-                                        activeTab = DashboardTab.Mapa
-                                    }
-                                },
-                                onOpenNetworkPlans = {
-                                    isNetworkPlansVisible = true
-                                },
-                                activeTripBottomPadding = dynamicBottomTripPadding,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(bottom = innerPadding.calculateBottomPadding())
-                            )
-                        }
+                        DashboardTab.Mapa -> { /* Persisted outside Crossfade at zIndex(0f) */ }
                 DashboardTab.Bus -> {
                     val busVm = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.bus.BusViewModel>()
                     LaunchedEffect(pendingSelectedBusStopId) {
@@ -719,7 +767,9 @@ fun DashboardScreen(
                         activeTripBottomPadding = dynamicBottomTripPadding
                     )
                 }
-                    } // closes when (currentTab)
+                                } // closes when (currentTab)
+                            } // closes opaque Box
+                        } // closes if (currentTab != DashboardTab.Mapa)
                     } // closes Crossfade
 
                     // Active Trip Floating Overlay (Transit GO)
@@ -756,6 +806,7 @@ fun DashboardScreen(
                         unifiedTripSnapshot = unifiedTripSnapshot,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
+                            .zIndex(2f)
                             .padding(bottom = innerPadding.calculateBottomPadding())
                     )
 
@@ -769,6 +820,7 @@ fun DashboardScreen(
                         onHeightChanged = { h -> if (h > 0.dp) offlineBannerMeasuredHeight = h },
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
+                            .zIndex(2f)
                             .padding(bottom = innerPadding.calculateBottomPadding())
                     )
                 } // closes BoxWithConstraints
@@ -851,6 +903,15 @@ fun DashboardScreen(
                     activeTab = DashboardTab.Mapa
                 },
                 onStartTrip = { itinerary, originName, destName ->
+                    if (android.os.Build.VERSION.SDK_INT >= 33) {
+                        val hasNotifPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.POST_NOTIFICATIONS
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        if (!hasNotifPerm) {
+                            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
                     isViewingPlannerItineraryOnMap = false
                     userDismissedActiveMapItinerary = false
                     if (activeTrip != null) {
@@ -968,7 +1029,7 @@ fun DashboardScreen(
                 pendingTripToStart = null
             },
             onDismissReplaceActiveTrip = { pendingTripToStart = null },
-            showTransferRiskDialog = showTransferRiskDialog,
+            showTransferRiskDialog = isSplashAnimationFinished && showTransferRiskDialog,
             isRecalculatingTransfer = isRecalculatingTransfer,
             recalculateError = recalculateError,
             onRecalculateTransfer = { viewModel.recalculateMissedTransfer() },
@@ -976,7 +1037,7 @@ fun DashboardScreen(
         )
 
         val remoteAnnouncements by viewModel.remoteAnnouncements.collectAsState()
-        if (remoteAnnouncements.isNotEmpty() && !shouldShowOnboarding) {
+        if (isSplashAnimationFinished && remoteAnnouncements.isNotEmpty() && !shouldShowOnboarding) {
             com.example.ui.components.RemoteAnnouncementDialog(
                 announcements = remoteAnnouncements,
                 appLanguage = appLanguage,
@@ -990,7 +1051,8 @@ fun DashboardScreen(
             appUpdateViewModel = appUpdateViewModel,
             hasActiveRemoteAnnouncements = remoteAnnouncements.isNotEmpty(),
             isShowingOnboarding = shouldShowOnboarding,
-            isDarkMode = isDarkMode
+            isDarkMode = isDarkMode,
+            isSplashFinished = isSplashAnimationFinished
         )
 
     } // closes Box

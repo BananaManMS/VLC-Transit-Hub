@@ -290,6 +290,7 @@ fun rememberGoogleMapCameraCoordinator(
             return@LaunchedEffect
         }
 
+        isProgrammaticAnimating = true
         activeFlightTarget = target
         activeFlightZoom = targetZoom
         activeFlightDurationMs = 500
@@ -474,19 +475,18 @@ fun rememberGoogleMapCameraCoordinator(
         }
     }
 
-    // Keep settledZoom synchronized when gestures stop or valid external zoom changes occur
+    // Keep settledZoom synchronized ONLY after gestures or programmatic flight animations finish
     LaunchedEffect(cameraPositionState) {
-        snapshotFlow { Pair(cameraPositionState.isMoving, cameraPositionState.position.zoom) }
-            .collect { (isMoving, zoom) ->
-                if (!isMoving && isValidMapZoom(zoom)) {
-                    settledZoom = zoom
-                }
+        snapshotFlow {
+            Triple(
+                cameraPositionState.isMoving,
+                cameraPositionState.position.zoom,
+                isProgrammaticAnimating
+            )
+        }.collect { (isMoving, zoom, animating) ->
+            if (!isMoving && !animating && isValidMapZoom(zoom)) {
+                settledZoom = zoom
             }
-    }
-    LaunchedEffect(cameraZoom) {
-        val candidate = cameraZoom.toFloat()
-        if (!cameraPositionState.isMoving && isValidMapZoom(candidate)) {
-            settledZoom = candidate
         }
     }
 

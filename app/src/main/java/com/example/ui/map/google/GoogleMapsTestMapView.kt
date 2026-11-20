@@ -10,7 +10,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
@@ -114,7 +116,8 @@ fun GoogleMapsTestMapView(
     onZoomLevelChanged: ((Double) -> Unit)? = null,
     onMapReady: (() -> Unit)? = null,
     onMapError: ((String) -> Unit)? = null,
-    isMapLoaded: Boolean = true
+    isMapLoaded: Boolean = true,
+    isMapVisible: Boolean = true
 ) {
     val context = LocalContext.current
 
@@ -264,6 +267,16 @@ fun GoogleMapsTestMapView(
         selectedMetrobusShapes = selectedMetrobusShapes
     )
 
+    var keepHeavyLayersMounted by remember { mutableStateOf(isMapVisible) }
+    LaunchedEffect(isMapVisible) {
+        if (isMapVisible) {
+            keepHeavyLayersMounted = true
+        } else {
+            kotlinx.coroutines.delay(300L)
+            keepHeavyLayersMounted = false
+        }
+    }
+
     val viewportState = rememberGoogleMapViewportTransit(
         cameraPositionState = cameraPositionState,
         settledZoom = settledZoom,
@@ -272,7 +285,8 @@ fun GoogleMapsTestMapView(
         metrobusStops = metrobusStops,
         valenbisiStations = valenbisiStations,
         initialTarget = cameraTarget,
-        initialZoom = initialCameraZoom
+        initialZoom = initialCameraZoom,
+        isMapVisible = keepHeavyLayersMounted
     )
 
     // Zoom LOD thresholds and active layer filters matching OSMdroid rules
@@ -424,7 +438,7 @@ fun GoogleMapsTestMapView(
                     isBusActive = isBusActive,
                     isMetroActive = isMetroActive,
                     activeCercaniasLines = activeCercaniasLines,
-                    trainsToRender = trainsToRender,
+                    trainsToRender = if (keepHeavyLayersMounted) trainsToRender else emptyList(),
                     isDarkMode = isDarkMode,
                     settledZoom = settledZoom,
                     minLat = minLat,
@@ -435,14 +449,14 @@ fun GoogleMapsTestMapView(
                     handleTransitItemTap = handleTransitItemTap
                 )
 
-                // 5. EMT & Metrobús Stops (Clusters, Dots, Badges)
+                // 5. EMT & Metrobús Stops (Clusters, Dots, Badges) - desmontadas al hibernar
                 GoogleMapBusLayer(
                     isZoomForClusters = viewportState.isZoomForClusters,
                     isZoomForBusDots = viewportState.isZoomForBusDots,
                     isZoomForBusBadges = viewportState.isZoomForBusBadges,
                     isZoomForBusDetailed = viewportState.isZoomForBusDetailed,
-                    showBusStops = isBusActiveMode && viewportState.showBusLayer,
-                    showMetrobusStops = isMetrobusActiveMode && viewportState.showMetrobusLayer,
+                    showBusStops = keepHeavyLayersMounted && isBusActiveMode && viewportState.showBusLayer,
+                    showMetrobusStops = keepHeavyLayersMounted && isMetrobusActiveMode && viewportState.showMetrobusLayer,
                     isMetroActive = isMetroActive,
                     isCercaniasActive = isCercaniasActive,
                     activeIsolatedBusLines = routesState.activeIsolatedBusLines,
@@ -464,9 +478,9 @@ fun GoogleMapsTestMapView(
                     handleTransitItemTap = handleTransitItemTap
                 )
 
-                // 6. Valenbisi Stations
+                // 6. Valenbisi Stations - desmontadas al hibernar
                 GoogleMapValenbisiLayer(
-                    showValenbisi = isValenbisiActiveMode,
+                    showValenbisi = keepHeavyLayersMounted && isValenbisiActiveMode,
                     valenbisiToRender = valenbisiToRender,
                     minLat = minLat,
                     maxLat = maxLat,
@@ -487,20 +501,22 @@ fun GoogleMapsTestMapView(
                 )
 
                 // 7. Custom Places (Destination, Home, Work, Favorites)
-                GoogleMapPlacesLayer(
-                    destinationLocation = destinationLocation,
-                    destinationTitle = destinationTitle,
-                    homeLocation = homeLocation,
-                    workLocation = workLocation,
-                    customFavorites = customFavorites,
-                    isBusActive = isBusActive,
-                    isMetroActive = isMetroActive,
-                    isCercaniasActive = isCercaniasActive,
-                    isDarkMode = isDarkMode,
-                    settledZoom = settledZoom,
-                    context = context,
-                    onItemClick = onItemClick
-                )
+                if (keepHeavyLayersMounted) {
+                    GoogleMapPlacesLayer(
+                        destinationLocation = destinationLocation,
+                        destinationTitle = destinationTitle,
+                        homeLocation = homeLocation,
+                        workLocation = workLocation,
+                        customFavorites = customFavorites,
+                        isBusActive = isBusActive,
+                        isMetroActive = isMetroActive,
+                        isCercaniasActive = isCercaniasActive,
+                        isDarkMode = isDarkMode,
+                        settledZoom = settledZoom,
+                        context = context,
+                        onItemClick = onItemClick
+                    )
+                }
             } else {
                 // Multimodal Route / Itinerary Layer
                 GoogleMapItineraryLayer(
@@ -511,16 +527,18 @@ fun GoogleMapsTestMapView(
                 )
             }
 
-            // User Location Marker with real-time compass & sliding animation
-            userLocation?.let { uLoc ->
-                key("USER_LOCATION_MARKER") {
-                    GoogleMapUserLocationMarker(
-                        userLocation = uLoc,
-                        userBearing = userBearing,
-                        isCellTowerLocation = isCellTowerLocation,
-                        context = context,
-                        cameraBearingProvider = { cameraPositionState.position.bearing }
-                    )
+            // User Location Marker with real-time compass & sliding animation (detiene sensores en segundo plano)
+            if (keepHeavyLayersMounted) {
+                userLocation?.let { uLoc ->
+                    key("USER_LOCATION_MARKER") {
+                        GoogleMapUserLocationMarker(
+                            userLocation = uLoc,
+                            userBearing = userBearing,
+                            isCellTowerLocation = isCellTowerLocation,
+                            context = context,
+                            cameraBearingProvider = { cameraPositionState.position.bearing }
+                        )
+                    }
                 }
             }
         }
@@ -532,19 +550,6 @@ fun GoogleMapsTestMapView(
                 bottomPaddingDp = bottomPaddingDp
             )
         }
-
-        // Status badge: Shows active layers count and zoom LOD rule
-        GoogleMapStatusBadge(
-            bottomPaddingDp = bottomPaddingDp,
-            settledZoom = settledZoom,
-            metroLinesCount = routesState.metroPolylineList.size,
-            cercaniasLinesCount = routesState.cercaniasPolylineList.size,
-            showBusStops = isBusActiveMode,
-            showMetrobusStops = isMetrobusActiveMode,
-            viewportState = viewportState,
-            activeIsolatedBusLines = routesState.activeIsolatedBusLines,
-            hasActiveItinerary = selectedItinerary != null
-        )
 
         // Loading indicator overlay while polylines or footprints load
         GoogleMapLoadingOverlay(

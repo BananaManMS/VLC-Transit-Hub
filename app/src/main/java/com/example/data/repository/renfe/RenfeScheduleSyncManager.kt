@@ -33,7 +33,6 @@ class RenfeScheduleSyncManager(
                 if (jsonString.isNotBlank()) {
                     val jsonArray = JSONArray(jsonString)
                     loadAndSaveScheduleJson(jsonArray)
-                    buildTripDestinationMapFromAssets()
                 }
             } catch (e: Exception) {
                 Log.e("RenfeScheduleSyncManager", "Error loading station horarios into memory: ${e.message}")
@@ -359,7 +358,6 @@ class RenfeScheduleSyncManager(
             try {
                 val jsonArray = JSONArray(jsonString)
                 loadAndSaveScheduleJson(jsonArray)
-                buildTripDestinationMapFromAssets()
                 try {
                     database.preferenceDao().insertPreference(
                         com.example.data.database.PreferenceEntity("cercanias_db_healthy_v19", "true")
@@ -414,12 +412,17 @@ class RenfeScheduleSyncManager(
             }
 
             val stationsToInsert = mutableListOf<CercaniasStationEntity>()
+            val newStopIds = HashSet<String>(jsonArray.length())
+            val newStationNameMap = HashMap<String, String>(jsonArray.length())
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.optJSONObject(i) ?: continue
-                val stopId = obj.optString("stop_id", "")
+                val stopId = obj.optString("stop_id", "").trim()
                 if (stopId.isEmpty()) continue
                 val rawNombre = obj.optString("nombre", "")
-                val nombre = formatDestinationName(rawNombre)
+                if (stopId == "54514" || rawNombre.contains("Torreblanca del Sol", ignoreCase = true)) {
+                    continue
+                }
+                val nombre = formatDestinationName(rawNombre).ifBlank { rawNombre }
 
                 val overrideCoords = coordsMap[stopId]
                 val lat = overrideCoords?.first ?: obj.optDouble("lat", 0.0)
@@ -455,18 +458,26 @@ class RenfeScheduleSyncManager(
                 }
                 
                 stationSchedulesMap[stopId] = horarios
+                newStopIds.add(stopId)
+                newStationNameMap[stopId] = nombre
                 val isFav = savedFavSet.contains(stopId) || (existingFavorites[stopId] ?: false)
                 stationsToInsert.add(CercaniasStationEntity(stopId, nombre, lat, lon, lineas, horarios, isFav))
             }
-            
+
+            valenciaStopIdsCache = newStopIds
+            stationNameMap = newStationNameMap
             tripDestinationMap = processTripDestinationMap(jsonArray)
+            com.example.ui.cercanias.CercaniasRouteUtils.updateFromScheduleJsonArray(context, jsonArray)
+
             if (stationsToInsert.size >= 10) {
                 stationDao.replaceAllStations(stationsToInsert)
                 Log.i("RenfeScheduleSyncManager", "Successfully saved ${stationsToInsert.size} Cercanías stations to database.")
             } else {
                 Log.w("RenfeScheduleSyncManager", "Parsed only ${stationsToInsert.size} stations (expected >= 10), skipping database update.")
             }
-        } catch(e: Exception) {}
+        } catch(e: Exception) {
+            Log.e("RenfeScheduleSyncManager", "Error in loadAndSaveScheduleJson: ${e.message}", e)
+        }
     }
 
     private fun parseTimeToSeconds(timeStr: String): Int {
@@ -606,11 +617,16 @@ class RenfeScheduleSyncManager(
         private var tripDestinationMap: Map<String, String>? = null
         @Volatile
         private var stationNameMap: Map<String, String>? = null
+        @Volatile
+        private var valenciaStopIdsCache: Set<String> = emptySet()
+
+        fun getValenciaStopIdsSnapshot(): Set<String> = valenciaStopIdsCache
 
         private fun invalidateMemoryCache() {
             stationSchedulesMap.clear()
             tripDestinationMap = null
             stationNameMap = null
+            valenciaStopIdsCache = emptySet()
         }
     }
 }

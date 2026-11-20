@@ -41,9 +41,12 @@ fun CercaniasDepartureStatusHeader(
     val estTimeStr = if (departure.estimatedTime.isNotBlank()) departure.estimatedTime else departure.departureTime
     val scheduledTimeStr = departure.departureTime.ifBlank { "--:--" }
 
+    val isIndeterminate = departure.isIndeterminateDelay && !isCanceled && delay == 0
+
     val statusColor = when {
         isCanceled -> Color(0xFFDC2626)
         !departure.isLive -> subtextColor
+        isIndeterminate -> Color(0xFFEA580C)
         delay <= 3 -> Color(0xFF16A34A)
         delay in 4..5 -> Color(0xFFEA580C)
         else -> Color(0xFFDC2626)
@@ -52,6 +55,7 @@ fun CercaniasDepartureStatusHeader(
     val statusBgColor = when {
         isCanceled -> Color(0xFFDC2626).copy(alpha = if (isDarkMode) 0.2f else 0.12f)
         !departure.isLive -> (if (isDarkMode) Color(0xFF333333) else Color(0xFFE2E8F0))
+        isIndeterminate -> Color(0xFFEA580C).copy(alpha = if (isDarkMode) 0.2f else 0.12f)
         delay <= 3 -> Color(0xFF16A34A).copy(alpha = if (isDarkMode) 0.2f else 0.12f)
         delay in 4..5 -> Color(0xFFEA580C).copy(alpha = if (isDarkMode) 0.2f else 0.12f)
         else -> Color(0xFFDC2626).copy(alpha = if (isDarkMode) 0.2f else 0.12f)
@@ -66,6 +70,7 @@ fun CercaniasDepartureStatusHeader(
         isCanceled -> canceledLabel.take(10).uppercase()
         departure.isSkippedAtStop -> noServiceLabel
         !departure.isLive -> programmedLabel
+        isIndeterminate -> "Retraso"
         delay < 0 -> "$delay min"
         delay == 0 -> onTimeLabel
         else -> "+$delay min"

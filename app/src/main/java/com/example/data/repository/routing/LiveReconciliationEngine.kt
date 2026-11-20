@@ -440,53 +440,83 @@ class LiveReconciliationEngine(
                         fromName = leg.fromName,
                         toName = leg.toName
                     )
+                    val allowedLineDigits = allowedLines.mapNotNull { al ->
+                        com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(al).ifBlank { al.filter { it.isDigit() } }.ifBlank { null }
+                    }.toSet()
+                    val preferredLineDigit = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(cercaniasLine)
 
                     val tripUpdates = RealTimeTransitRepository.getCercaniasTripUpdates()
                     val stopIdDigits = leg.fromStopId?.filter { it.isDigit() }
+                    val toStopDigits = leg.toStopId?.filter { it.isDigit() }
 
                     if (tripUpdates.isNotEmpty()) {
-                        val exactMatchingUpdate = if (cercaniasLine.isNotBlank()) {
-                            tripUpdates.values.firstOrNull { update ->
-                                val clean = cercaniasLine.replace("-", "").uppercase()
-                                clean.isNotBlank() && update.tripId.replace("-", "").uppercase().contains(clean) &&
-                                (!stopIdDigits.isNullOrBlank() && (update.stopDelays.containsKey(stopIdDigits) || update.stopEstimatedTimes.containsKey(stopIdDigits)))
-                            }
-                        } else null
+                        val candidates = tripUpdates.values
+                            .distinctBy { it.tripId }
+                            .filter { update ->
+                                if (update.isCanceled) return@filter false
+                                val updateLineDigit = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(update.routeId, update.tripId)
+                                val lineMatches = allowedLineDigits.isEmpty() || (updateLineDigit.isNotBlank() && updateLineDigit in allowedLineDigits)
+                                if (!lineMatches) return@filter false
 
-                        val matchingTripUpdate = exactMatchingUpdate ?: tripUpdates.values.firstOrNull { update ->
-                            val tripId = update.tripId
-                            val lineMatches = allowedLines.any { allowed ->
-                                val clean = allowed.replace("-", "").uppercase()
-                                clean.isNotBlank() && tripId.replace("-", "").uppercase().contains(clean)
+                                val stopMatches = if (!stopIdDigits.isNullOrBlank()) {
+                                    update.stopDelays.containsKey(stopIdDigits) ||
+                                        update.stopEstimatedTimes.containsKey(stopIdDigits) ||
+                                        update.stopTimes.any { it.stopId == stopIdDigits }
+                                } else true
+                                if (!stopMatches) return@filter false
+
+                                // If destination stop is also listed in stopTimes, confirm forward direction
+                                if (!stopIdDigits.isNullOrBlank() && !toStopDigits.isNullOrBlank() && update.stopTimes.isNotEmpty()) {
+                                    val fromIdx = update.stopTimes.indexOfFirst { it.stopId == stopIdDigits }
+                                    val toIdx = update.stopTimes.indexOfFirst { it.stopId == toStopDigits }
+                                    if (fromIdx != -1 && toIdx != -1 && toIdx < fromIdx) return@filter false
+                                }
+                                true
                             }
-                            val stopMatches = !stopIdDigits.isNullOrBlank() && (update.stopDelays.containsKey(stopIdDigits) || update.stopEstimatedTimes.containsKey(stopIdDigits))
-                            lineMatches || stopMatches
+                            .mapNotNull { update ->
+                                val stopEstimatedEpochSec = if (!stopIdDigits.isNullOrBlank()) update.stopEstimatedTimes[stopIdDigits] else null
+                                val delaySec = if (!stopIdDigits.isNullOrBlank()) {
+                                    update.stopDelays[stopIdDigits] ?: update.delaySeconds
+                                } else {
+                                    update.delaySeconds
+                                }
+                                val delayMins = delaySec / 60
+                                val liveArrivalMs = if (stopEstimatedEpochSec != null && stopEstimatedEpochSec > 0L) {
+                                    stopEstimatedEpochSec * 1000L
+                                } else if (scheduledLegStartEpochMs > 0L) {
+                                    scheduledLegStartEpochMs + (delayMins * 60_000L)
+                                } else {
+                                    nowMs + (delayMins * 60_000L)
+                                }
+                                val vehicleKey = "RENFE_${update.tripId}"
+                                val withinWindow = if (scheduledLegStartEpochMs > 0L) {
+                                    val diffFromSched = liveArrivalMs - scheduledLegStartEpochMs
+                                    diffFromSched in -600_000L..3_600_000L
+                                } else true
+                                if (withinWindow && liveArrivalMs >= (earliestReachableUserArrivalMs - 120_000L) && !claimedVehicleKeys.contains(vehicleKey)) {
+                                    Triple(update, liveArrivalMs, delayMins)
+                                } else null
+                            }
+
+                        val chosen = candidates.minByOrNull { (update, liveArrivalMs, _) ->
+                            val lineDigit = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(update.routeId, update.tripId)
+                            val linePenalty = if (preferredLineDigit.isNotBlank() && lineDigit != preferredLineDigit) 300_000L else 0L
+                            val timeDiff = if (scheduledLegStartEpochMs > 0L) kotlin.math.abs(liveArrivalMs - scheduledLegStartEpochMs) else kotlin.math.abs(liveArrivalMs - nowMs)
+                            timeDiff + linePenalty
                         }
 
-                        if (matchingTripUpdate != null) {
-                            val stopEstimatedEpochSec = if (!stopIdDigits.isNullOrBlank()) matchingTripUpdate.stopEstimatedTimes[stopIdDigits] else null
-                            val delaySec = if (!stopIdDigits.isNullOrBlank()) {
-                                matchingTripUpdate.stopDelays[stopIdDigits] ?: matchingTripUpdate.delaySeconds
-                            } else {
-                                matchingTripUpdate.delaySeconds
-                            }
-
-                            val delayMins = delaySec / 60
-                            val liveArrivalMs = if (stopEstimatedEpochSec != null && stopEstimatedEpochSec > 0) {
-                                stopEstimatedEpochSec * 1000L
-                            } else if (scheduledLegStartEpochMs > 0) {
-                                scheduledLegStartEpochMs + (delayMins * 60 * 1000L)
-                            } else {
-                                nowMs + (delayMins * 60 * 1000L)
-                            }
-
+                        if (chosen != null) {
+                            val (matchingTripUpdate, _, delayMins) = chosen
                             val vehicleKey = "RENFE_${matchingTripUpdate.tripId}"
-                            if (liveArrivalMs >= (earliestReachableUserArrivalMs - 120_000L) && !claimedVehicleKeys.contains(vehicleKey)) {
-                                claimedVehicleKeys.add(vehicleKey)
-                                matchedLiveDelayMins = delayMins.toInt()
-                                val lineLabel = if (cercaniasLine.isNotBlank()) "Cercanías $cercaniasLine" else "Cercanías Renfe"
-                                matchedLiveLabel = lineLabel
-                            }
+                            claimedVehicleKeys.add(vehicleKey)
+                            matchedLiveDelayMins = delayMins.toInt()
+                            val matchedLineCode = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineCode(
+                                matchingTripUpdate.routeId,
+                                matchingTripUpdate.tripId,
+                                cercaniasLine
+                            )
+                            matchedLiveLabel = if (matchedLineCode.isNotBlank()) "Cercanías $matchedLineCode" else "Cercanías Renfe"
+                            matchedLiveLine = matchedLineCode.ifBlank { null }
                         }
                     }
                 }

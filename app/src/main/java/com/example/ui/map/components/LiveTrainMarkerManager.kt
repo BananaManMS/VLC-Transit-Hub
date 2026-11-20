@@ -131,42 +131,68 @@ object LiveTrainMarkerManager {
         targetStopDigits: String?,
         railLeg: PlannedLeg? = null
     ): LiveVehicleInfo? {
-        val cleanLine = targetLine.replace("-", "").uppercase()
+        val targetLineNum = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(targetLine)
+        val toStopDigits = railLeg?.toStopId?.filter { it.isDigit() }
 
-        // 1. Direct match with trip updates containing target stop or line
+        // 0. Keep sticky match on lastMatchedTripId if still active on target line
+        val stickyId = lastMatchedTripId
+        if (!stickyId.isNullOrBlank()) {
+            val stickyVeh = livePositions[stickyId]
+            if (stickyVeh != null && stickyVeh.latitude != null && stickyVeh.longitude != null) {
+                val stickyLine = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(stickyVeh.routeId, stickyVeh.tripId)
+                if (targetLineNum.isBlank() || stickyLine.isBlank() || stickyLine == targetLineNum) {
+                    return stickyVeh
+                }
+            }
+        }
+
+        // 1. Direct match with trip updates containing target line and stop
         if (!targetStopDigits.isNullOrBlank()) {
-            val matchingUpdate = tripUpdates.values.firstOrNull { update ->
-                val lineMatches = cleanLine.isNotBlank() && (update.routeId.contains(cleanLine, ignoreCase = true) || update.tripId.contains(cleanLine, ignoreCase = true))
-                val stopMatches = update.stopDelays.containsKey(targetStopDigits) || update.stopEstimatedTimes.containsKey(targetStopDigits) || update.stopPlatforms.containsKey(targetStopDigits)
-                lineMatches && stopMatches
-            }
-            if (matchingUpdate != null) {
-                val veh = livePositions[matchingUpdate.tripId] ?: livePositions[matchingUpdate.vehicleId]
-                if (veh != null) return veh
+            val matchingUpdates = tripUpdates.values
+                .distinctBy { it.tripId }
+                .filter { update ->
+                    if (update.isCanceled) return@filter false
+                    val updateLineNum = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(update.routeId, update.tripId)
+                    val lineMatches = targetLineNum.isBlank() || (updateLineNum.isNotBlank() && updateLineNum == targetLineNum)
+                    val stopMatches = update.stopDelays.containsKey(targetStopDigits) ||
+                        update.stopEstimatedTimes.containsKey(targetStopDigits) ||
+                        update.stopPlatforms.containsKey(targetStopDigits) ||
+                        update.stopTimes.any { it.stopId == targetStopDigits }
+                    val directionMatches = if (!toStopDigits.isNullOrBlank() && update.stopTimes.isNotEmpty()) {
+                        val fIdx = update.stopTimes.indexOfFirst { it.stopId == targetStopDigits }
+                        val tIdx = update.stopTimes.indexOfFirst { it.stopId == toStopDigits }
+                        fIdx == -1 || tIdx == -1 || tIdx >= fIdx
+                    } else true
+                    lineMatches && stopMatches && directionMatches
+                }
+            for (mu in matchingUpdates) {
+                val veh = livePositions[mu.tripId]
+                    ?: (if (mu.vehicleId.isNotBlank() && targetLineNum.isNotBlank()) livePositions["C${targetLineNum}_${mu.vehicleId}"] else null)
+                    ?: livePositions[mu.vehicleId]
+                if (veh != null && veh.latitude != null && veh.longitude != null) return veh
             }
         }
 
-        // 2. Filter vehicles belonging to the target line
-        val lineVehicles = livePositions.values.filter { veh ->
-            val routeClean = veh.routeId.replace("-", "").uppercase()
-            val tripClean = veh.tripId.replace("-", "").uppercase()
-            (cleanLine.isNotBlank() && (routeClean.contains(cleanLine) || tripClean.contains(cleanLine)))
-        }
+        // 2. Filter vehicles belonging strictly to the target canonical line
+        val lineVehicles = livePositions.values
+            .distinctBy { it.tripId.ifBlank { "${it.routeId}_${it.trainNum}" } }
+            .filter { veh ->
+                val vehLineNum = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(veh.routeId, veh.tripId)
+                targetLineNum.isNotBlank() && vehLineNum == targetLineNum && veh.latitude != null && veh.longitude != null
+            }
 
         if (lineVehicles.isEmpty()) return null
 
-        // 3. If railLeg is available, pick the vehicle closest to the fromStop or moving towards the destination
+        // 3. Pick the vehicle closest to the fromStop and heading toward destination
         if (railLeg != null && railLeg.fromLat != 0.0) {
             val fromP = GeoPoint(railLeg.fromLat, railLeg.fromLon)
             val toP = GeoPoint(railLeg.toLat, railLeg.toLon)
 
             val bestCandidate = lineVehicles.minByOrNull { veh ->
-                if (veh.latitude != null && veh.longitude != null) {
-                    val vehP = GeoPoint(veh.latitude, veh.longitude)
-                    val distFromOrigin = distanceMeters(vehP, fromP)
-                    val distFromDest = distanceMeters(vehP, toP)
-                    distFromOrigin + (distFromDest * 0.5)
-                } else Double.MAX_VALUE
+                val vehP = GeoPoint(veh.latitude!!, veh.longitude!!)
+                val distFromOrigin = distanceMeters(vehP, fromP)
+                val distFromDest = distanceMeters(vehP, toP)
+                distFromOrigin + (distFromDest * 0.5)
             }
             if (bestCandidate != null) return bestCandidate
         }

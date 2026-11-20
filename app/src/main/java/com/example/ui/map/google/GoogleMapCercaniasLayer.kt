@@ -167,8 +167,7 @@ internal fun GoogleMapCercaniasLayer(
             val vLat = vehicle.latitude
             val vLon = vehicle.longitude
             if (vLat != null && vLon != null && !vLat.isNaN() && !vLon.isNaN()) {
-                val canonicalNum = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(vehicle.routeId, vehicle.tripId)
-                val lineCode = "C$canonicalNum"
+                val lineCode = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineCode(vehicle.routeId, vehicle.tripId, "CR")
                 val lineColorHex = MarkerLogoBitmapCache.parseColorCached(
                     LineColorResolver.getCercaniasLineColorHex(lineCode)
                 )

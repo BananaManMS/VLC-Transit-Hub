@@ -18,28 +18,36 @@ import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import androidx.core.splashscreen.SplashScreenViewProvider
 import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
-private val SumaSweepInterpolator = PathInterpolator(0.35f, 0.0f, 0.15f, 1.0f)
-private val SumaPortalInterpolator = PathInterpolator(0.22f, 1.0f, 0.36f, 1.0f)
-private val SumaFadeInterpolator = PathInterpolator(0.4f, 0.0f, 0.2f, 1.0f)
+private val WaveSweepInterpolator = PathInterpolator(0.32f, 0.0f, 0.18f, 1.0f)
+private val RippleInterpolator = PathInterpolator(0.16f, 0.84f, 0.32f, 1.0f)
+private val JumpLaunchInterpolator = PathInterpolator(0.20f, 0.82f, 0.28f, 1.0f)
+private val BackdropFadeInterpolator = PathInterpolator(0.25f, 0.0f, 0.25f, 1.0f)
+private val LogoFadeInterpolator = PathInterpolator(0.14f, 0.88f, 0.30f, 1.0f)
 
-private const val COLOR_SUMA_GREEN = 0xFF39A96B.toInt()
-private const val COLOR_SUMA_YELLOW = 0xFFF6B619.toInt()
-private const val COLOR_SUMA_BLUE = 0xFF0660A9.toInt()
+private const val COLOR_VLC_RED = 0xFFEC1B4B.toInt()
+private const val COLOR_WAVE_CORAL = 0xFFFF88A4.toInt()
+private const val COLOR_WAVE_WHITE = 0xFFFFFFFF.toInt()
 
 /**
- * Ejecuta la animación de salida directamente sobre la SplashScreenView nativa del sistema.
- * Utiliza el tamaño estándar oficial de Android para iconos de splash (288dp centrado)
- * para garantizar coincidencia perfecta y alineación con el icono del sistema.
+ * Transición de salida monocroma y física sobre la SplashScreenView nativa del sistema:
+ * 1) Ondas luminosas coral/blanco recorren el trazo V→ + doble onda expansiva roja de señal.
+ * 2) Compresión elástica hacia abajo (0.84x) cogiendo impulso.
+ * 3) Salto hacia arriba con zoom y desvanecimiento rápido del logo nada más despegar
+ *    junto a la disolución del fondo para revelar Inicio directamente debajo sin fundidos a negro.
  */
 fun runSumaSplashExitAnimation(
     splashScreenView: SplashScreenViewProvider,
     hasAlreadyPlayed: Boolean,
-    onStarted: () -> Unit
+    onStarted: () -> Unit,
+    onFinished: () -> Unit
 ) {
     if (hasAlreadyPlayed) {
         splashScreenView.remove()
+        onFinished()
         return
     }
     onStarted()
@@ -48,18 +56,18 @@ fun runSumaSplashExitAnimation(
     if (rootView == null) {
         splashScreenView.view.animate()
             .alpha(0f)
-            .setDuration(180L)
+            .setDuration(200L)
             .setInterpolator(DecelerateInterpolator())
-            .withEndAction { splashScreenView.remove() }
+            .withEndAction {
+                splashScreenView.remove()
+                onFinished()
+            }
             .start()
         return
     }
 
     val iconView = runCatching { splashScreenView.iconView }.getOrNull()
-    val ribbonOverlay = SumaSplashRibbonOverlayView(
-        context = rootView.context,
-        iconView = iconView
-    )
+    val ribbonOverlay = SplashSignalOverlayView(context = rootView.context)
     rootView.addView(
         ribbonOverlay,
         FrameLayout.LayoutParams(
@@ -68,52 +76,96 @@ fun runSumaSplashExitAnimation(
         )
     )
 
+    val bgDrawable = rootView.background?.mutate()
+    val density = rootView.resources.displayMetrics.density
+    val crouchOffsetPx = 8f * density
+    val jumpOffsetPx = -70f * density
+
     var cleanedUp = false
     fun finishAndRemove() {
         if (cleanedUp) return
         cleanedUp = true
         runCatching { rootView.removeView(ribbonOverlay) }
         runCatching { splashScreenView.remove() }
+        onFinished()
     }
 
     val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1380L
+        duration = 1080L
         interpolator = LinearInterpolator()
         addUpdateListener { va ->
             val t = (va.animatedValue as Float).coerceIn(0f, 1f)
 
-            // 1. Onda cromática SUMA por el interior del trazo (0.00 -> 0.62)
-            val sweepProgress = SumaSweepInterpolator.getInterpolation((t / 0.62f).coerceIn(0f, 1f))
-            ribbonOverlay.sweepProgress = sweepProgress
-            ribbonOverlay.ribbonVisible = t <= 0.66f
-            ribbonOverlay.invalidate()
+            // 1. Ondas al terminar de cargar (0.00 -> 0.50)
+            val sweepProgress = WaveSweepInterpolator.getInterpolation((t / 0.46f).coerceIn(0f, 1f))
+            val ring1Progress = if (t >= 0.06f) {
+                RippleInterpolator.getInterpolation(((t - 0.06f) / 0.36f).coerceIn(0f, 1f))
+            } else 0f
+            val ring2Progress = if (t >= 0.14f) {
+                RippleInterpolator.getInterpolation(((t - 0.14f) / 0.36f).coerceIn(0f, 1f))
+            } else 0f
 
-            // 2. Micro-pulso elástico en la V→ y apertura limpia hacia Inicio (0.44 -> 1.00)
-            val recoilDip = if (t in 0.42f..0.58f) {
-                val r = ((t - 0.42f) / 0.16f).coerceIn(0f, 1f)
-                -0.045f * sin(r * PI).toFloat()
+            ribbonOverlay.sweepProgress = sweepProgress
+            ribbonOverlay.ring1Progress = ring1Progress
+            ribbonOverlay.ring2Progress = ring2Progress
+            ribbonOverlay.hasActiveWaves = t <= 0.54f
+
+            // 2. Anticipación: encogimiento suave (0.42 -> 0.62)
+            // 3. Acción: salto hacia arriba + zoom (0.62 -> 1.00)
+            val currentScale: Float
+            val currentTranslationY: Float
+            if (t < 0.62f) {
+                val crouchT = ((t - 0.42f) / 0.20f).coerceIn(0f, 1f)
+                val crouchEase = 0.5f * (1f - cos(crouchT * PI).toFloat())
+                currentScale = 1f - 0.16f * crouchEase
+                currentTranslationY = crouchOffsetPx * crouchEase
             } else {
-                0f
+                val jumpT = ((t - 0.62f) / 0.38f).coerceIn(0f, 1f)
+                val jumpEase = JumpLaunchInterpolator.getInterpolation(jumpT)
+                currentScale = 0.84f + 1.26f * jumpEase
+                currentTranslationY = crouchOffsetPx + (jumpOffsetPx - crouchOffsetPx) * jumpEase
             }
-            val exitT = ((t - 0.54f) / 0.46f).coerceIn(0f, 1f)
-            val portalScale = 1f + recoilDip + SumaPortalInterpolator.getInterpolation(exitT) * 0.16f
+
+            // Desvanecimiento rápido del logo nada más iniciar el zoom (0.62 -> 0.80 ≈ 195 ms)
+            // para evitar que se vea grande o pixelado sobre la pantalla
+            val logoFadeT = ((t - 0.62f) / 0.18f).coerceIn(0f, 1f)
+            val logoAlpha = (1f - LogoFadeInterpolator.getInterpolation(logoFadeT)).coerceIn(0f, 1f)
 
             iconView?.let { icon ->
                 if (icon.width > 0 && icon.height > 0) {
                     icon.pivotX = icon.width * 0.5f
                     icon.pivotY = icon.height * 0.5f
                 }
-                icon.scaleX = portalScale
-                icon.scaleY = portalScale
+                icon.scaleX = currentScale
+                icon.scaleY = currentScale
+                icon.translationY = currentTranslationY
+                icon.alpha = logoAlpha
             }
+
             ribbonOverlay.pivotX = ribbonOverlay.width * 0.5f
             ribbonOverlay.pivotY = ribbonOverlay.height * 0.5f
-            ribbonOverlay.scaleX = portalScale
-            ribbonOverlay.scaleY = portalScale
+            ribbonOverlay.scaleX = currentScale
+            ribbonOverlay.scaleY = currentScale
+            ribbonOverlay.translationY = currentTranslationY
+            ribbonOverlay.alpha = logoAlpha
+            if (ribbonOverlay.hasActiveWaves) {
+                ribbonOverlay.invalidate()
+            }
 
-            // Disolvemos todo el splash completo junto al fondo
-            val rootAlpha = (1f - SumaFadeInterpolator.getInterpolation(exitT)).coerceIn(0f, 1f)
-            rootView.alpha = rootAlpha
+            if (bgDrawable != null) {
+                val backdropT = ((t - 0.63f) / 0.31f).coerceIn(0f, 1f)
+                val backdropAlpha = (1f - BackdropFadeInterpolator.getInterpolation(backdropT)).coerceIn(0f, 1f)
+                bgDrawable.alpha = (backdropAlpha * 255f).roundToInt().coerceIn(0, 255)
+                if (t > 0.94f) {
+                    val tailT = ((t - 0.94f) / 0.06f).coerceIn(0f, 1f)
+                    rootView.alpha = (1f - tailT).coerceIn(0f, 1f)
+                } else {
+                    rootView.alpha = 1f
+                }
+            } else {
+                val fallbackFadeT = ((t - 0.63f) / 0.35f).coerceIn(0f, 1f)
+                rootView.alpha = (1f - BackdropFadeInterpolator.getInterpolation(fallbackFadeT)).coerceIn(0f, 1f)
+            }
         }
         addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
@@ -129,13 +181,14 @@ fun runSumaSplashExitAnimation(
     animator.start()
 }
 
-private class SumaSplashRibbonOverlayView(
-    context: Context,
-    private val iconView: View?
+private class SplashSignalOverlayView(
+    context: Context
 ) : View(context) {
 
     var sweepProgress: Float = 0f
-    var ribbonVisible: Boolean = true
+    var ring1Progress: Float = 0f
+    var ring2Progress: Float = 0f
+    var hasActiveWaves: Boolean = true
 
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -147,6 +200,10 @@ private class SumaSplashRibbonOverlayView(
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
+    }
+
+    private val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
     }
 
     private val vectorMatrix = Matrix()
@@ -170,10 +227,10 @@ private class SumaSplashRibbonOverlayView(
     private val transformedBotWing = Path()
     private val segmentPath = Path()
     private val pathMeasure = PathMeasure()
+    private val centerPoint = FloatArray(2)
 
     private fun buildVectorToCanvasMatrix(): Boolean {
         if (width <= 0 || height <= 0) return false
-        // Tamaño oficial Android para el icono del splash screen sin fondo: 288dp perfectamente centrado
         val targetSizePx = 288f * resources.displayMetrics.density
         val scale = targetSizePx / 108f
         val dx = (width - targetSizePx) * 0.5f
@@ -187,56 +244,89 @@ private class SumaSplashRibbonOverlayView(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (!ribbonVisible || sweepProgress <= 0.002f) return
+        if (!hasActiveWaves) return
         if (!buildVectorToCanvasMatrix()) return
 
-        val strokePx = 7.5f * vectorMatrix.mapRadius(1f)
+        val unitScale = vectorMatrix.mapRadius(1f)
+        val strokePx = 7.5f * unitScale
         if (strokePx <= 0.5f) return
 
-        strokePaint.strokeWidth = strokePx
-        wingPaint.strokeWidth = strokePx
+        // Centro óptico del glifo V→ (en espacio 108x108) para los anillos de onda
+        centerPoint[0] = 53.8f
+        centerPoint[1] = 52.5f
+        vectorMatrix.mapPoints(centerPoint)
+        val cx = centerPoint[0]
+        val cy = centerPoint[1]
 
-        transformedRoute.set(routePath108)
-        transformedRoute.transform(vectorMatrix)
-        pathMeasure.setPath(transformedRoute, false)
-        val totalLen = pathMeasure.length
-        if (totalLen <= 1f) return
+        // 1. Ondas expansivas sutiles en rojo VLC Transit alrededor del icono
+        drawRippleRing(canvas, cx, cy, unitScale, ring1Progress, startAlpha = 0.36f, startRadius = 23f, endRadius = 56f, startWidth = 2.4f)
+        drawRippleRing(canvas, cx, cy, unitScale, ring2Progress, startAlpha = 0.24f, startRadius = 21f, endRadius = 49f, startWidth = 1.9f)
 
-        val head = sweepProgress * 1.56f
+        // 2. Pulso luminoso monocromo (coral + cresta blanca translúcida) recorriendo la V→
+        if (sweepProgress > 0.002f) {
+            strokePaint.strokeWidth = strokePx
+            wingPaint.strokeWidth = strokePx
 
-        drawBand(head = head, backOffset = 0.56f, frontOffset = 0.34f, color = COLOR_SUMA_GREEN, totalLen = totalLen, canvas = canvas)
-        drawBand(head = head, backOffset = 0.38f, frontOffset = 0.16f, color = COLOR_SUMA_YELLOW, totalLen = totalLen, canvas = canvas)
-        drawBand(head = head, backOffset = 0.22f, frontOffset = 0.00f, color = COLOR_SUMA_BLUE, totalLen = totalLen, canvas = canvas)
+            transformedRoute.set(routePath108)
+            transformedRoute.transform(vectorMatrix)
+            pathMeasure.setPath(transformedRoute, false)
+            val totalLen = pathMeasure.length
+            if (totalLen <= 1f) return
 
-        val tipWave = ((head - 0.85f) / 0.55f).coerceIn(0f, 1f)
-        if (tipWave > 0.01f && tipWave < 0.99f) {
-            val baseColor = when {
-                tipWave < 0.33f -> COLOR_SUMA_BLUE
-                tipWave < 0.66f -> COLOR_SUMA_YELLOW
-                else -> COLOR_SUMA_GREEN
+            val head = sweepProgress * 1.44f
+            drawMonochromeWave(head = head, backOffset = 0.44f, frontOffset = 0.08f, color = COLOR_WAVE_CORAL, alphaFloat = 0.72f, totalLen = totalLen, canvas = canvas)
+            drawMonochromeWave(head = head, backOffset = 0.24f, frontOffset = 0.00f, color = COLOR_WAVE_WHITE, alphaFloat = 0.56f, totalLen = totalLen, canvas = canvas)
+
+            val tipWave = ((head - 0.86f) / 0.48f).coerceIn(0f, 1f)
+            if (tipWave > 0.01f && tipWave < 0.99f) {
+                val wingAlpha = (sin(tipWave * PI).toFloat().coerceIn(0f, 1f)) * 0.52f
+                wingPaint.color = Color.argb(
+                    (wingAlpha * 255f).roundToInt().coerceIn(0, 255),
+                    255,
+                    255,
+                    255
+                )
+                transformedTopWing.set(topWing108)
+                transformedTopWing.transform(vectorMatrix)
+                transformedBotWing.set(botWing108)
+                transformedBotWing.transform(vectorMatrix)
+                canvas.drawPath(transformedTopWing, wingPaint)
+                canvas.drawPath(transformedBotWing, wingPaint)
             }
-            val alphaFloat = (sin(tipWave * PI).toFloat().coerceIn(0f, 1f)) * 0.92f
-            val alphaInt = (alphaFloat * 255f).toInt().coerceIn(0, 255)
-            wingPaint.color = Color.argb(
-                alphaInt,
-                Color.red(baseColor),
-                Color.green(baseColor),
-                Color.blue(baseColor)
-            )
-            transformedTopWing.set(topWing108)
-            transformedTopWing.transform(vectorMatrix)
-            transformedBotWing.set(botWing108)
-            transformedBotWing.transform(vectorMatrix)
-            canvas.drawPath(transformedTopWing, wingPaint)
-            canvas.drawPath(transformedBotWing, wingPaint)
         }
     }
 
-    private fun drawBand(
+    private fun drawRippleRing(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        unitScale: Float,
+        progress: Float,
+        startAlpha: Float,
+        startRadius: Float,
+        endRadius: Float,
+        startWidth: Float
+    ) {
+        if (progress <= 0.01f || progress >= 0.99f) return
+        val radius = (startRadius + (endRadius - startRadius) * progress) * unitScale
+        val widthPx = (startWidth * (1f - progress * 0.62f)) * unitScale
+        val alpha = (startAlpha * (1f - progress)).coerceIn(0f, 1f)
+        ripplePaint.strokeWidth = widthPx
+        ripplePaint.color = Color.argb(
+            (alpha * 255f).roundToInt().coerceIn(0, 255),
+            Color.red(COLOR_VLC_RED),
+            Color.green(COLOR_VLC_RED),
+            Color.blue(COLOR_VLC_RED)
+        )
+        canvas.drawCircle(cx, cy, radius, ripplePaint)
+    }
+
+    private fun drawMonochromeWave(
         head: Float,
         backOffset: Float,
         frontOffset: Float,
         color: Int,
+        alphaFloat: Float,
         totalLen: Float,
         canvas: Canvas
     ) {
@@ -246,7 +336,12 @@ private class SumaSplashRibbonOverlayView(
 
         segmentPath.reset()
         pathMeasure.getSegment(startFrac * totalLen, endFrac * totalLen, segmentPath, true)
-        strokePaint.color = color
+        strokePaint.color = Color.argb(
+            (alphaFloat * 255f).roundToInt().coerceIn(0, 255),
+            Color.red(color),
+            Color.green(color),
+            Color.blue(color)
+        )
         canvas.drawPath(segmentPath, strokePaint)
     }
 }

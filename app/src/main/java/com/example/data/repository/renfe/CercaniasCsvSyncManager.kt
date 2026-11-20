@@ -125,6 +125,26 @@ class CercaniasCsvSyncManager(private val context: Context) {
         }
     }
 
+    private fun loadPrecisionCoordsMap(): Map<String, Pair<Double, Double>> {
+        val coordsMap = mutableMapOf<String, Pair<Double, Double>>()
+        try {
+            val coordsString = context.assets.open("cercanias_stations_coords.json").bufferedReader().use { it.readText() }
+            val coordsArray = org.json.JSONArray(coordsString)
+            for (cIdx in 0 until coordsArray.length()) {
+                val cObj = coordsArray.optJSONObject(cIdx) ?: continue
+                val stopId = cObj.optString("stop_id", "").trim()
+                val stopLat = cObj.optDouble("stop_lat", 0.0)
+                val stopLon = cObj.optDouble("stop_lon", 0.0)
+                if (stopId.isNotEmpty() && stopLat != 0.0 && stopLon != 0.0) {
+                    coordsMap[stopId] = Pair(stopLat, stopLon)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not load cercanias_stations_coords.json overrides: ${e.message}")
+        }
+        return coordsMap
+    }
+
     private fun parseCsv(csvText: String, db: AppDatabase): List<CercaniasStationEntity> {
         val lines = csvText.lines().map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.size < 2) return emptyList()
@@ -141,6 +161,8 @@ class CercaniasCsvSyncManager(private val context: Context) {
             return emptyList()
         }
 
+        val coordsMap = loadPrecisionCoordsMap()
+        val syncHelper = RenfeScheduleSyncManager(context, db)
         val result = mutableListOf<CercaniasStationEntity>()
         for (i in 1 until lines.size) {
             val line = lines[i]
@@ -148,8 +170,15 @@ class CercaniasCsvSyncManager(private val context: Context) {
             if (cols.size > maxOf(idIdx, nameIdx, latIdx, lonIdx)) {
                 val stopId = cols[idIdx].trim().trim('"', '\'')
                 val rawName = cols[nameIdx].trim().trim('"', '\'')
-                val lat = cols[latIdx].trim().trim('"', '\'').toDoubleOrNull() ?: 0.0
-                val lon = cols[lonIdx].trim().trim('"', '\'').toDoubleOrNull() ?: 0.0
+                if (stopId == "54514" || rawName.contains("Torreblanca del Sol", ignoreCase = true)) {
+                    continue
+                }
+                val formattedName = syncHelper.formatDestinationName(rawName).ifBlank {
+                    com.example.data.mapper.CercaniasDepartureMapper.formatStationDisplayName(rawName).ifBlank { rawName }
+                }
+                val overrideCoords = coordsMap[stopId]
+                val lat = overrideCoords?.first ?: cols[latIdx].trim().trim('"', '\'').toDoubleOrNull() ?: 0.0
+                val lon = overrideCoords?.second ?: cols[lonIdx].trim().trim('"', '\'').toDoubleOrNull() ?: 0.0
 
                 val rawLines = if (linesIdx != -1 && cols.size > linesIdx) {
                     cols[linesIdx].trim().trim('"', '\'')
@@ -159,11 +188,11 @@ class CercaniasCsvSyncManager(private val context: Context) {
                     .filter { it.isNotEmpty() }
                     .map { if (it.length == 1 && it[0].isDigit()) "C$it" else it }
 
-                if (stopId.isNotEmpty() && rawName.isNotEmpty() && lat != 0.0 && lon != 0.0) {
+                if (stopId.isNotEmpty() && formattedName.isNotEmpty() && lat != 0.0 && lon != 0.0) {
                     result.add(
                         CercaniasStationEntity(
                             stop_id = stopId,
-                            nombre = rawName,
+                            nombre = formattedName,
                             lat = lat,
                             lon = lon,
                             lineas = lineasList,

@@ -14,6 +14,13 @@ data class CercaniasLineStationInfo(
     val transferLines: List<String> = emptyList()
 )
 
+data class CercaniasTripStopInfo(
+    val id: String,
+    val name: String,
+    val scheduledTime: String? = null,
+    val transferLines: List<String> = emptyList()
+)
+
 data class ScheduledTrainStop(
     val line: String,
     val stopId: String,
@@ -23,74 +30,124 @@ data class ScheduledTrainStop(
     val tripIds: List<String>
 )
 
+private data class TripStopNode(
+    val id: String,
+    val name: String,
+    val normName: String,
+    val time: String,
+    val timeSec: Int,
+    val line: String
+)
+
 object CercaniasRouteUtils {
 
     private var lineStationsMap: Map<String, List<CercaniasLineStationInfo>> = emptyMap()
+    private var stationTransfersById: Map<String, List<String>> = emptyMap()
+    private var stationTransfersByNormName: Map<String, List<String>> = emptyMap()
+    private var stationNameById: Map<String, String> = emptyMap()
     @Volatile
     private var tripScheduleMap: Map<String, Map<String, String>> = emptyMap()
     @Volatile
+    private var tripOrderedStopsMap: Map<String, List<TripStopNode>> = emptyMap()
+    @Volatile
     private var scheduledStopsList: List<ScheduledTrainStop> = emptyList()
+    @Volatile
+    private var valenciaStopIds: Set<String> = emptySet()
     private var appContext: Context? = null
+    @Volatile
     private var isInitialized = false
 
     fun init(context: Context) {
         appContext = context.applicationContext
-        if (isInitialized) return
-        try {
-            // 1. Load line stations
-            val jsonString = context.assets.open("cercanias_line_stations.json").bufferedReader().use { it.readText() }
-            val jsonObject = JSONObject(jsonString)
-            val tempMap = mutableMapOf<String, List<CercaniasLineStationInfo>>()
+        ensureLineStationsLoaded(context.applicationContext)
+        ensureScheduleLoaded()
+    }
 
-            val rawMap = mutableMapOf<String, List<Pair<String, String>>>()
-            val keys = jsonObject.keys()
-            while (keys.hasNext()) {
-                val lineKey = keys.next()
-                val array = jsonObject.getJSONArray(lineKey)
-                val list = mutableListOf<Pair<String, String>>()
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    list.add(Pair(obj.getString("id"), obj.getString("name")))
-                }
-                rawMap[lineKey] = list
-            }
+    private fun ensureLineStationsLoaded(context: Context) {
+        if (isInitialized && lineStationsMap.isNotEmpty()) return
+        synchronized(this) {
+            if (isInitialized && lineStationsMap.isNotEmpty()) return
+            try {
+                val jsonString = context.assets.open("cercanias_line_stations.json").bufferedReader().use { it.readText() }
+                val jsonObject = JSONObject(jsonString)
+                val tempMap = mutableMapOf<String, List<CercaniasLineStationInfo>>()
+                val transfersById = mutableMapOf<String, MutableSet<String>>()
+                val transfersByName = mutableMapOf<String, MutableSet<String>>()
+                val namesById = mutableMapOf<String, String>()
 
-            for ((lineId, stationPairs) in rawMap) {
-                if (lineId == "C4" || lineId == "C-4") continue
-                val lineStationInfos = stationPairs.map { (stId, stName) ->
-                    val transfers = rawMap.entries
-                        .filter { (otherLine, otherList) ->
-                            otherLine != lineId && otherLine != "C4" && otherLine != "C-4" &&
-                                otherList.any { it.first == stId || isSameStationName(it.second, stName) }
+                val rawMap = mutableMapOf<String, List<Pair<String, String>>>()
+                val keys = jsonObject.keys()
+                while (keys.hasNext()) {
+                    val lineKey = keys.next()
+                    val array = jsonObject.getJSONArray(lineKey)
+                    val list = mutableListOf<Pair<String, String>>()
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        val stId = obj.getString("id")
+                        val stName = obj.getString("name")
+                        list.add(Pair(stId, stName))
+                        namesById[stId] = stName
+                        if (lineKey != "C4" && lineKey != "C-4") {
+                            transfersById.getOrPut(stId) { mutableSetOf() }.add(lineKey)
+                            transfersByName.getOrPut(normalizeName(stName)) { mutableSetOf() }.add(lineKey)
                         }
-                        .map { it.key }
-                        .filter { it != "C4" && it != "C-4" }
-                        .distinct()
-                        .sorted()
-
-                    CercaniasLineStationInfo(
-                        id = stId,
-                        name = stName,
-                        transferLines = transfers
-                    )
+                    }
+                    rawMap[lineKey] = list
                 }
-                tempMap[lineId] = lineStationInfos
-            }
 
-            lineStationsMap = tempMap
-            isInitialized = true
-            ensureScheduleLoaded()
-        } catch (e: Exception) {
-            Log.e("CercaniasRouteUtils", "Error loading cercanias route data", e)
+                for ((lineId, stationPairs) in rawMap) {
+                    if (lineId == "C4" || lineId == "C-4") continue
+                    val lineStationInfos = stationPairs.map { (stId, stName) ->
+                        val transfers = rawMap.entries
+                            .filter { (otherLine, otherList) ->
+                                otherLine != lineId && otherLine != "C4" && otherLine != "C-4" &&
+                                    otherList.any { it.first == stId || isSameStationName(it.second, stName) }
+                            }
+                            .map { it.key }
+                            .filter { it != "C4" && it != "C-4" }
+                            .distinct()
+                            .sorted()
+
+                        CercaniasLineStationInfo(
+                            id = stId,
+                            name = stName,
+                            transferLines = transfers
+                        )
+                    }
+                    tempMap[lineId] = lineStationInfos
+                }
+
+                lineStationsMap = tempMap
+                stationTransfersById = transfersById.mapValues { it.value.sorted() }
+                stationTransfersByNormName = transfersByName.mapValues { it.value.sorted() }
+                stationNameById = namesById
+                isInitialized = true
+            } catch (e: Exception) {
+                Log.e("CercaniasRouteUtils", "Error loading cercanias route data", e)
+            }
         }
     }
 
     private fun ensureScheduleLoaded() {
-        if (tripScheduleMap.isNotEmpty()) return
+        if (tripScheduleMap.isNotEmpty() && tripOrderedStopsMap.isNotEmpty()) return
         synchronized(this) {
-            if (tripScheduleMap.isNotEmpty()) return
+            if (tripScheduleMap.isNotEmpty() && tripOrderedStopsMap.isNotEmpty()) return
             val ctx = appContext ?: return
             loadScheduleJsonMap(ctx)
+        }
+    }
+
+    fun getValenciaStopIds(): Set<String> = valenciaStopIds
+
+    /**
+     * Populates the shared in-memory route index directly from a single parsed schedule JSONArray,
+     * eliminating duplicate 700KB+ JSON parses between RenfeScheduleSyncManager and CercaniasRouteUtils.
+     */
+    fun updateFromScheduleJsonArray(context: Context, jsonArray: JSONArray) {
+        appContext = context.applicationContext
+        ensureLineStationsLoaded(context.applicationContext)
+        synchronized(this) {
+            indexScheduleJsonArray(jsonArray)
         }
     }
 
@@ -113,79 +170,132 @@ object CercaniasRouteUtils {
 
             if (validStr.isNotBlank()) {
                 val jsonArray = JSONArray(validStr)
-                val tempTripMap = mutableMapOf<String, MutableMap<String, String>>()
-                val tempStops = mutableListOf<ScheduledTrainStop>()
-
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.optJSONObject(i) ?: continue
-                    val stopId = obj.optString("stop_id", "").trim()
-                    val rawName = obj.optString("nombre", "").trim()
-                    val normName = normalizeName(rawName)
-
-                    val horariosArr = obj.optJSONArray("horarios") ?: continue
-                    for (j in 0 until horariosArr.length()) {
-                        val hObj = horariosArr.optJSONObject(j) ?: continue
-                        val llegada = hObj.optString("llegada", "").trim()
-                        if (llegada.isBlank()) continue
-
-                        val timeParts = llegada.split(":")
-                        if (timeParts.size < 2) continue
-                        val h = timeParts[0].toIntOrNull() ?: continue
-                        val m = timeParts[1].toIntOrNull() ?: continue
-                        val formattedTime = String.format(Locale.getDefault(), "%02d:%02d", h, m)
-
-                        val line = hObj.optString("linea", "").uppercase().replace("-", "").trim()
-                        val dest = hObj.optString("destino", "").trim()
-                        val destNorm = normalizeName(dest)
-
-                        val tripIdsArr = hObj.optJSONArray("trip_ids") ?: continue
-                        val trainTripIds = mutableListOf<String>()
-                        for (k in 0 until tripIdsArr.length()) {
-                            val tid = tripIdsArr.optString(k, "").trim()
-                            if (tid.isBlank()) continue
-                            trainTripIds.add(tid)
-
-                            val exactK = tid
-                            val baseK = getBaseTripKey(exactK)
-                            val trainNo = extractTrainNumber(exactK)
-
-                            val keys = mutableListOf(exactK, baseK)
-                            if (!trainNo.isNullOrBlank()) keys.add(trainNo)
-
-                            for (key in keys) {
-                                val subMap = tempTripMap.getOrPut(key) { mutableMapOf() }
-                                if (stopId.isNotEmpty()) {
-                                    subMap[stopId] = formattedTime
-                                }
-                                if (normName.isNotEmpty()) {
-                                    subMap[normName] = formattedTime
-                                }
-                            }
-                        }
-
-                        if (trainTripIds.isNotEmpty()) {
-                            tempStops.add(
-                                ScheduledTrainStop(
-                                    line = line,
-                                    stopId = stopId,
-                                    stationNameNorm = normName,
-                                    time = formattedTime,
-                                    destinationNorm = destNorm,
-                                    tripIds = trainTripIds
-                                )
-                            )
-                        }
-                    }
-                }
-                tripScheduleMap = tempTripMap
-                scheduledStopsList = tempStops
+                indexScheduleJsonArray(jsonArray)
             }
         } catch (e: Exception) {
             Log.e("CercaniasRouteUtils", "Error loading schedule json map", e)
         }
     }
 
-    fun getTripKeys(tid: String?): List<String> {
+    private fun indexScheduleJsonArray(jsonArray: JSONArray) {
+        val tempTripMap = mutableMapOf<String, MutableMap<String, String>>()
+        val tempOrderedStops = mutableMapOf<String, MutableList<TripStopNode>>()
+        val tempStops = mutableListOf<ScheduledTrainStop>()
+        val tempStopIds = HashSet<String>(jsonArray.length())
+
+        for (i in 0 until jsonArray.length()) {
+            val obj = jsonArray.optJSONObject(i) ?: continue
+            val stopId = obj.optString("stop_id", "").trim()
+            val rawName = obj.optString("nombre", "").trim()
+            if (stopId == "54514" || rawName.contains("Torreblanca del Sol", ignoreCase = true)) {
+                continue
+            }
+            if (stopId.isNotEmpty()) {
+                tempStopIds.add(stopId)
+            }
+            val displayName = stationNameById[stopId] ?: com.example.data.mapper.CercaniasDepartureMapper.formatStationDisplayName(rawName).ifBlank { rawName }
+            val normName = normalizeName(rawName)
+
+            val horariosArr = obj.optJSONArray("horarios") ?: continue
+            for (j in 0 until horariosArr.length()) {
+                val hObj = horariosArr.optJSONObject(j) ?: continue
+                val llegada = hObj.optString("llegada", "").trim()
+                if (llegada.isBlank()) continue
+
+                val timeParts = llegada.split(":")
+                if (timeParts.size < 2) continue
+                val h = timeParts[0].toIntOrNull() ?: continue
+                val m = timeParts[1].toIntOrNull() ?: continue
+                val s = if (timeParts.size >= 3) (timeParts[2].toIntOrNull() ?: 0) else 0
+                val timeSec = h * 3600 + m * 60 + s
+                val formattedTime = String.format(Locale.getDefault(), "%02d:%02d", h, m)
+
+                val line = hObj.optString("linea", "").uppercase().replace("-", "").trim()
+                val dest = hObj.optString("destino", "").trim()
+                val destNorm = normalizeName(dest)
+
+                val tripIdsArr = hObj.optJSONArray("trip_ids") ?: continue
+                val trainTripIds = mutableListOf<String>()
+                val stopNode = TripStopNode(
+                    id = stopId,
+                    name = displayName,
+                    normName = normName,
+                    time = formattedTime,
+                    timeSec = timeSec,
+                    line = line
+                )
+
+                for (k in 0 until tripIdsArr.length()) {
+                    val tid = tripIdsArr.optString(k, "").trim()
+                    if (tid.isBlank()) continue
+                    trainTripIds.add(tid)
+
+                    val exactK = tid
+                    val baseK = getBaseTripKey(exactK)
+                    val trainNo = extractTrainNumber(exactK)
+                    val lineNum = getCanonicalLineNumber(line, exactK)
+                    val lineTrainKey = if (!trainNo.isNullOrBlank() && lineNum.isNotBlank()) "C${lineNum}_$trainNo" else null
+
+                    val keys = mutableListOf(exactK, baseK)
+                    if (lineTrainKey != null) keys.add(lineTrainKey)
+                    if (!trainNo.isNullOrBlank()) keys.add(trainNo)
+
+                    for (key in keys) {
+                        val subMap = tempTripMap.getOrPut(key) { mutableMapOf() }
+                        if (stopId.isNotEmpty()) {
+                            subMap[stopId] = formattedTime
+                        }
+                        if (normName.isNotEmpty()) {
+                            subMap[normName] = formattedTime
+                        }
+                    }
+
+                    // Populate ordered stop sequences for exact, base, and line-scoped trainNum keys
+                    val orderedKeys = if (lineTrainKey != null) listOf(exactK, baseK, lineTrainKey) else listOf(exactK, baseK)
+                    for (ok in orderedKeys.distinct()) {
+                        tempOrderedStops.getOrPut(ok) { mutableListOf() }.add(stopNode)
+                    }
+                }
+
+                if (trainTripIds.isNotEmpty()) {
+                    tempStops.add(
+                        ScheduledTrainStop(
+                            line = line,
+                            stopId = stopId,
+                            stationNameNorm = normName,
+                            time = formattedTime,
+                            destinationNorm = destNorm,
+                            tripIds = trainTripIds
+                        )
+                    )
+                }
+            }
+        }
+
+        // Sort each trip's stop list chronologically (handling post-midnight continuation) and deduplicate same stopId
+        val finalOrderedStops = HashMap<String, List<TripStopNode>>(tempOrderedStops.size)
+        for ((k, rawNodes) in tempOrderedStops) {
+            val hasLate = rawNodes.any { it.timeSec >= 20 * 3600 }
+            val hasEarly = rawNodes.any { it.timeSec < 4 * 3600 }
+            val sorted = rawNodes.sortedBy { node ->
+                if (hasLate && hasEarly && node.timeSec < 4 * 3600) node.timeSec + 86400 else node.timeSec
+            }.distinctBy { it.id.ifBlank { it.normName } }
+            finalOrderedStops[k] = sorted
+        }
+
+        tripScheduleMap = tempTripMap
+        tripOrderedStopsMap = finalOrderedStops
+        scheduledStopsList = tempStops
+        if (tempStopIds.isNotEmpty()) {
+            valenciaStopIds = tempStopIds
+        }
+    }
+
+    /**
+     * Exact + base + day-letter variants WITHOUT stripping down to bare 4-5 digit train number
+     * (prevents cross-line train number collisions like C1-24007 vs C2-24007).
+     */
+    fun getExactAndBaseTripKeys(tid: String?): List<String> {
         if (tid.isNullOrBlank()) return emptyList()
         val trimmed = tid.trim()
         val list = mutableListOf<String>()
@@ -194,7 +304,6 @@ object CercaniasRouteUtils {
         list.add(trimmed.lowercase(Locale.ROOT))
         list.add(trimmed.uppercase(Locale.ROOT))
 
-        // Strip suffix after _ or - (e.g. "4070M24249C1_1" -> "4070M24249C1")
         if (trimmed.contains("_") || trimmed.contains("-")) {
             val base = trimmed.split(Regex("[_-]")).firstOrNull { it.isNotBlank() } ?: ""
             if (base.isNotBlank()) {
@@ -204,7 +313,6 @@ object CercaniasRouteUtils {
             }
         }
 
-        // If index 4 is a letter (e.g. "4070M24249C1"), add version without index 4 ("407024249C1") and with all day codes (L,M,X,J,V,S,D)
         if (trimmed.length > 5 && trimmed[4].isLetter()) {
             val prefix = trimmed.substring(0, 4)
             val suffix = trimmed.substring(5)
@@ -220,6 +328,14 @@ object CercaniasRouteUtils {
                 list.add(variant.lowercase(Locale.ROOT))
             }
         }
+
+        return list.distinct().filter { it.isNotBlank() }
+    }
+
+    fun getTripKeys(tid: String?): List<String> {
+        if (tid.isNullOrBlank()) return emptyList()
+        val trimmed = tid.trim()
+        val list = getExactAndBaseTripKeys(trimmed).toMutableList()
 
         // Extract train number (e.g., "24249")
         val trainNo = extractTrainNumber(trimmed)
@@ -241,7 +357,12 @@ object CercaniasRouteUtils {
     }
 
     fun getBaseTripKey(tid: String): String {
-        return getTripKeys(tid).firstOrNull() ?: tid.trim()
+        val trimmed = tid.trim()
+        return if (trimmed.contains("_") || trimmed.contains("-")) {
+            trimmed.split(Regex("[_-]")).firstOrNull { it.isNotBlank() } ?: trimmed
+        } else {
+            trimmed
+        }
     }
 
     fun isTripMatchedByAlert(
@@ -439,6 +560,89 @@ object CercaniasRouteUtils {
         return n1.contains(n2) || n2.contains(n1)
     }
 
+    fun getRemainingStopsForTrip(
+        tripId: String,
+        originStationId: String,
+        originStationName: String,
+        destinationName: String,
+        routeId: String,
+        allTripIds: List<String> = emptyList()
+    ): List<CercaniasTripStopInfo> {
+        ensureScheduleLoaded()
+        val lineKey = normalizeLineId(routeId)
+        val lineNum = getCanonicalLineNumber(routeId, tripId)
+
+        val candidateKeys = mutableListOf<String>()
+        val rawIds = (listOf(tripId) + allTripIds).filter { it.isNotBlank() }.distinct()
+        for (id in rawIds) {
+            candidateKeys.addAll(getExactAndBaseTripKeys(id))
+        }
+        if (lineNum.isNotBlank()) {
+            for (id in rawIds) {
+                extractTrainNumber(id)?.let { tNo ->
+                    candidateKeys.add("C${lineNum}_$tNo")
+                }
+            }
+        }
+
+        var matchedNodes: List<TripStopNode>? = null
+        for (ck in candidateKeys.distinct()) {
+            val found = tripOrderedStopsMap[ck]
+            if (found != null && found.size >= 2) {
+                matchedNodes = found
+                break
+            }
+        }
+
+        if (matchedNodes != null) {
+            var originIdx = matchedNodes.indexOfFirst { it.id == originStationId }
+            if (originIdx == -1 && originStationName.isNotBlank()) {
+                originIdx = matchedNodes.indexOfFirst { isSameStationName(it.name, originStationName) }
+            }
+            if (originIdx != -1 && originIdx < matchedNodes.lastIndex) {
+                var endIdx = matchedNodes.lastIndex
+                if (destinationName.isNotBlank()) {
+                    val destIdx = matchedNodes.indexOfFirst { idxNode ->
+                        isSameStationName(idxNode.name, destinationName)
+                    }
+                    if (destIdx > originIdx) {
+                        endIdx = destIdx
+                    }
+                }
+                return matchedNodes.subList(originIdx + 1, endIdx + 1).map { node ->
+                    val rawTransfers = stationTransfersById[node.id]
+                        ?: stationTransfersByNormName[node.normName]
+                        ?: emptyList()
+                    val transfers = rawTransfers.filter {
+                        it != lineKey && it != "C4" && it != "C-4"
+                    }.distinct().sorted()
+                    CercaniasTripStopInfo(
+                        id = node.id,
+                        name = node.name,
+                        scheduledTime = node.time,
+                        transferLines = transfers
+                    )
+                }
+            }
+        }
+
+        // Fallback to full line list when schedule nodes are unavailable for this tripId
+        return getRemainingStops(
+            originStationId = originStationId,
+            originStationName = originStationName,
+            destinationName = destinationName,
+            routeId = routeId
+        ).map { info ->
+            val sched = if (tripId.isNotBlank()) getStationScheduledTime(tripId, info.id, info.name) else null
+            CercaniasTripStopInfo(
+                id = info.id,
+                name = info.name,
+                scheduledTime = sched,
+                transferLines = info.transferLines
+            )
+        }
+    }
+
     fun getRemainingStops(
         originStationId: String,
         originStationName: String,
@@ -562,7 +766,12 @@ object CercaniasRouteUtils {
             return matchEndDigit.groupValues[1]
         }
 
-        return "1"
+        return ""
+    }
+
+    fun getCanonicalLineCode(routeId: String?, tripId: String? = null, fallback: String = ""): String {
+        val num = getCanonicalLineNumber(routeId, tripId)
+        return if (num.isNotBlank()) "C$num" else fallback
     }
 
     fun hasTripInSchedule(tripId: String, trainNum: String? = null): Boolean {

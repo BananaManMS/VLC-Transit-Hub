@@ -62,7 +62,8 @@ data class LiveVehicleInfo(
     val delayMinutes: Int = 0,
     val trainNum: String = "",
     val originName: String = "",
-    val destinationName: String = ""
+    val destinationName: String = "",
+    val hasExplicitDelay: Boolean = false
 )
 
 @Immutable

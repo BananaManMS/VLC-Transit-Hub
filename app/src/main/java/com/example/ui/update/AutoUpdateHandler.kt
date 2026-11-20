@@ -26,7 +26,8 @@ fun DashboardAutoUpdateHandler(
     appUpdateViewModel: AppUpdateViewModel,
     hasActiveRemoteAnnouncements: Boolean,
     isShowingOnboarding: Boolean,
-    isDarkMode: Boolean
+    isDarkMode: Boolean,
+    isSplashFinished: Boolean = true
 ) {
     val context = LocalContext.current
     val updateState by appUpdateViewModel.updateState.collectAsState()
@@ -42,10 +43,12 @@ fun DashboardAutoUpdateHandler(
 
     // Anti-collision logic:
     // Only display the update dialog when:
+    // 0. Launch splash exit animation has completely finished
     // 1. Not in onboarding
     // 2. No active un-dismissed Avisos (Remote Announcements) dialog is showing
     // 3. User has not dismissed the prompt during this app session
-    val canShowDialog = !isShowingOnboarding &&
+    val canShowDialog = isSplashFinished &&
+        !isShowingOnboarding &&
         !hasActiveRemoteAnnouncements &&
         !dismissedInSession
 

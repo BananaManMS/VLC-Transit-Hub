@@ -338,3 +338,128 @@ fun AboutAppDialog(
         }
     }
 }
+
+@Composable
+fun PrivacyPolicyDialog(
+    isDarkMode: Boolean,
+    appLanguage: AppLanguage,
+    onDismiss: () -> Unit
+) {
+    val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
+    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
+    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
+    val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
+    val borderColor = if (isDarkMode) Color(0xFF2D3748) else Color(0xFFE2E8F0)
+
+    val sections = listOf(
+        com.example.R.string.privacy_sec_no_account_title to com.example.R.string.privacy_sec_no_account_body,
+        com.example.R.string.privacy_sec_location_title to com.example.R.string.privacy_sec_location_body,
+        com.example.R.string.privacy_sec_calendar_title to com.example.R.string.privacy_sec_calendar_body,
+        com.example.R.string.privacy_sec_nfc_title to com.example.R.string.privacy_sec_nfc_body,
+        com.example.R.string.privacy_sec_third_party_title to com.example.R.string.privacy_sec_third_party_body,
+        com.example.R.string.privacy_sec_rights_title to com.example.R.string.privacy_sec_rights_body
+    )
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.82f)
+                .clip(RoundedCornerShape(20.dp)),
+            color = if (isDarkMode) Color(0xFF131824) else MaterialTheme.colorScheme.surface,
+            tonalElevation = 4.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PrivacyTip,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.setting_privacy_title),
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor
+                            )
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.privacy_dialog_subtitle),
+                                fontSize = 12.sp,
+                                color = subtextColor
+                            )
+                        }
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.btn_close),
+                            tint = subtextColor
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    sections.forEachIndexed { index, (titleRes, bodyRes) ->
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(titleRes),
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(bodyRes),
+                                fontSize = 13.sp,
+                                color = subtextColor,
+                                lineHeight = 18.sp
+                            )
+                        }
+                        if (index < sections.lastIndex) {
+                            HorizontalDivider(color = borderColor.copy(alpha = 0.5f))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
+                    ) {
+                        Text(texts.aboutUnderstood, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}

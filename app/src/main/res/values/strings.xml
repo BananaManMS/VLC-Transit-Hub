@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Core Application Name (MANDATORY: Matches metadata.json) -->
-    <string name="app_name">VLC Transit</string>
+    <string name="app_name">Viatgem</string>
 
     <!-- Navigation & Bottom Bar -->
     <string name="tab_inicio">Inicio</string>
@@ -526,6 +526,10 @@
     <string name="onboarding_selected_count">%1$d elegidas</string>
     <string name="onboarding_cards_count">%1$d guardadas</string>
     <string name="onboarding_syncing_stops">Actualizando paradas...</string>
+    <string name="onboarding_step_of">Paso %1$d de %2$d</string>
+    <string name="onboarding_action_connect">Conectar</string>
+    <string name="onboarding_habitual_lines_title">Líneas habituales</string>
+    <string name="onboarding_calendar_sub">Agenda de hoy en Inicio</string>
     <!-- Active Trip Banners -->
     <string name="trip_arrived_title">¡Has llegado a tu destino!</string>
     <string name="trip_completed_format">Viaje completado · %1$s</string>
@@ -849,4 +853,22 @@
     <string name="metrobus_no_stops_title">Sin paradas</string>
     <string name="metrobus_no_active_stops">No hay paradas de metrobús cercanas</string>
     <string name="metrobus_search_not_found">No se encontraron paradas para «%1$s»</string>
+
+    <!-- Onboarding Disclaimer & Privacy Policy -->
+    <string name="onboarding_disclaimer">App independiente sin afiliación oficial con ATMV, FGV (Metrovalencia), Renfe ni EMT Valencia.</string>
+    <string name="setting_privacy_title">Política de privacidad</string>
+    <string name="setting_privacy_sub">Ubicación, calendario, tarjetas NFC, APIs y control de datos</string>
+    <string name="privacy_dialog_subtitle">Transparencia y tratamiento local de datos</string>
+    <string name="privacy_sec_no_account_title">Sin cuentas ni perfiles personales</string>
+    <string name="privacy_sec_no_account_body">Viatgem no requiere registro ni recopila nombres, correos electrónicos ni identificadores personales en servidores propios. Tus favoritos, tarjetas guardadas y preferencias de tema o idioma se almacenan exclusivamente en tu dispositivo.</string>
+    <string name="privacy_sec_location_title">Ubicación y trayectos activos (opcional)</string>
+    <string name="privacy_sec_location_body">La ubicación (GPS) se utiliza únicamente cuando la autorizas para ordenar paradas cercanas, centrar el mapa y ofrecer seguimiento en primer plano durante un viaje activo. Las coordenadas no se guardan en ningún historial remoto.</string>
+    <string name="privacy_sec_calendar_title">Calendario y notificaciones (opcional)</string>
+    <string name="privacy_sec_calendar_body">Si conectas el calendario, los próximos eventos se leen localmente para mostrar sugerencias de salida en Inicio sin enviarse a servidores externos. Las notificaciones solo se emplean para avisos de llegada y trayectos fijados por ti.</string>
+    <string name="privacy_sec_nfc_title">Lectura NFC de tarjetas SUMA / Mobilis</string>
+    <string name="privacy_sec_nfc_body">La lectura mediante NFC se procesa íntegramente de forma local y sin conexión. Ningún dato de tu tarjeta de transporte se transmite por Internet.</string>
+    <string name="privacy_sec_third_party_title">Proveedores de mapas, datos abiertos y consentimiento</string>
+    <string name="privacy_sec_third_party_body">Al consultar tiempos en vivo, clima o mapas, la app realiza peticiones técnicas directas a las APIs de origen (ATMV, FGV, Renfe/NAP, EMT València, Transitous, Open-Meteo, Google Maps y OpenStreetMap/CARTO), sujetas a sus respectivas políticas. Si futuras versiones incorporan publicidad o medición, se solicitará tu consentimiento previo conforme al RGPD.</string>
+    <string name="privacy_sec_rights_title">Control y revocación de permisos</string>
+    <string name="privacy_sec_rights_body">Puedes revocar en cualquier momento los permisos de ubicación, calendario o notificaciones desde los ajustes del sistema Android, o eliminar todos los datos guardados borrando el almacenamiento de la aplicación.</string>
 </resources>

@@ -67,36 +67,83 @@ class RenfeRepository(
             com.example.util.getTransitFetchTimeoutMs(context.applicationContext)
         } catch (_: Exception) { 5000L }
 
-        val updates = try {
-            gtfsRtUpdates ?: withTimeoutOrNull(timeoutMs) { fetchGtfsRtTripUpdates() } ?: emptyMap()
-        } catch (e: Exception) { emptyMap() }
+        val (updates, vehicles) = if (gtfsRtUpdates == null && gtfsVehiclePositions == null) {
+            try {
+                withTimeoutOrNull(timeoutMs) { gtfsCacheManager.getDeparturesFeedData() }
+                    ?: Pair(emptyMap(), emptyMap())
+            } catch (_: Exception) {
+                Pair(emptyMap(), emptyMap())
+            }
+        } else {
+            val u = gtfsRtUpdates ?: try {
+                withTimeoutOrNull(timeoutMs) { fetchGtfsRtTripUpdates() } ?: emptyMap()
+            } catch (_: Exception) { emptyMap() }
+            val v = gtfsVehiclePositions ?: try {
+                withTimeoutOrNull(timeoutMs) { fetchGtfsRtVehiclePositions() } ?: emptyMap()
+            } catch (_: Exception) { emptyMap() }
+            Pair(u, v)
+        }
 
-        val vehicles = try {
-            gtfsVehiclePositions ?: withTimeoutOrNull(timeoutMs) { fetchGtfsRtVehiclePositions() } ?: emptyMap()
-        } catch (e: Exception) { emptyMap() }
-        
         val horarios = syncManager.getHorariosForStation(stopId)
         if (horarios.isEmpty()) return@withContext emptyList()
-        
+
         val stationNameMap = syncManager.getStationNameMap()
         val currentStationName = stationNameMap[stopId] ?: ""
-        val preNormalizedCurrent = com.example.data.mapper.CercaniasDepartureMapper.normalizeStationName(currentStationName)
+        val preNormalizedCurrent = CercaniasDepartureMapper.normalizeStationName(currentStationName)
 
-        val madridCal = Calendar.getInstance(TimeZone.getTimeZone("Europe/Madrid"))
+        val madridTz = TimeZone.getTimeZone("Europe/Madrid")
+        val madridCal = Calendar.getInstance(madridTz)
         val nowSecondsOfDay = madridCal.get(Calendar.HOUR_OF_DAY) * 3600 +
                               madridCal.get(Calendar.MINUTE) * 60 +
                               madridCal.get(Calendar.SECOND)
+        val nowEpochSec = System.currentTimeMillis() / 1000L
 
-        val updatesIndex = HashMap<String, GtfsRtTripUpdate>(updates.size * 15)
+        val tomorrowCal = Calendar.getInstance(madridTz).apply { add(Calendar.DAY_OF_YEAR, 1) }
+        val tomorrowDateStr = String.format(
+            java.util.Locale.ROOT, "%04d%02d%02d",
+            tomorrowCal.get(Calendar.YEAR),
+            tomorrowCal.get(Calendar.MONTH) + 1,
+            tomorrowCal.get(Calendar.DAY_OF_MONTH)
+        )
+
+        // Build compact secondary lookup indexes only when caller supplied an un-indexed raw map
+        val updatesIndex = HashMap<String, GtfsRtTripUpdate>(updates.size * 3 + 16)
         for ((k, v) in updates) {
             updatesIndex[k] = v
-            val keys = com.example.ui.cercanias.CercaniasRouteUtils.getTripKeys(k)
-            for (key in keys) {
-                updatesIndex[key] = v
+            val base = com.example.ui.cercanias.CercaniasRouteUtils.getBaseTripKey(k)
+            if (base.isNotBlank() && !updatesIndex.containsKey(base)) {
+                updatesIndex[base] = v
+            }
+            val vLineCode = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineCode(v.routeId, v.tripId)
+            val vTrain = com.example.ui.cercanias.CercaniasRouteUtils.getEffectiveTrainNumber(v.vehicleId, v.tripId)
+            if (vLineCode.isNotBlank() && vTrain.isNotBlank()) {
+                val scopedKey = "${vLineCode}_$vTrain"
+                if (!updatesIndex.containsKey(scopedKey)) {
+                    updatesIndex[scopedKey] = v
+                }
             }
         }
 
+        val vehiclesIndex = HashMap<String, LiveVehicleInfo>(vehicles.size * 3 + 16)
+        for ((k, v) in vehicles) {
+            vehiclesIndex[k] = v
+            val base = com.example.ui.cercanias.CercaniasRouteUtils.getBaseTripKey(k)
+            if (base.isNotBlank() && !vehiclesIndex.containsKey(base)) {
+                vehiclesIndex[base] = v
+            }
+            val vLineCode = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineCode(v.routeId, v.tripId)
+            val vTrain = com.example.ui.cercanias.CercaniasRouteUtils.getEffectiveTrainNumber(v.trainNum, v.tripId)
+            if (vLineCode.isNotBlank() && vTrain.isNotBlank()) {
+                val scopedKey = "${vLineCode}_$vTrain"
+                if (!vehiclesIndex.containsKey(scopedKey)) {
+                    vehiclesIndex[scopedKey] = v
+                }
+            }
+        }
+
+        val platRegex = Regex("""PLATF\.\((\d+)\)|V[IÍ]A\s*(\d+)""", RegexOption.IGNORE_CASE)
         val list = mutableListOf<CercaniasDeparture>()
+
         for (h in horarios) {
             val depSeconds = parseTimeToSeconds(h.llegada)
             if (depSeconds < 0) continue
@@ -116,83 +163,146 @@ class RenfeRepository(
                 continue
             }
 
-            // O(1) Instant lookup for GTFS-RT trip update using full key variants
-            var liveUpdate: GtfsRtTripUpdate? = null
-            for (id in allTripIds) {
-                liveUpdate = updatesIndex[id] ?: updatesIndex[id.uppercase(java.util.Locale.ROOT)]
-                if (liveUpdate != null) break
-            }
-            if (liveUpdate == null && tripId.isNotBlank()) {
-                val depKeys = com.example.ui.cercanias.CercaniasRouteUtils.getTripKeys(tripId)
-                for (dk in depKeys) {
-                    liveUpdate = updatesIndex[dk]
-                    if (liveUpdate != null) break
-                }
+            val depLineNum = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(line, tripId)
+            val depLineCode = if (depLineNum.isNotBlank()) "C$depLineNum" else ""
+
+            // Handle post-midnight continuous service wrap cleanly
+            val scheduledDiffToday = when {
+                nowSecondsOfDay >= 22 * 3600 && depSeconds < 4 * 3600 -> (depSeconds + 86400) - nowSecondsOfDay
+                nowSecondsOfDay < 4 * 3600 && depSeconds >= 22 * 3600 -> (depSeconds - 86400) - nowSecondsOfDay
+                else -> depSeconds - nowSecondsOfDay
             }
 
-            // O(1) Look up matching live vehicle position to extract track/platform ("vía")
-            var vehicleForTrip: com.example.ui.cercanias.LiveVehicleInfo? = null
-            for (id in allTripIds) {
-                vehicleForTrip = vehicles[id] ?: vehicles[id.uppercase(java.util.Locale.ROOT)]
-                if (vehicleForTrip != null) break
-            }
-            if (vehicleForTrip == null && tripId.isNotBlank()) {
-                val depKeys = com.example.ui.cercanias.CercaniasRouteUtils.getTripKeys(tripId)
-                for (dk in depKeys) {
-                    vehicleForTrip = vehicles[dk] ?: vehicles[dk.uppercase(java.util.Locale.ROOT)]
-                    if (vehicleForTrip != null) break
+            // Strict +2h live matching window: departures beyond +2h stay O(1) pure scheduled
+            val isInLiveMatchingWindow = scheduledDiffToday in -3600..7200
+
+            var liveUpdate: GtfsRtTripUpdate? = null
+            var vehicleForTrip: LiveVehicleInfo? = null
+
+            if (isInLiveMatchingWindow && (updatesIndex.isNotEmpty() || vehiclesIndex.isNotEmpty())) {
+                // Priority 1: Exact / base tripId / day-letter variants (zero cross-line collision)
+                for (id in allTripIds) {
+                    val exactKeys = com.example.ui.cercanias.CercaniasRouteUtils.getExactAndBaseTripKeys(id)
+                    for (ek in exactKeys) {
+                        if (liveUpdate == null) liveUpdate = updatesIndex[ek]
+                        if (vehicleForTrip == null) vehicleForTrip = vehiclesIndex[ek]
+                        if (liveUpdate != null && vehicleForTrip != null) break
+                    }
+                    if (liveUpdate != null && vehicleForTrip != null) break
+                }
+
+                // Priority 2: Line-scoped train number (e.g. "C1_24007" vs "C2_24007")
+                if ((liveUpdate == null || vehicleForTrip == null) && depLineCode.isNotBlank()) {
+                    for (id in allTripIds) {
+                        val tNum = com.example.ui.cercanias.CercaniasRouteUtils.extractTrainNumber(id)
+                        if (!tNum.isNullOrBlank()) {
+                            val scoped = "${depLineCode}_$tNum"
+                            if (liveUpdate == null) liveUpdate = updatesIndex[scoped]
+                            if (vehicleForTrip == null) vehicleForTrip = vehiclesIndex[scoped]
+                            if (liveUpdate != null && vehicleForTrip != null) break
+                        }
+                    }
+                }
+
+                // Priority 3: Bare train number ONLY if the candidate shares the same canonical line
+                if (liveUpdate == null || vehicleForTrip == null) {
+                    for (id in allTripIds) {
+                        val tNum = com.example.ui.cercanias.CercaniasRouteUtils.extractTrainNumber(id) ?: continue
+                        if (liveUpdate == null) {
+                            val cand = updatesIndex[tNum]
+                            if (cand != null) {
+                                val candLine = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(cand.routeId, cand.tripId)
+                                if (candLine.isBlank() || depLineNum.isBlank() || candLine == depLineNum) {
+                                    liveUpdate = cand
+                                }
+                            }
+                        }
+                        if (vehicleForTrip == null) {
+                            val candV = vehiclesIndex[tNum]
+                            if (candV != null) {
+                                val candLine = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(candV.routeId, candV.tripId)
+                                if (candLine.isBlank() || depLineNum.isBlank() || candLine == depLineNum) {
+                                    vehicleForTrip = candV
+                                }
+                            }
+                        }
+                        if (liveUpdate != null && vehicleForTrip != null) break
+                    }
                 }
             }
-            val vehiclePlatform = if (vehicleForTrip != null && (vehicleForTrip.currentStopId == stopId || vehicleForTrip.currentStopId.isBlank())) {
-                vehicleForTrip.platform
-            } else ""
 
             val isLive = liveUpdate != null || vehicleForTrip != null
             val isCanceled = liveUpdate?.isCanceled ?: false
-            val delaySeconds = (liveUpdate?.stopDelays?.get(stopId) ?: liveUpdate?.delaySeconds ?: 0L).toInt()
+
+            // Delay resolution prioritizing per-stop GTFS-RT > trip delay > vehicle delay
+            val stopDelaySec = liveUpdate?.stopDelays?.get(stopId)
+            val delaySeconds = when {
+                stopDelaySec != null -> stopDelaySec.toInt()
+                liveUpdate != null && (liveUpdate.delaySeconds != 0L || liveUpdate.hasExplicitDelay) -> liveUpdate.delaySeconds.toInt()
+                vehicleForTrip != null -> vehicleForTrip.delayMinutes * 60
+                else -> 0
+            }
             val delayMinutes = delaySeconds / 60
-            val livePlatform = when {
-                !liveUpdate?.stopPlatforms?.get(stopId).isNullOrBlank() -> liveUpdate?.stopPlatforms?.get(stopId) ?: ""
-                vehiclePlatform.isNotBlank() -> vehiclePlatform
-                !liveUpdate?.vehicleLabel.isNullOrBlank() -> {
-                    val platRegex = Regex("""PLATF\.\((\d+)\)|V[IÍ]A\s*(\d+)""", RegexOption.IGNORE_CASE)
-                    val m = platRegex.find(liveUpdate!!.vehicleLabel)
-                    m?.let { it.groupValues[1].ifBlank { it.groupValues[2] } } ?: ""
+
+            // Strict station-matched platform resolution: never display a platform from another station
+            val platform = when {
+                !liveUpdate?.stopPlatforms?.get(stopId).isNullOrBlank() -> liveUpdate!!.stopPlatforms[stopId]!!.trim()
+                vehicleForTrip != null && vehicleForTrip.currentStopId == stopId && vehicleForTrip.platform.isNotBlank() ->
+                    vehicleForTrip.platform.trim()
+                vehicleForTrip != null && vehicleForTrip.nextStopId == stopId && vehicleForTrip.nextPlatform.isNotBlank() ->
+                    vehicleForTrip.nextPlatform.trim()
+                liveUpdate != null && !liveUpdate.vehicleLabel.isBlank() &&
+                    (vehicleForTrip?.currentStopId == stopId || liveUpdate.stopTimes.firstOrNull()?.stopId == stopId) -> {
+                    val m = platRegex.find(liveUpdate.vehicleLabel)
+                    m?.let { it.groupValues[1].ifBlank { it.groupValues[2] } }?.trim() ?: ""
                 }
                 else -> ""
             }
-            val platform = livePlatform.trim()
 
             val locationText = if (isLive) "En tiempo real" else ""
 
-            val effectiveDepSeconds = depSeconds + delaySeconds
-            val diffSecondsToday = effectiveDepSeconds - nowSecondsOfDay
+            val stopEstEpoch = liveUpdate?.stopEstimatedTimes?.get(stopId)
+            val useStopEpoch = stopEstEpoch != null && stopEstEpoch > 0L && kotlin.math.abs(stopEstEpoch - nowEpochSec) < 12 * 3600
+
+            val effectiveDiffToday = if (useStopEpoch) {
+                (stopEstEpoch!! - nowEpochSec).toInt()
+            } else {
+                scheduledDiffToday + delaySeconds
+            }
 
             val timeHHmm = formatTimeHHmm(h.llegada)
             val estimatedTimeStr = if (isLive && !isCanceled) {
-                formatSecondsToHHmm(effectiveDepSeconds)
+                if (useStopEpoch) {
+                    formatEpochSecondsToHHmm(stopEstEpoch!!, madridTz)
+                } else {
+                    formatSecondsToHHmm(depSeconds + delaySeconds)
+                }
             } else {
                 ""
             }
 
-            val isStoppedAt = false
-            val isIncomingAt = false
-            val vehStatus = ""
+            val vehStatus = vehicleForTrip?.status ?: ""
+            val isStoppedAt = vehStatus == "STOPPED_AT" && vehicleForTrip?.currentStopId == stopId
+            val isIncomingAt = vehStatus == "INCOMING_AT" && (vehicleForTrip?.currentStopId == stopId || vehicleForTrip?.nextStopId == stopId)
+            val isIndeterminateDelay = !isCanceled && (
+                liveUpdate?.isIndeterminateDeparture == true ||
+                (liveUpdate?.stopTimes?.any { it.stopId == stopId && it.isIndeterminate } == true)
+            )
 
             val cleanDest = dest
                 .replace("dirección", "", ignoreCase = true)
                 .replace("direccion", "", ignoreCase = true)
                 .trim()
-            val formattedDestName = com.example.data.mapper.CercaniasDepartureMapper.formatStationDisplayName(cleanDest)
+            val formattedDestName = CercaniasDepartureMapper.formatStationDisplayName(cleanDest)
             val normRouteStr = line.uppercase().replace("-", "").trim()
 
             // 1. Departures for TODAY (from now until end of service today)
-            val isUpcomingToday = diffSecondsToday >= -30 || (isLive && diffSecondsToday >= -180)
+            val isUpcomingToday = effectiveDiffToday >= -30 || (isLive && effectiveDiffToday >= -180)
             if (isUpcomingToday) {
-                val minutesRemaining = if (diffSecondsToday < 0 && isLive) {
+                val minutesRemaining = if (effectiveDiffToday < 0 && isLive) {
                     0
                 } else {
-                    Math.round(diffSecondsToday / 60.0f).coerceAtLeast(0)
+                    Math.round(effectiveDiffToday / 60.0f).coerceAtLeast(0)
                 }
 
                 list.add(
@@ -206,14 +316,15 @@ class RenfeRepository(
                         estimatedTime = estimatedTimeStr,
                         isLive = isLive,
                         platform = platform,
-                        latitude = null,
-                        longitude = null,
+                        latitude = vehicleForTrip?.latitude,
+                        longitude = vehicleForTrip?.longitude,
                         status = vehStatus,
                         locationText = locationText,
                         isCanceled = isCanceled,
-                        isStoppedAt = false,
-                        isIncomingAt = false,
+                        isStoppedAt = isStoppedAt,
+                        isIncomingAt = isIncomingAt,
                         isTomorrow = false,
+                        isIndeterminateDelay = isIndeterminateDelay,
                         allTripIds = allTripIds,
                         normalizedRoute = normRouteStr,
                         formattedDestination = formattedDestName
@@ -221,25 +332,21 @@ class RenfeRepository(
                 )
             }
 
-            // 2. Departures for TOMORROW (within 24 hours from current time)
+            // 2. Departures for TOMORROW (within 24 hours from current time - scheduled only, except advance cancellations)
             val diffSecondsTomorrow = (depSeconds + 86400) - nowSecondsOfDay
             if (diffSecondsTomorrow in 0..86400) {
                 val minutesRemainingTomorrow = Math.round(diffSecondsTomorrow / 60.0f)
-                val tomorrowCal = Calendar.getInstance(TimeZone.getTimeZone("Europe/Madrid")).apply { add(Calendar.DAY_OF_YEAR, 1) }
-                val tomorrowDateStr = String.format(java.util.Locale.ROOT, "%04d%02d%02d",
-                    tomorrowCal.get(Calendar.YEAR),
-                    tomorrowCal.get(Calendar.MONTH) + 1,
-                    tomorrowCal.get(Calendar.DAY_OF_MONTH)
-                )
 
                 var isCanceledTomorrow = false
-                for (k in allTripIds) {
-                    val keyWithDate = "${tomorrowDateStr}_$k"
-                    val keyWithDateDash = "$tomorrowDateStr-$k"
-                    val tomorrowUpdate = updatesIndex[keyWithDate] ?: updatesIndex[keyWithDateDash]
-                    if (tomorrowUpdate?.isCanceled == true) {
-                        isCanceledTomorrow = true
-                        break
+                if (updatesIndex.isNotEmpty()) {
+                    for (k in allTripIds) {
+                        val keyWithDate = "${tomorrowDateStr}_$k"
+                        val keyWithDateDash = "$tomorrowDateStr-$k"
+                        val tomorrowUpdate = updatesIndex[keyWithDate] ?: updatesIndex[keyWithDateDash]
+                        if (tomorrowUpdate?.isCanceled == true) {
+                            isCanceledTomorrow = true
+                            break
+                        }
                     }
                 }
 
@@ -296,6 +403,13 @@ class RenfeRepository(
         val normalized = (totalSeconds % 86400 + 86400) % 86400
         val h = (normalized / 3600).toString().padStart(2, '0')
         val m = ((normalized % 3600) / 60).toString().padStart(2, '0')
+        return "$h:$m"
+    }
+
+    private fun formatEpochSecondsToHHmm(epochSec: Long, tz: TimeZone): String {
+        val cal = Calendar.getInstance(tz).apply { timeInMillis = epochSec * 1000L }
+        val h = cal.get(Calendar.HOUR_OF_DAY).toString().padStart(2, '0')
+        val m = cal.get(Calendar.MINUTE).toString().padStart(2, '0')
         return "$h:$m"
     }
 

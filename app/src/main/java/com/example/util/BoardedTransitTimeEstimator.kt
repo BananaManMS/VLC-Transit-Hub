@@ -30,14 +30,15 @@ object BoardedTransitTimeEstimator {
         lastKnownCercaniasDestEpochSec: Long?,
         lastKnownCercaniasDelayMinutes: Int,
         lastConfirmedBoardedMinsRemaining: Int?,
-        lastBoardedEstimationTimestamp: Long
+        lastBoardedEstimationTimestamp: Long,
+        lastKnownCercaniasTripId: String? = null
     ): BoardedEstimationResult {
         var isLive = isLiveFromCorridor
         var delayMinutes = driftMinutes
 
         var retainedEpoch = lastKnownCercaniasDestEpochSec
         var retainedDelay = lastKnownCercaniasDelayMinutes
-        var retainedTrip: String? = null
+        var retainedTrip: String? = lastKnownCercaniasTripId
 
         var gtfsRtArrivalMinutes: Int? = null
         var operatorLiveArrivalMinutes: Int? = null
@@ -55,18 +56,26 @@ object BoardedTransitTimeEstimator {
                 nextTransitLeg.agencyName,
                 nextTransitLeg.mode
             ) ?: nextTransitLeg.routeShortName ?: ""
-            val cleanLine = cercaniasLine.replace("-", "").uppercase()
+            val targetLineDigit = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(cercaniasLine)
 
             val tripUpdates = RealTimeTransitRepository.getCercaniasTripUpdates()
-            // Prioritize exact retained tripId if captured at origin, otherwise match closest to expected schedule
+            // Prioritize exact retained tripId if captured at origin, otherwise match line AND destination stop
             val liveTripUpdate = if (!retainedTrip.isNullOrBlank()) {
                 tripUpdates[retainedTrip]
             } else {
-                val matchingUpdates = tripUpdates.values.filter { update ->
-                    val lineMatches = cleanLine.isNotBlank() && update.tripId.replace("-", "").uppercase().contains(cleanLine)
-                    val stopMatches = !toStopDigits.isNullOrBlank() && (update.stopDelays.containsKey(toStopDigits) || update.stopEstimatedTimes.containsKey(toStopDigits))
-                    lineMatches || stopMatches
-                }
+                null
+            } ?: run {
+                val matchingUpdates = tripUpdates.values
+                    .distinctBy { it.tripId }
+                    .filter { update ->
+                        val updateLineDigit = com.example.ui.cercanias.CercaniasRouteUtils.getCanonicalLineNumber(update.routeId, update.tripId)
+                        val lineMatches = targetLineDigit.isBlank() || (updateLineDigit.isNotBlank() && updateLineDigit == targetLineDigit)
+                        val stopMatches = toStopDigits.isNullOrBlank() ||
+                            update.stopDelays.containsKey(toStopDigits) ||
+                            update.stopEstimatedTimes.containsKey(toStopDigits) ||
+                            update.stopTimes.any { it.stopId == toStopDigits }
+                        lineMatches && stopMatches
+                    }
                 matchingUpdates.minByOrNull { update ->
                     val stopEpoch = if (!toStopDigits.isNullOrBlank()) update.stopEstimatedTimes[toStopDigits] else null
                     if (stopEpoch != null && stopEpoch > 0) {
