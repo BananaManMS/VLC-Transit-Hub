@@ -58,6 +58,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 import com.example.ui.theme.SpaceGroteskFontFamily
 import com.example.data.database.ActiveTripEntity
 import com.example.data.model.routing.TransitMode
@@ -134,6 +136,11 @@ fun ActiveTripOverlay(
     if (showCancelConfirmationDialog) {
         AlertDialog(
             onDismissRequest = { showCancelConfirmationDialog = false },
+            properties = AppDialogDefaults.Properties,
+            modifier = Modifier.appDialogWidth(),
+            shape = AppDialogDefaults.Shape,
+            containerColor = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
             title = {
                 Text(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_end_dialog_title),

@@ -29,11 +29,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.AppThemeColors
 import com.example.ui.theme.SpaceGroteskFontFamily
 
 @Composable
@@ -45,9 +47,13 @@ fun CercaniasDepartureDetails(
     originStationId: String = "",
     originStationName: String = ""
 ) {
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
-    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
-    val cardBg = if (isDarkMode) Color(0xFF222222) else Color(0xFFFFFFFF)
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val cardBg = MaterialTheme.colorScheme.surface
+    val cardBorder = BorderStroke(
+        width = 1.dp,
+        color = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    )
 
     val affectedAlerts = remember(alerts, departure) {
         val depRouteNorm = departure.routeId.uppercase().replace("-", "").replace(" ", "").trim()
@@ -152,11 +158,13 @@ fun CercaniasDepartureDetails(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (departure.isCanceled) {
+                    val errColor = AppThemeColors.statusError(isDarkMode)
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, errColor.copy(alpha = 0.35f)),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isDarkMode) Color(0xFF331818) else Color(0xFFFFEBEE)
+                            containerColor = AppThemeColors.statusErrorContainer(isDarkMode)
                         )
                     ) {
                         Row(
@@ -166,13 +174,13 @@ fun CercaniasDepartureDetails(
                             Icon(
                                 imageVector = Icons.Default.Cancel,
                                 contentDescription = null,
-                                tint = Color(0xFFE53935),
+                                tint = errColor,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
                                 text = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_canceled_service),
-                                color = Color(0xFFE53935),
+                                color = errColor,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -181,11 +189,13 @@ fun CercaniasDepartureDetails(
                 }
 
                 affectedAlerts.forEach { alert ->
+                    val errColor = AppThemeColors.statusError(isDarkMode)
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, errColor.copy(alpha = 0.35f)),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isDarkMode) Color(0xFF331818) else Color(0xFFFFEBEE)
+                            containerColor = AppThemeColors.statusErrorContainer(isDarkMode)
                         )
                     ) {
                         Row(
@@ -195,26 +205,31 @@ fun CercaniasDepartureDetails(
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = Color(0xFFE53935),
+                                tint = errColor,
                                 modifier = Modifier.size(20.dp).padding(top = 2.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 val noticeLabel = androidx.compose.ui.res.stringResource(com.example.R.string.alert_title)
                                 val activeNoticeLabel = androidx.compose.ui.res.stringResource(com.example.R.string.metro_active_incident_label)
-                                val prefix = if (alert.tripIds.isNotEmpty()) "$noticeLabel Tren ${departure.tripId}: " else "$noticeLabel L$routeText: "
+                                val prefix = if (alert.tripIds.isNotEmpty()) "$noticeLabel Tren ${departure.tripId}: " else "$noticeLabel $routeText: "
+                                val cleanHeader = remember(alert.headerEs) { sanitizeRenfeNoticeText(alert.headerEs) }
+                                val cleanDesc = remember(alert.descriptionEs) { sanitizeRenfeNoticeText(alert.descriptionEs) }
                                 Text(
-                                    text = prefix + alert.headerEs.ifBlank { activeNoticeLabel },
-                                    color = Color(0xFFE53935),
+                                    text = prefix + cleanHeader.ifBlank { activeNoticeLabel },
+                                    color = errColor,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                LinkifiedText(
-                                    text = alert.descriptionEs,
-                                    textColor = textColor,
-                                    fontSize = 13.sp
-                                )
+                                if (cleanDesc.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    LinkifiedText(
+                                        text = cleanDesc,
+                                        textColor = textColor,
+                                        fontSize = 13.sp,
+                                        lineHeight = 19.sp
+                                    )
+                                }
                             }
                         }
                     }
@@ -227,6 +242,7 @@ fun CercaniasDepartureDetails(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
+            border = cardBorder,
             colors = CardDefaults.cardColors(containerColor = cardBg)
         ) {
             Column(
@@ -266,9 +282,9 @@ fun CercaniasDepartureDetails(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = routeColor.copy(alpha = 0.15f)
+                        containerColor = routeColor.copy(alpha = if (isDarkMode) 0.18f else 0.10f).compositeOver(cardBg)
                     ),
-                    border = BorderStroke(1.5.dp, routeColor)
+                    border = BorderStroke(1.dp, routeColor.copy(alpha = 0.65f))
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),

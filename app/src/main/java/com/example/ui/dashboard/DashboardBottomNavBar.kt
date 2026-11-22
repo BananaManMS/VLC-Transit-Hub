@@ -46,11 +46,11 @@ fun DashboardBottomNavBar(
         tonalElevation = 0.dp
     ) {
         val navColors = NavigationBarItemDefaults.colors(
-            indicatorColor = if (isDarkMode) Color(0xFF262626) else Color(0xFFE2E8F0),
+            indicatorColor = if (isDarkMode) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.primaryContainer,
             selectedIconColor = MaterialTheme.colorScheme.primary,
             selectedTextColor = MaterialTheme.colorScheme.primary,
-            unselectedIconColor = if (isDarkMode) Color(0xFF8E8E93) else Color(0xFF64748B),
-            unselectedTextColor = if (isDarkMode) Color(0xFF8E8E93) else Color(0xFF64748B)
+            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         NavigationBarItem(

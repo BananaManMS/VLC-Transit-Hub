@@ -42,6 +42,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import com.example.ui.components.TransitPullRefreshIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,6 +60,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.zIndex
@@ -109,9 +113,20 @@ fun TarjetasTab(
         }
     }
 
+    val pullToRefreshState = rememberPullToRefreshState()
+
     PullToRefreshBox(
         isRefreshing = isRefreshingCards,
         onRefresh = { metroViewModel.refreshTransitCards() },
+        state = pullToRefreshState,
+        indicator = {
+            TransitPullRefreshIndicator(
+                state = pullToRefreshState,
+                isRefreshing = isRefreshingCards,
+                appLanguage = appLanguage,
+                refreshingText = if (appLanguage == AppLanguage.CA) "Actualitzant targetes..." else "Actualizando tarjetas..."
+            )
+        },
         modifier = Modifier.fillMaxSize().testTag("tarjetas_pull_to_refresh")
     ) {
         Box(
@@ -340,7 +355,11 @@ fun ManageCardsDialog(
             metroViewModel.updateCardsOrder(cardList.map { it.cardNumber })
             onDismiss()
         },
-        containerColor = if (isDarkMode) Color(0xFF0F172A) else Color.White,
+        properties = AppDialogDefaults.Properties,
+        modifier = Modifier.appDialogWidth(),
+        shape = AppDialogDefaults.Shape,
+        containerColor = AppDialogDefaults.containerColor(),
+        tonalElevation = AppDialogDefaults.TonalElevation,
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -355,7 +374,7 @@ fun ManageCardsDialog(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.cards_organize_title),
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
-                    color = if (isDarkMode) Color.White else Color.Black
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         },
@@ -368,7 +387,7 @@ fun ManageCardsDialog(
                 Text(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.cards_organize_instruction),
                     fontSize = 12.sp,
-                    color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
@@ -392,7 +411,7 @@ fun ManageCardsDialog(
                                 }
                                 .background(
                                     color = if (isBeingDragged) {
-                                        if (isDarkMode) Color(0xFF1E293B) else Color(0xFFEFF6FF)
+                                        AppDialogDefaults.subContainerColor()
                                     } else {
                                         Color.Transparent
                                     },

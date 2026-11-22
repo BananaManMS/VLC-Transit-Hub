@@ -97,7 +97,7 @@ fun FavoriteStationsRow(
                         .clickable { onSearchClick() }
                         .testTag("empty_favorite_stations_chip"),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isDarkMode) Color(0xFF1E293B) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                        containerColor = if (isDarkMode) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
                     ),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
                     shape = RoundedCornerShape(12.dp)
@@ -127,7 +127,7 @@ fun FavoriteStationsRow(
                     val borderStroke = if (isSelected) {
                         BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
                     } else {
-                        BorderStroke(1.dp, if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                     val animatedCornerRadius by animateDpAsState(
                         targetValue = if (isSelected) 8.dp else 18.dp,
@@ -173,7 +173,7 @@ fun FavoriteStationsRow(
                                         text = distanceText,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) (if (isDarkMode) Color(0xFF93C5FD) else MaterialTheme.colorScheme.primary) else subtextColor,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else subtextColor,
                                         modifier = Modifier.padding(start = 4.dp)
                                     )
                                 }

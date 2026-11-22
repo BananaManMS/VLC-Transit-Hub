@@ -216,9 +216,8 @@ fun OnboardingScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .widthIn(max = 580.dp)
-                            .defaultMinSize(minHeight = viewportHeight)
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Bottom)
+                            .padding(horizontal = 16.dp, vertical = 18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top)
                     ) {
                         when (page) {
                             0 -> WelcomeStepPage(
@@ -395,7 +394,7 @@ private fun WelcomeStepPage(
                     TransitModeBentoTile(
                         iconDrawable = R.drawable.logo_emt_valencia,
                         label = "EMT",
-                        brandColor = TransitEmtSky,
+                        brandColor = Color(0xFFE53935),
                         isSelected = preferredModes.contains("EMT"),
                         isDarkMode = isDarkMode,
                         onClick = { onToggleMode("EMT") },
@@ -538,7 +537,7 @@ private fun PermissionsStepPage(
                         hasOnlyCoarseLocation -> stringResource(R.string.onboarding_action_improve)
                         else -> stringResource(R.string.onboarding_action_enable)
                     },
-                    accentColor = if (hasOnlyCoarseLocation) TransitAmber else TransitBrandBlue,
+                    accentColor = if (hasOnlyCoarseLocation) TransitAmber else MaterialTheme.colorScheme.primary,
                     onClick = onRequestLocation,
                     modifier = Modifier.testTag("onboarding_btn_gps")
                 )
@@ -552,8 +551,8 @@ private fun PermissionsStepPage(
                 else R.string.onboarding_notifications_sub
             ),
             icon = Icons.Default.NotificationsActive,
-            iconTint = if (hasNotificationPermission) TransitEmerald else TransitEmtSky,
-            iconContainerColor = (if (hasNotificationPermission) TransitEmerald else TransitEmtSky).copy(alpha = 0.12f),
+            iconTint = if (hasNotificationPermission) TransitEmerald else MaterialTheme.colorScheme.primary,
+            iconContainerColor = (if (hasNotificationPermission) TransitEmerald else MaterialTheme.colorScheme.primary).copy(alpha = 0.12f),
             onClick = if (!hasNotificationPermission) onRequestNotifications else null,
             trailingContent = {
                 PermissionActionPill(
@@ -562,7 +561,7 @@ private fun PermissionsStepPage(
                         if (hasNotificationPermission) R.string.onboarding_action_active
                         else R.string.onboarding_action_enable
                     ),
-                    accentColor = TransitBrandBlue,
+                    accentColor = MaterialTheme.colorScheme.primary,
                     onClick = onRequestNotifications,
                     modifier = Modifier.testTag("onboarding_btn_notifications")
                 )
@@ -573,8 +572,8 @@ private fun PermissionsStepPage(
             title = stringResource(R.string.setting_google_calendar_title),
             subtitle = stringResource(R.string.onboarding_calendar_sub),
             icon = Icons.Default.Event,
-            iconTint = if (isCalendarConnected) TransitEmerald else Color(0xFF00ACC1),
-            iconContainerColor = (if (isCalendarConnected) TransitEmerald else Color(0xFF00ACC1)).copy(alpha = 0.12f),
+            iconTint = if (isCalendarConnected) TransitEmerald else MaterialTheme.colorScheme.primary,
+            iconContainerColor = (if (isCalendarConnected) TransitEmerald else MaterialTheme.colorScheme.primary).copy(alpha = 0.12f),
             onClick = if (!isCalendarConnected) onRequestCalendar else null,
             trailingContent = {
                 PermissionActionPill(
@@ -583,7 +582,7 @@ private fun PermissionsStepPage(
                         if (isCalendarConnected) R.string.onboarding_action_active
                         else R.string.onboarding_action_connect
                     ),
-                    accentColor = TransitBrandBlue,
+                    accentColor = MaterialTheme.colorScheme.primary,
                     onClick = onRequestCalendar,
                     modifier = Modifier.testTag("onboarding_btn_calendar")
                 )
@@ -641,7 +640,7 @@ private fun NetworkSetupStepPage(
             AjustesDivider(isDarkMode = isDarkMode)
             QuickSetupRow(
                 icon = Icons.Default.Tune,
-                iconTint = TransitEmtSky,
+                iconTint = MaterialTheme.colorScheme.primary,
                 title = stringResource(R.string.onboarding_habitual_lines_title),
                 badgeText = if (habitualLinesCount > 0) {
                     stringResource(R.string.onboarding_selected_count, habitualLinesCount)
@@ -674,7 +673,7 @@ private fun OnboardingBottomBar(
     modifier: Modifier = Modifier
 ) {
     val isLastPage = currentPage == ONBOARDING_PAGES - 1
-    val dividerColor = if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+    val dividerColor = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
     Column(modifier = modifier) {
         HorizontalDivider(
             thickness = 0.8.dp,
@@ -721,8 +720,8 @@ private fun OnboardingBottomBar(
                 shape = RoundedCornerShape(14.dp),
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = TransitBrandBlue,
-                    contentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 ),
                 modifier = Modifier
                     .defaultMinSize(minHeight = 50.dp)

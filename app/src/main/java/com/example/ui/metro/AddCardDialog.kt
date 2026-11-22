@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.dashboard.AppTexts
 import com.example.ui.dashboard.Translation
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 
 @Composable
 fun AddCardDialog(
@@ -44,6 +46,11 @@ fun AddCardDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isLoading) onDismiss() },
+        properties = AppDialogDefaults.Properties,
+        modifier = Modifier.appDialogWidth(),
+        shape = AppDialogDefaults.Shape,
+        containerColor = AppDialogDefaults.containerColor(),
+        tonalElevation = AppDialogDefaults.TonalElevation,
         title = {
             Text(
                 text = texts.addCardLabel,
@@ -167,6 +174,11 @@ fun AddCardDialog(
     if (showErrorDialog && errorMessage != null) {
         AlertDialog(
             onDismissRequest = { showErrorDialog = false },
+            properties = AppDialogDefaults.Properties,
+            modifier = Modifier.appDialogWidth(),
+            shape = AppDialogDefaults.Shape,
+            containerColor = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
             title = {
                 Text(
                     text = texts.alertTitle,

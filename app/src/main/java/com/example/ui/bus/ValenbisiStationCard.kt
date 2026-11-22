@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.map.components.ValenbisiStation
+import com.example.ui.theme.AppThemeColors
 import com.example.ui.theme.SpaceGroteskFontFamily
 
 // Valenbisi Brand Colors
@@ -59,19 +61,19 @@ fun ValenbisiStationCard(
     val brandColor = getValenbisiBrandColor(isDarkMode)
 
     val cardBg = if (isFavorite) {
-        if (isDarkMode) Color(0xFF111E2E) else Color(0xFFEEF3F8)
+        brandColor.copy(alpha = if (isDarkMode) 0.10f else 0.06f).compositeOver(MaterialTheme.colorScheme.surface)
     } else {
-        if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.surface
     }
 
     val cardBorder = if (isFavorite) {
-        BorderStroke(1.dp, brandColor.copy(alpha = if (isDarkMode) 0.65f else 0.45f))
+        BorderStroke(1.dp, brandColor.copy(alpha = if (isDarkMode) 0.45f else 0.38f))
     } else {
-        BorderStroke(1.dp, if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     }
 
-    val cardTextColor = if (isDarkMode) Color(0xFFF2F4F8) else MaterialTheme.colorScheme.onSurface
-    val cardTextSecondaryColor = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
+    val cardTextColor = MaterialTheme.colorScheme.onSurface
+    val cardTextSecondaryColor = MaterialTheme.colorScheme.onSurfaceVariant
     val cleanDist = if (station.distanceText.isNotEmpty()) station.distanceText.removePrefix("a ").trim() else ""
 
     Card(
@@ -112,9 +114,9 @@ fun ValenbisiStationCard(
 
                     if (!alias.isNullOrBlank()) {
                         Surface(
-                            color = if (isDarkMode) Color(0xFF16253B) else Color(0xFFE0F2FE),
+                            color = brandColor.copy(alpha = if (isDarkMode) 0.15f else 0.10f).compositeOver(MaterialTheme.colorScheme.surface),
                             shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(0.5.dp, brandColor.copy(alpha = 0.4f))
+                            border = BorderStroke(0.5.dp, brandColor.copy(alpha = 0.38f))
                         ) {
                             Text(
                                 text = station.name,
@@ -174,8 +176,8 @@ fun ValenbisiStationCard(
             ) {
                 // Bikes Block
                 val hasBikes = station.available > 0
-                val bikeColor = if (hasBikes) (if (isDarkMode) Color(0xFF81C784) else Color(0xFF2E7D32)) else (if (isDarkMode) Color(0xFFE57373) else Color(0xFFC62828))
-                val bikeBg = if (hasBikes) (if (isDarkMode) Color(0xFF142B1F) else Color(0xFFE8F5E9)) else (if (isDarkMode) Color(0xFF2E1515) else Color(0xFFFFEBEE))
+                val bikeColor = if (hasBikes) AppThemeColors.statusOk(isDarkMode) else AppThemeColors.statusError(isDarkMode)
+                val bikeBg = if (hasBikes) AppThemeColors.statusOkContainer(isDarkMode) else AppThemeColors.statusErrorContainer(isDarkMode)
 
                 Surface(
                     shape = RoundedCornerShape(10.dp),
@@ -204,7 +206,7 @@ fun ValenbisiStationCard(
                         }
                         Text(
                             text = "${station.available}",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
                             fontWeight = FontWeight.ExtraBold,
                             color = bikeColor
                         )
@@ -213,8 +215,12 @@ fun ValenbisiStationCard(
 
                 // Docks Block
                 val hasDocks = station.free > 0
-                val dockColor = if (hasDocks) (if (isDarkMode) Color(0xFF93C5FD) else Color(0xFF1D4ED8)) else (if (isDarkMode) Color(0xFFE57373) else Color(0xFFC62828))
-                val dockBg = if (hasDocks) (if (isDarkMode) Color(0xFF16253B) else Color(0xFFEFF6FF)) else (if (isDarkMode) Color(0xFF2E1515) else Color(0xFFFFEBEE))
+                val dockColor = if (hasDocks) brandColor else AppThemeColors.statusError(isDarkMode)
+                val dockBg = if (hasDocks) {
+                    brandColor.copy(alpha = if (isDarkMode) 0.14f else 0.10f).compositeOver(MaterialTheme.colorScheme.surface)
+                } else {
+                    AppThemeColors.statusErrorContainer(isDarkMode)
+                }
 
                 Surface(
                     shape = RoundedCornerShape(10.dp),
@@ -282,10 +288,10 @@ fun FavoriteValenbisiStationCard(
     modifier: Modifier = Modifier
 ) {
     val brandColor = getValenbisiBrandColor(isDarkMode)
-    val cardBg = if (isDarkMode) Color(0xFF111E2E) else Color(0xFFEEF3F8)
-    val cardBorder = BorderStroke(1.dp, brandColor.copy(alpha = if (isDarkMode) 0.65f else 0.45f))
-    val cardTextColor = if (isDarkMode) Color(0xFFF2F4F8) else MaterialTheme.colorScheme.onSurface
-    val cardTextSecondaryColor = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
+    val cardBg = brandColor.copy(alpha = if (isDarkMode) 0.10f else 0.06f).compositeOver(MaterialTheme.colorScheme.surface)
+    val cardBorder = BorderStroke(1.dp, brandColor.copy(alpha = if (isDarkMode) 0.45f else 0.38f))
+    val cardTextColor = MaterialTheme.colorScheme.onSurface
+    val cardTextSecondaryColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     val cleanDist = if (station.distanceText.isNotEmpty()) {
         station.distanceText.removePrefix("a ").trim()
@@ -351,8 +357,8 @@ fun FavoriteValenbisiStationCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val hasBikes = station.available > 0
-                val bikeColor = if (hasBikes) (if (isDarkMode) Color(0xFF81C784) else Color(0xFF1B5E20)) else (if (isDarkMode) Color(0xFFE57373) else Color(0xFFB71C1C))
-                val bikeBg = if (hasBikes) (if (isDarkMode) Color(0xFF142B1F) else Color(0xFFE8F5E9)) else (if (isDarkMode) Color(0xFF2E1515) else Color(0xFFFFEBEE))
+                val bikeColor = if (hasBikes) AppThemeColors.statusOk(isDarkMode) else AppThemeColors.statusError(isDarkMode)
+                val bikeBg = if (hasBikes) AppThemeColors.statusOkContainer(isDarkMode) else AppThemeColors.statusErrorContainer(isDarkMode)
 
                 Surface(
                     shape = RoundedCornerShape(6.dp),
@@ -373,7 +379,7 @@ fun FavoriteValenbisiStationCard(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "${station.available}",
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 12.sp,
                             color = bikeColor
@@ -382,8 +388,12 @@ fun FavoriteValenbisiStationCard(
                 }
 
                 val hasDocks = station.free > 0
-                val dockColor = if (hasDocks) (if (isDarkMode) Color(0xFF93C5FD) else Color(0xFF1D4ED8)) else (if (isDarkMode) Color(0xFFE57373) else Color(0xFFB71C1C))
-                val dockBg = if (hasDocks) (if (isDarkMode) Color(0xFF16253B) else Color(0xFFEFF6FF)) else (if (isDarkMode) Color(0xFF2E1515) else Color(0xFFFFEBEE))
+                val dockColor = if (hasDocks) brandColor else AppThemeColors.statusError(isDarkMode)
+                val dockBg = if (hasDocks) {
+                    brandColor.copy(alpha = if (isDarkMode) 0.14f else 0.10f).compositeOver(MaterialTheme.colorScheme.surface)
+                } else {
+                    AppThemeColors.statusErrorContainer(isDarkMode)
+                }
 
                 Surface(
                     shape = RoundedCornerShape(6.dp),
@@ -428,9 +438,9 @@ fun EmptyFavoriteValenbisiCard(
             .width(250.dp)
             .height(92.dp),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         colors = CardDefaults.cardColors(
-            containerColor = if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Row(
@@ -451,13 +461,13 @@ fun EmptyFavoriteValenbisiCard(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_empty_favorites_title),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (isDarkMode) Color(0xFFF2F4F8) else MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.valenbisi_empty_favorites_hint),
                     style = MaterialTheme.typography.bodySmall,
                     fontSize = 11.sp,
-                    color = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

@@ -22,6 +22,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.data.database.GeoportalStopEntity
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 
 @Composable
 fun EditBusStopAliasDialog(
@@ -35,6 +37,11 @@ fun EditBusStopAliasDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = AppDialogDefaults.Properties,
+        modifier = Modifier.appDialogWidth(),
+        shape = AppDialogDefaults.Shape,
+        containerColor = AppDialogDefaults.containerColor(),
+        tonalElevation = AppDialogDefaults.TonalElevation,
         title = {
             Text(
                 text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_title),

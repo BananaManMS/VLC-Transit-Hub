@@ -480,7 +480,7 @@ object CercaniasRouteUtils {
 
         if (norm.isNotBlank()) {
             for ((k, v) in subMap) {
-                if (k.isNotEmpty() && (norm.contains(k) || k.contains(norm))) {
+                if (k.isNotEmpty() && !k.all { it.isDigit() } && isSameStationName(norm, k)) {
                     return v
                 }
             }
@@ -515,6 +515,13 @@ object CercaniasRouteUtils {
             .replace("pua‡ol", "puçol", ignoreCase = true)
     }
 
+    private fun isPlatjaGandiaNormalized(normalized: String): Boolean {
+        return normalized.contains("platja") ||
+            normalized.contains("playa") ||
+            normalized.contains("grau") ||
+            normalized.contains("grao")
+    }
+
     fun normalizeName(s: String): String {
         if (s.isBlank()) return ""
         val cleaned = cleanStationName(s)
@@ -529,6 +536,20 @@ object CercaniasRouteUtils {
             .replace("f. s. lluis", "font de sant lluis")
             .replace("castellon", "castello")
             .replace("platja i grau de gandia", "platja de gandia")
+            .replace("playa y grao de gandia", "platja de gandia")
+            .replace("platja y grau de gandia", "platja de gandia")
+            .replace("playa i grao de gandia", "platja de gandia")
+            .replace("playa de gandia", "platja de gandia")
+            .replace("grau de gandia", "platja de gandia")
+            .replace("grao de gandia", "platja de gandia")
+            .replace("gandia-platja", "platja de gandia")
+            .replace("gandia-playa", "platja de gandia")
+            .replace("gandia-grau", "platja de gandia")
+            .replace("gandia-grao", "platja de gandia")
+            .replace("gandia platja", "platja de gandia")
+            .replace("gandia playa", "platja de gandia")
+            .replace("gandia grau", "platja de gandia")
+            .replace("gandia grao", "platja de gandia")
             .replace("direccion", "")
             .replace("direccio", "")
             .replace("bunyol", "buñol")
@@ -552,8 +573,8 @@ object CercaniasRouteUtils {
             return false
         }
 
-        // Prevent "gandia" from falsely matching "platja de gandia"
-        if ((n1.contains("platja") && !n2.contains("platja")) || (!n1.contains("platja") && n2.contains("platja"))) {
+        // Prevent "gandia" from falsely matching "platja i grau de gandia" / "platja de gandia"
+        if (isPlatjaGandiaNormalized(n1) != isPlatjaGandiaNormalized(n2)) {
             return false
         }
         
@@ -663,7 +684,9 @@ object CercaniasRouteUtils {
             val normDest = normalizeName(destinationName)
             destIndex = stations.indexOfFirst { st ->
                 val normSt = normalizeName(st.name)
-                normSt.isNotEmpty() && normDest.isNotEmpty() && (normSt.contains(normDest) || normDest.contains(normSt))
+                normSt.isNotEmpty() && normDest.isNotEmpty() &&
+                    isPlatjaGandiaNormalized(normSt) == isPlatjaGandiaNormalized(normDest) &&
+                    (normSt.contains(normDest) || normDest.contains(normSt))
             }
         }
 
@@ -783,6 +806,26 @@ object CercaniasRouteUtils {
     fun getTripOriginAndDestination(tripId: String, routeId: String, trainNum: String? = null): Pair<String, String>? {
         if (tripId.isBlank() && (trainNum == null || trainNum.isBlank())) return null
         ensureScheduleLoaded()
+        val lineNum = getCanonicalLineNumber(routeId, tripId)
+        val orderedCandidateKeys = mutableListOf<String>()
+        orderedCandidateKeys.addAll(getExactAndBaseTripKeys(tripId))
+        if (lineNum.isNotBlank()) {
+            val tNum = getEffectiveTrainNumber(trainNum, tripId)
+            if (tNum.isNotBlank()) {
+                orderedCandidateKeys.add("C${lineNum}_$tNum")
+            }
+        }
+        for (k in orderedCandidateKeys.distinct()) {
+            val ordered = tripOrderedStopsMap[k]
+            if (ordered != null && ordered.size >= 2) {
+                val originName = ordered.first().name
+                val destName = ordered.last().name
+                if (originName.isNotBlank() && destName.isNotBlank()) {
+                    return Pair(originName, destName)
+                }
+            }
+        }
+
         val keys = getTripKeys(tripId) + (if (!trainNum.isNullOrBlank()) getTripKeys(trainNum) else emptyList())
         var subMap: Map<String, String>? = null
         for (k in keys) {

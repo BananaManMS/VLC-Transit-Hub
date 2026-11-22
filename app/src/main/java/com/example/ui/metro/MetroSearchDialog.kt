@@ -61,6 +61,8 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import com.example.data.model.MetroStation
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 import com.example.util.LocationUtils
 import com.example.util.normalizeForSearch
 import com.example.util.StationAccessibilityHelper
@@ -79,11 +81,11 @@ fun MetroSearchDialog(
     metroViewModel: MetroViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     modifier: Modifier = Modifier
 ) {
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
-    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
-    val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
-    val cardBg = if (isDarkMode) Color(0xFF171717) else Color.White
-    val borderColor = if (isDarkMode) Color(0xFF2D3748) else Color(0xFFE2E8F0)
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val accentColor = MaterialTheme.colorScheme.primary
+    val cardBg = MaterialTheme.colorScheme.background
+    val borderColor = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant
 
     val accessibilityIncidents by metroViewModel.accessibilityIncidents.collectAsState()
 
@@ -94,15 +96,17 @@ fun MetroSearchDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = AppDialogDefaults.Properties
     ) {
         Surface(
             modifier = modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.85f)
-                .clip(RoundedCornerShape(24.dp)),
-            color = if (isDarkMode) Color(0xFF131824) else MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+                .appDialogWidth()
+                .fillMaxHeight(0.85f),
+            shape = AppDialogDefaults.Shape,
+            color = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation,
+            border = AppDialogDefaults.border()
         ) {
             Column(
                 modifier = Modifier
@@ -269,23 +273,25 @@ fun MetroStationSelectionDialog(
         }
     }
 
-    val cardBg = if (isDarkMode) Color(0xFF171717) else Color.White
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
-    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
-    val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
-    val borderColor = if (isDarkMode) Color(0xFF2D3748) else Color(0xFFE2E8F0)
+    val cardBg = MaterialTheme.colorScheme.background
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val accentColor = MaterialTheme.colorScheme.primary
+    val borderColor = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = AppDialogDefaults.Properties
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.88f)
-                .clip(RoundedCornerShape(24.dp)),
-            color = if (isDarkMode) Color(0xFF131824) else MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+                .appDialogWidth()
+                .fillMaxHeight(0.88f),
+            shape = AppDialogDefaults.Shape,
+            color = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation,
+            border = AppDialogDefaults.border()
         ) {
             Column(
                 modifier = Modifier
@@ -578,23 +584,25 @@ fun MetroQuickStationPickerDialog(
         }
     }
 
-    val cardBg = if (isDarkMode) Color(0xFF171717) else Color.White
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
-    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
-    val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
-    val borderColor = if (isDarkMode) Color(0xFF2D3748) else Color(0xFFE2E8F0)
+    val cardBg = MaterialTheme.colorScheme.background
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val accentColor = MaterialTheme.colorScheme.primary
+    val borderColor = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = AppDialogDefaults.Properties
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.85f)
-                .clip(RoundedCornerShape(24.dp)),
-            color = if (isDarkMode) Color(0xFF131824) else MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+                .appDialogWidth()
+                .fillMaxHeight(0.85f),
+            shape = AppDialogDefaults.Shape,
+            color = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation,
+            border = AppDialogDefaults.border()
         ) {
             Column(
                 modifier = Modifier

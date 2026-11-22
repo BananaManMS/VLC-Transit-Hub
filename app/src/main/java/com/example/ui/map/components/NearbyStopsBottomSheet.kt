@@ -64,7 +64,7 @@ fun NearbyStopsBottomSheet(
     onTabSelected: (Int) -> Unit = {},
     onSelectItem: (SelectedMapItem) -> Unit,
     modifier: Modifier = Modifier,
-    sheetState: SheetState = SheetState.COLLAPSED,
+    sheetState: SheetState = SheetState.MINIMIZED,
     onSheetStateChanged: (SheetState) -> Unit = {},
     onHeightChanged: (Dp) -> Unit = {},
     onHeightPxChanged: ((Float) -> Unit)? = null,
@@ -184,7 +184,7 @@ fun NearbyStopsBottomSheet(
     }
 
     var totalDragAmount by remember { mutableStateOf(0f) }
-    var gestureStartState by remember { mutableStateOf(SheetState.COLLAPSED) }
+    var gestureStartState by remember { mutableStateOf(sheetState) }
 
     val settleSheetState = remember(minimizedHeightPx, collapsedHeightPx, expandedHeightPx) {
         { velocity: Float ->

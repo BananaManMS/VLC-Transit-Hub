@@ -61,6 +61,8 @@ import androidx.core.graphics.toColorInt
 import com.example.data.model.Departure
 import com.example.data.model.MetroStation
 import com.example.data.model.ValenciaMetroData
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 import com.example.util.normalizeForSearch
 import java.util.Locale
 
@@ -103,6 +105,11 @@ fun StationConfigDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = AppDialogDefaults.Properties,
+        modifier = Modifier.appDialogWidth(),
+        shape = AppDialogDefaults.Shape,
+        containerColor = AppDialogDefaults.containerColor(),
+        tonalElevation = AppDialogDefaults.TonalElevation,
         title = {
             Text(
                 text = androidx.compose.ui.res.stringResource(com.example.R.string.metro_config_favs_title),

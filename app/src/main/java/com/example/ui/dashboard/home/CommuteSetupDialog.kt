@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.dashboard.DashboardViewModel
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,16 +103,16 @@ fun CommuteSetupDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        properties = AppDialogDefaults.Properties
     ) {
         Card(
-            shape = RoundedCornerShape(22.dp),
+            shape = AppDialogDefaults.Shape,
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .widthIn(max = 560.dp)
+                .appDialogWidth()
                 .heightIn(max = 680.dp)
                 .padding(vertical = 16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            colors = CardDefaults.cardColors(containerColor = AppDialogDefaults.containerColor()),
+            border = AppDialogDefaults.border()
         ) {
             Column(
                 modifier = Modifier
@@ -362,8 +364,9 @@ fun CommuteSetupDialog(
                             onClick = onSelectOnMap,
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth(),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.45f)),
                             colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.primary
+                                contentColor = MaterialTheme.colorScheme.secondary
                             )
                         ) {
                             Icon(
@@ -461,7 +464,10 @@ fun CommuteSetupDialog(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = onDismiss) {
+                        TextButton(
+                            onClick = onDismiss,
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.secondary)
+                        ) {
                             Text(androidx.compose.ui.res.stringResource(com.example.R.string.btn_cancel))
                         }
                         Spacer(modifier = Modifier.width(8.dp))

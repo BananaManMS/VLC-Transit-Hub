@@ -43,6 +43,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 
 @Composable
 fun TransitCardAlertPopup(
@@ -69,6 +71,11 @@ fun TransitCardAlertPopup(
             TransitCardAlertManager.markAlertsAsSeen(context, alerts)
             onDismiss()
         },
+        properties = AppDialogDefaults.Properties,
+        modifier = Modifier.appDialogWidth(),
+        shape = AppDialogDefaults.Shape,
+        containerColor = AppDialogDefaults.containerColor(),
+        tonalElevation = AppDialogDefaults.TonalElevation,
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

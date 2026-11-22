@@ -83,7 +83,7 @@ fun LiveTrainBottomSheet(
     val resolvedOrigin = remember(vehicle, stationNameMap) {
         val raw = vehicle.originName.trim()
         if (raw.isNotBlank() && !raw.equals("Origen", ignoreCase = true) && !raw.equals("Origin", ignoreCase = true)) {
-            stationNameMap[raw] ?: raw
+            stationNameMap[raw] ?: com.example.data.mapper.CercaniasDepartureMapper.formatStationDisplayName(raw)
         } else {
             val schedPair = CercaniasRouteUtils.getTripOriginAndDestination(vehicle.tripId, lineCode, vehicle.trainNum)
             schedPair?.first ?: defaultTerminalPair.first
@@ -93,7 +93,7 @@ fun LiveTrainBottomSheet(
     val resolvedDest = remember(vehicle, stationNameMap) {
         val raw = vehicle.destinationName.trim()
         if (raw.isNotBlank() && !raw.equals("Destino", ignoreCase = true) && !raw.equals("Destination", ignoreCase = true)) {
-            stationNameMap[raw] ?: raw
+            stationNameMap[raw] ?: com.example.data.mapper.CercaniasDepartureMapper.formatStationDisplayName(raw)
         } else {
             val schedPair = CercaniasRouteUtils.getTripOriginAndDestination(vehicle.tripId, lineCode, vehicle.trainNum)
             schedPair?.second ?: defaultTerminalPair.second

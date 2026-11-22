@@ -18,6 +18,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import com.example.ui.components.TransitPullRefreshIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,8 +56,11 @@ import com.example.ui.metro.cards.AddTransitCardWizardDialog
 import com.example.ui.routing.PlannerLocation
 import com.example.ui.dashboard.home.*
 import com.example.util.LocationUtils
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -292,131 +297,58 @@ fun DashboardHomeTab(
         }
     }
 
+    val pullToRefreshState = rememberPullToRefreshState()
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+    val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    var expandedHeaderTotalHeightDp by remember(isTablet) {
+        mutableStateOf(statusBarTopPadding + if (isTablet) 226.dp else 214.dp)
+    }
+    var collapseRangePx by remember(isTablet) { mutableIntStateOf(0) }
+
+    HomeHeaderSnapEffect(
+        scrollState = scrollState,
+        collapseRangePx = collapseRangePx
+    )
+
+    val defaultHomeTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_home_title)
+    val defaultWorkTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_work_title)
+    val defaultPinnedTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_pinned_title)
+
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
+        state = pullToRefreshState,
+        indicator = {
+            TransitPullRefreshIndicator(
+                state = pullToRefreshState,
+                isRefreshing = isRefreshing,
+                appLanguage = appLanguage,
+                refreshingText = if (appLanguage == AppLanguage.CA) "Actualitzant inici..." else "Actualizando inicio...",
+                modifier = Modifier.statusBarsPadding()
+            )
+        },
         modifier = modifier
             .fillMaxSize()
             .testTag("inicio_pull_to_refresh")
     ) {
-        Column(
+        Box(
             modifier = Modifier.fillMaxSize()
         ) {
-            // 1. Unified Top Header Box (Clock, Date, Settings + Route Search & Commute Destinations)
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .zIndex(1f)
-                    .then(
-                        if (!isDarkMode) {
-                            Modifier.border(
-                                width = 1.dp,
-                                color = Color(0xFFE2E8F0),
-                                shape = RoundedCornerShape(
-                                    topStart = 0.dp,
-                                    topEnd = 0.dp,
-                                    bottomStart = 24.dp,
-                                    bottomEnd = 24.dp
-                                )
-                            )
-                        } else {
-                            Modifier
-                        }
-                    ),
-                shape = RoundedCornerShape(
-                    topStart = 0.dp,
-                    topEnd = 0.dp,
-                    bottomStart = 24.dp,
-                    bottomEnd = 24.dp
-                ),
-                color = if (isDarkMode) Color(0xFF131313) else MaterialTheme.colorScheme.surface,
-                shadowElevation = 0.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Clock & Settings Header
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        DashboardClockWidget(
-                            currentTimeFlow = currentTimeFlow,
-                            appLanguage = appLanguage,
-                            isTablet = isTablet,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        IconButton(
-                            onClick = onOpenSettings,
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .testTag("settings_button_top")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = texts.headerAjustesTitle,
-                                tint = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF111827),
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-                    }
-
-                    // Quick Commute Navigation Bar (3 buttons: Casa, Trabajo, Sitio Fijado)
-                    val defaultHomeTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_home_title)
-                    val defaultWorkTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_work_title)
-                    val defaultPinnedTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_pinned_title)
-
-                    QuickCommuteBar(
-                        appLanguage = appLanguage,
-                        homeName = homeName,
-                        workName = workName,
-                        pinnedName = pinnedName,
-                        isDarkMode = isDarkMode,
-                        onHomeClick = {
-                            if (homeLat != 0.0 && homeLon != 0.0) {
-                                onOpenRoutePlanner(PlannerLocation(title = homeName.ifBlank { defaultHomeTitle }, latitude = homeLat, longitude = homeLon))
-                            } else {
-                                showCommuteDialogFor = "HOME"
-                            }
-                        },
-                        onWorkClick = {
-                            if (workLat != 0.0 && workLon != 0.0) {
-                                onOpenRoutePlanner(PlannerLocation(title = workName.ifBlank { defaultWorkTitle }, latitude = workLat, longitude = workLon))
-                            } else {
-                                showCommuteDialogFor = "WORK"
-                            }
-                        },
-                        onPinnedClick = {
-                            if (pinnedLat != 0.0 && pinnedLon != 0.0) {
-                                onOpenRoutePlanner(PlannerLocation(title = pinnedName.ifBlank { defaultPinnedTitle }, latitude = pinnedLat, longitude = pinnedLon))
-                            } else {
-                                showCommuteDialogFor = "PINNED"
-                            }
-                        },
-                        onPlanRouteClick = { onOpenRoutePlanner(null) },
-                        onExploreMapClick = { onNavigateToTab(DashboardTab.Mapa, 0) },
-                        onEditCommute = { showCommuteDialogFor = it }
-                    )
-                }
-            }
-
-            // Scrollable lower content section with standard horizontal padding and bottom spacing
+            // Scrollable lower content section with reserved top space for the expanded header
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + dynamicBottomTripPadding),
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = 16.dp + dynamicBottomTripPadding
+                    ),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                Spacer(modifier = Modifier.height(expandedHeaderTotalHeightDp))
+
                 // 2. Modos de Transporte (Quick Access Chips)
                 QuickTransportModesRow(
                     appLanguage = appLanguage,
@@ -620,6 +552,64 @@ fun DashboardHomeTab(
                     )
                 }
             }
+
+            // 1. Dynamic Collapsible Top Header (squishes smoothly to just the clock on scroll)
+            HomeCollapsibleHeader(
+                scrollState = scrollState,
+                currentTimeFlow = currentTimeFlow,
+                appLanguage = appLanguage,
+                settingsContentDescription = texts.headerAjustesTitle,
+                isDarkMode = isDarkMode,
+                isTablet = isTablet,
+                homeName = homeName,
+                workName = workName,
+                pinnedName = pinnedName,
+                onOpenSettings = onOpenSettings,
+                onHomeClick = {
+                    if (homeLat != 0.0 && homeLon != 0.0) {
+                        onOpenRoutePlanner(PlannerLocation(title = homeName.ifBlank { defaultHomeTitle }, latitude = homeLat, longitude = homeLon))
+                    } else {
+                        showCommuteDialogFor = "HOME"
+                    }
+                },
+                onWorkClick = {
+                    if (workLat != 0.0 && workLon != 0.0) {
+                        onOpenRoutePlanner(PlannerLocation(title = workName.ifBlank { defaultWorkTitle }, latitude = workLat, longitude = workLon))
+                    } else {
+                        showCommuteDialogFor = "WORK"
+                    }
+                },
+                onPinnedClick = {
+                    if (pinnedLat != 0.0 && pinnedLon != 0.0) {
+                        onOpenRoutePlanner(PlannerLocation(title = pinnedName.ifBlank { defaultPinnedTitle }, latitude = pinnedLat, longitude = pinnedLon))
+                    } else {
+                        showCommuteDialogFor = "PINNED"
+                    }
+                },
+                onPlanRouteClick = { onOpenRoutePlanner(null) },
+                onExploreMapClick = { onNavigateToTab(DashboardTab.Mapa, 0) },
+                onEditCommute = { showCommuteDialogFor = it },
+                onExpandToTop = {
+                    coroutineScope.launch {
+                        scrollState.animateScrollTo(
+                            value = 0,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        )
+                    }
+                },
+                onExpandedTotalHeightMeasured = { measuredDp ->
+                    expandedHeaderTotalHeightDp = measuredDp
+                },
+                onCollapseRangeMeasured = { rangePx ->
+                    collapseRangePx = rangePx
+                },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .zIndex(1f)
+            )
         }
     }
 

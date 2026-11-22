@@ -358,55 +358,33 @@ class CercaniasPipelineOptimizationTest {
         repo.syncManager.ensureScheduleLoadedInMemory()
 
         val stationId = "65000" // València Nord
-        val horarios = repo.syncManager.getHorariosForStation(stationId)
-        assertTrue(horarios.isNotEmpty())
+        val baselineDeps = repo.getDeparturesForStation(
+            stopId = stationId,
+            gtfsRtUpdates = emptyMap(),
+            gtfsVehiclePositions = emptyMap()
+        )
+        assertTrue("Station 65000 should have scheduled departures", baselineDeps.isNotEmpty())
 
-        val madridTz = TimeZone.getTimeZone("Europe/Madrid")
-        val cal = Calendar.getInstance(madridTz)
-        val nowSec = cal.get(Calendar.HOUR_OF_DAY) * 3600 +
-            cal.get(Calendar.MINUTE) * 60 +
-            cal.get(Calendar.SECOND)
-
-        fun toSec(hhmm: String): Int {
-            val parts = hhmm.trim().split(":")
-            if (parts.size < 2) return -1
-            val h = parts[0].toIntOrNull() ?: return -1
-            val m = parts[1].toIntOrNull() ?: return -1
-            val s = if (parts.size >= 3) parts[2].toIntOrNull() ?: 0 else 0
-            return h * 3600 + m * 60 + s
-        }
-
-        // Find one schedule beyond +3h today (so it MUST NOT match live data)
-        val farHorario = horarios.firstOrNull { h ->
-            val sec = toSec(h.llegada)
-            val diff = sec - nowSec
-            diff > 10800 && (h.trip_ids.isNotEmpty() || h.tripIds.isNotEmpty())
-        }
-        // Find one schedule within +10m..+90m today (if current time is during daytime service)
-        val nearHorario = horarios.firstOrNull { h ->
-            val sec = toSec(h.llegada)
-            val diff = when {
-                nowSec >= 22 * 3600 && sec < 4 * 3600 -> (sec + 86400) - nowSec
-                else -> sec - nowSec
-            }
-            diff in 300..5400 && (h.trip_ids.isNotEmpty() || h.tripIds.isNotEmpty())
-        }
+        // Pick one scheduled departure beyond +3h today (MUST NOT match live data)
+        val farDep = baselineDeps.firstOrNull { !it.isTomorrow && it.minutesRemaining > 180 && it.tripId.isNotBlank() }
+        // Pick one scheduled departure within +5..+90 min today (MUST match live data within +2h window)
+        val nearDep = baselineDeps.firstOrNull { !it.isTomorrow && it.minutesRemaining in 5..90 && it.tripId.isNotBlank() }
 
         val updates = mutableMapOf<String, GtfsRtTripUpdate>()
         val vehicles = mutableMapOf<String, LiveVehicleInfo>()
 
-        val farTripId = farHorario?.let { (it.trip_ids.ifEmpty { it.tripIds }).first() }
-        if (farTripId != null) {
+        val farTripId = farDep?.tripId
+        if (farDep != null && farTripId != null) {
             updates[farTripId] = GtfsRtTripUpdate(
                 tripId = farTripId,
-                routeId = farHorario.linea,
+                routeId = farDep.routeId,
                 delaySeconds = 420L,
                 stopPlatforms = mapOf(stationId to "8"),
                 hasExplicitDelay = true
             )
             vehicles[farTripId] = LiveVehicleInfo(
                 tripId = farTripId,
-                routeId = farHorario.linea,
+                routeId = farDep.routeId,
                 latitude = 39.46,
                 longitude = -0.37,
                 status = "STOPPED_AT",
@@ -417,20 +395,20 @@ class CercaniasPipelineOptimizationTest {
             )
         }
 
-        val nearTripId = nearHorario?.let { (it.trip_ids.ifEmpty { it.tripIds }).first() }
-        if (nearTripId != null) {
+        val nearTripId = nearDep?.tripId
+        if (nearDep != null && nearTripId != null && nearTripId != farTripId) {
             // Put platform ONLY on a different stopId (99999) for vehicle, and stopPlatforms[65000] blank
             updates[nearTripId] = GtfsRtTripUpdate(
                 tripId = nearTripId,
-                routeId = nearHorario.linea,
+                routeId = nearDep.routeId,
                 delaySeconds = 240L,
                 stopPlatforms = mapOf("99999" to "9"),
-                vehicleLabel = "${nearHorario.linea}-12345-PLATF.(9)",
+                vehicleLabel = "${nearDep.routeId}-12345-PLATF.(9)",
                 hasExplicitDelay = true
             )
             vehicles[nearTripId] = LiveVehicleInfo(
                 tripId = nearTripId,
-                routeId = nearHorario.linea,
+                routeId = nearDep.routeId,
                 latitude = 39.40,
                 longitude = -0.35,
                 status = "IN_TRANSIT_TO",
@@ -451,14 +429,17 @@ class CercaniasPipelineOptimizationTest {
 
         if (farTripId != null) {
             val farDeps = deps.filter { it.tripId == farTripId }
-            assertTrue(farDeps.isNotEmpty())
-            assertTrue("Departures > +2h and isTomorrow must NEVER receive live matching", farDeps.all { !it.isLive && it.platform.isBlank() && it.delayMinutes == 0 })
+            assertTrue("Far departure ($farTripId) should remain in list", farDeps.isNotEmpty())
+            assertTrue(
+                "Departures > +2h and isTomorrow must NEVER receive live matching",
+                farDeps.all { !it.isLive && it.platform.isBlank() && it.delayMinutes == 0 }
+            )
         }
 
-        if (nearTripId != null) {
+        if (nearTripId != null && nearTripId != farTripId) {
             val nearToday = deps.firstOrNull { it.tripId == nearTripId && !it.isTomorrow }
-            assertNotNull(nearToday)
-            assertTrue(nearToday!!.isLive)
+            assertNotNull("Near departure ($nearTripId) should remain in today's list", nearToday)
+            assertTrue("Near departure within +2h must be live", nearToday!!.isLive)
             assertEquals(4, nearToday.delayMinutes)
             assertEquals("Platform from another station (99999/99998) MUST NOT leak to 65000", "", nearToday.platform)
 

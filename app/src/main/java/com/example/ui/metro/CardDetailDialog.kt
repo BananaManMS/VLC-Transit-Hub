@@ -63,7 +63,9 @@ import com.example.ui.dashboard.AppLanguage
 import com.example.ui.dashboard.AppTexts
 import com.example.ui.dashboard.Translation
 import com.example.ui.dashboard.TransitCardUiModel
+import com.example.ui.theme.AppDialogDefaults
 import com.example.ui.theme.appCardBorder
+import com.example.ui.theme.appDialogWidth
 
 @Composable
 fun CardDetailDialog(
@@ -84,6 +86,11 @@ fun CardDetailDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = AppDialogDefaults.Properties,
+        modifier = Modifier.appDialogWidth(),
+        shape = AppDialogDefaults.Shape,
+        containerColor = AppDialogDefaults.containerColor(),
+        tonalElevation = AppDialogDefaults.TonalElevation,
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -367,6 +374,11 @@ fun CardDetailDialog(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
+            properties = AppDialogDefaults.Properties,
+            modifier = Modifier.appDialogWidth(),
+            shape = AppDialogDefaults.Shape,
+            containerColor = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
             title = {
                 Text(
                     text = texts.deleteCardConfirmTitle,

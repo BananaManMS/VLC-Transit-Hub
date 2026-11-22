@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 import com.example.util.LineColorResolver
 
 @Composable
@@ -145,26 +147,23 @@ fun StationCirculationIncidentsDialog(
     onDismiss: () -> Unit
 ) {
     val redColor = if (isDarkMode) Color(0xFFF87171) else Color(0xFFDC2626)
-    val cardBg = if (isDarkMode) Color(0xFF1B2232) else Color.White
-    val textColor = if (isDarkMode) Color(0xFFF3F4F6) else Color(0xFF111827)
-    val subtextColor = if (isDarkMode) Color(0xFF9CA3AF) else Color(0xFF4B5563)
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
     val borderCol = redColor.copy(alpha = 0.5f)
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = AppDialogDefaults.Properties
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .widthIn(max = 440.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .shadow(elevation = 16.dp, shape = RoundedCornerShape(22.dp))
+                .appDialogWidth()
                 .testTag("station_circulation_incidents_dialog"),
-            color = cardBg,
-            shape = RoundedCornerShape(22.dp),
+            color = AppDialogDefaults.containerColor(),
+            shape = AppDialogDefaults.Shape,
             border = BorderStroke(1.5.dp, borderCol),
-            tonalElevation = 8.dp
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation
         ) {
             Column(
                 modifier = Modifier

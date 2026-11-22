@@ -203,7 +203,7 @@
     <string name="setting_google_calendar_subtitle">Sincronitza els esdeveniments del calendari local del dispositiu</string>
     <string name="setting_google_calendar_connected">✓ Sincronitzat amb el calendari</string>
     <string name="setting_google_calendar_disconnect">Desconnectar calendari</string>
-    <string name="setting_google_calendar_connect">Connectar amb calendari</string>
+    <string name="setting_google_calendar_connect">Connectar</string>
     <string name="setting_about_title">Quant a l\'app</string>
     <string name="setting_about_subtitle">Autoria, fonts de dades, exempció de responsabilitat i privacitat</string>
 
@@ -871,4 +871,5 @@
     <string name="privacy_sec_third_party_body">En consultar temps en viu, clima o mapes, l\'app realitza peticions tècniques directes a les APIs d\'origen (ATMV, FGV, Renfe/NAP, EMT València, Transitous, Open-Meteo, Google Maps i OpenStreetMap/CARTO), subjectes a les seues respectives polítiques. Si futures versions incorporen publicitat o mesurament, se sol·licitarà el teu consentiment previ conforme al RGPD.</string>
     <string name="privacy_sec_rights_title">Control i revocació de permisos</string>
     <string name="privacy_sec_rights_body">Pots revocar en qualsevol moment els permisos d\'ubicació, calendari o notificacions des dels ajustos del sistema Android, o eliminar totes les dades guardades esborrant l\'emmagatzematge de l\'aplicació.</string>
+    <string name="home_header_expand_desc">Tornar dalt per a mostrar ajustos i cercador de rutes</string>
 </resources>

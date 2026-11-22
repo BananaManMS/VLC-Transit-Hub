@@ -101,10 +101,20 @@ object MetroMapper {
         val timeAnnotated = when {
             isNow -> buildAnnotatedString { append(texts.immediateValue) }
             seconds <= 180 -> buildAnnotatedString {
-                append("$mins min ")
-                withStyle(SpanStyle(color = if (isDarkMode) Color(0xFFE0E0E0) else Color(0xFF555555), fontWeight = FontWeight.SemiBold)) {
-                    append(String.format("%02d", secs))
+                if (mins > 0) {
+                    append("$mins min ")
                 }
+                withStyle(
+                    SpanStyle(
+                        color = if (isDarkMode) Color(0xFFE0E0E0) else Color(0xFF555555),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                ) {
+                    append("${String.format("%02d", secs)} s")
+                }
+            }
+            mins >= 60 && !departure.estimatedTime.isNullOrBlank() -> buildAnnotatedString {
+                append(departure.estimatedTime)
             }
             else -> buildAnnotatedString { append("$mins min") }
         }

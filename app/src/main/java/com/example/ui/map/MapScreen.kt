@@ -169,19 +169,18 @@ fun MapScreen(
     var zoomOutTrigger by remember { mutableStateOf(0) }
     var disambiguationItems by remember { mutableStateOf<List<SelectedMapItem>?>(null) }
     val density = LocalDensity.current
-    val defaultCollapsedHeightPx = with(density) { 240.dp.toPx() }
     val defaultDetailHalfHeightPx = with(density) { 340.dp.toPx() }
     val defaultAddressHalfHeightPx = with(density) { 210.dp.toPx() }
 
-    var currentNearbySheetHeight by remember { mutableStateOf(240.dp) }
-    var nearbySheetHeightPx by remember { mutableFloatStateOf(defaultCollapsedHeightPx) }
+    var currentNearbySheetHeight by remember { mutableStateOf(0.dp) }
+    var nearbySheetHeightPx by remember { mutableFloatStateOf(0f) }
     var busStopDetailSheetHeightPx by remember { mutableFloatStateOf(defaultDetailHalfHeightPx) }
     var metroStationDetailSheetHeightPx by remember { mutableFloatStateOf(defaultDetailHalfHeightPx) }
     var cercaniasStationDetailSheetHeightPx by remember { mutableFloatStateOf(defaultDetailHalfHeightPx) }
     var valenbisiStationDetailSheetHeightPx by remember { mutableFloatStateOf(defaultDetailHalfHeightPx) }
     var metrobusStopDetailSheetHeightPx by remember { mutableFloatStateOf(defaultDetailHalfHeightPx) }
     var addressDetailSheetHeightPx by remember { mutableFloatStateOf(defaultAddressHalfHeightPx) }
-    var nearbySheetState by remember { mutableStateOf(SheetState.COLLAPSED) }
+    var nearbySheetState by remember { mutableStateOf(SheetState.MINIMIZED) }
     var detailSheetState by remember { mutableStateOf(DetailSheetState.HALF_EXPANDED) }
     var detailSheetDismissSignal by remember { mutableIntStateOf(0) }
 

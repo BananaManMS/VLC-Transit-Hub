@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -55,6 +56,7 @@ fun AjustesScreen(
     val appLanguage by viewModel.appLanguage.collectAsState()
     val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
     val isDarkMode by viewModel.isDarkMode.collectAsState()
+    val colorLabConfig by viewModel.colorLabConfig.collectAsState()
     val mapEngine by viewModel.mapEngine.collectAsState()
 
     val favoriteStations by metroViewModel.favoriteStations.collectAsState()
@@ -65,6 +67,7 @@ fun AjustesScreen(
     var showCercaniasStationSelectionPage by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
+    var showColorLabDialog by remember { mutableStateOf(false) }
     var isCalendarConnected by remember { mutableStateOf(false) }
     var versionTapCount by remember { mutableIntStateOf(0) }
     var lastVersionTapMs by remember { mutableLongStateOf(0L) }
@@ -151,18 +154,18 @@ fun AjustesScreen(
                                 Row(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
                                         .padding(2.dp),
                                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    AppLanguage.values().forEach { lang ->
+                                    listOf(AppLanguage.CA, AppLanguage.ES).forEach { lang ->
                                         val isSelected = appLanguage == lang
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(
-                                                    if (isSelected) MaterialTheme.colorScheme.primary
+                                                    if (isSelected) MaterialTheme.colorScheme.secondary
                                                     else Color.Transparent
                                                 )
                                                 .clickable { viewModel.setAppLanguage(lang) }
@@ -172,7 +175,7 @@ fun AjustesScreen(
                                                 text = if (lang == AppLanguage.ES) "ES" else "VAL",
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 12.sp,
-                                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
@@ -191,13 +194,59 @@ fun AjustesScreen(
                                 if (appLanguage == AppLanguage.ES) "Desactivado" else "Desactivat"
                             },
                             icon = if (isDarkMode) Icons.Default.DarkMode else Icons.Default.LightMode,
-                            iconTint = MaterialTheme.colorScheme.primary,
+                            iconTint = MaterialTheme.colorScheme.secondary,
+                            iconContainerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
                             trailingContent = {
                                 Switch(
                                     checked = isDarkMode,
                                     onCheckedChange = { viewModel.toggleDarkMode() },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.onSecondary,
+                                        checkedTrackColor = MaterialTheme.colorScheme.secondary
+                                    ),
                                     modifier = Modifier.testTag("dark_mode_switch")
                                 )
+                            }
+                        )
+
+                        AjustesDivider(isDarkMode = isDarkMode)
+
+                        // Personalizar app
+                        val activePaletteName = colorLabConfig.activePreset?.let { preset ->
+                            if (appLanguage == AppLanguage.ES) preset.nameEs else preset.nameCa
+                        } ?: if (appLanguage == AppLanguage.ES) "Combinación personalizada" else "Combinació personalitzada"
+                        AjustesItemRow(
+                            title = if (appLanguage == AppLanguage.ES) "Personalizar app" else "Personalitzar app",
+                            subtitle = activePaletteName,
+                            icon = Icons.Default.Palette,
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            iconContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                            onClick = { showColorLabDialog = true },
+                            modifier = Modifier.testTag("ajustes_color_lab_row"),
+                            trailingContent = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.secondary)
+                                    )
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         )
                     }
@@ -277,7 +326,7 @@ fun AjustesScreen(
                                     iconTint = Color(0xFFF59E0B),
                                     iconContainerColor = Color(0xFFF59E0B).copy(alpha = 0.12f),
                                     trailingContent = {
-                                        Button(
+                                        FilledTonalButton(
                                             onClick = {
                                                 locationPermissionLauncher.launch(
                                                     arrayOf(
@@ -287,8 +336,12 @@ fun AjustesScreen(
                                                 )
                                             },
                                             shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.filledTonalButtonColors(
+                                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                            ),
                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(34.dp)
+                                            modifier = Modifier.height(36.dp)
                                         ) {
                                             Text(
                                                 text = if (isOnlyCoarse) {
@@ -313,17 +366,21 @@ fun AjustesScreen(
                                     title = texts.settingGoogleCalendarTitle,
                                     subtitle = texts.settingGoogleCalendarSubtitle,
                                     icon = Icons.Default.Event,
-                                    iconTint = Color(0xFF00ACC1),
-                                    iconContainerColor = Color(0xFF00ACC1).copy(alpha = 0.12f),
+                                    iconTint = MaterialTheme.colorScheme.secondary,
+                                    iconContainerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
                                     trailingContent = {
-                                        Button(
+                                        FilledTonalButton(
                                             onClick = {
                                                 calendarPermissionLauncher.launch(android.Manifest.permission.READ_CALENDAR)
                                             },
                                             shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.filledTonalButtonColors(
+                                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                            ),
                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
                                             modifier = Modifier
-                                                .height(34.dp)
+                                                .height(36.dp)
                                                 .testTag("connect_google_calendar_button")
                                         ) {
                                             Text(
@@ -369,13 +426,13 @@ fun AjustesScreen(
                                     if (allActiveAnnouncements.isNotEmpty()) {
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
-                                            color = Color(0xFFFEF3C7)
+                                            color = com.example.ui.theme.AppThemeColors.statusWarningContainer(isDarkMode)
                                         ) {
                                             Text(
                                                 text = "${allActiveAnnouncements.size}",
                                                 style = MaterialTheme.typography.labelMedium,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFB45309),
+                                                color = com.example.ui.theme.AppThemeColors.statusWarning(isDarkMode),
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                             )
                                         }
@@ -523,6 +580,19 @@ fun AjustesScreen(
                 appLanguage = appLanguage,
                 isDarkMode = isDarkMode,
                 onDismiss = { showActiveAnnouncementsDialog = false }
+            )
+        }
+
+        if (showColorLabDialog) {
+            ColorLabDialog(
+                config = colorLabConfig,
+                isDarkMode = isDarkMode,
+                appLanguage = appLanguage,
+                onSelectPreset = { viewModel.selectColorPreset(it) },
+                onUpdateConfig = { viewModel.updateColorLabConfig(it) },
+                onToggleDarkMode = { viewModel.toggleDarkMode() },
+                onReset = { viewModel.resetColorLabConfig() },
+                onDismiss = { showColorLabDialog = false }
             )
         }
 

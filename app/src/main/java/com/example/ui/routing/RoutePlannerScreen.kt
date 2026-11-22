@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.DirectionsTransit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -332,6 +333,19 @@ fun RoutePlannerScreen(
                         }
                         is RoutePlannerUiState.Error -> {
                             val isOfflineError = state.isOffline || !isOnline
+                            val isEmptyRouteResult = !isOfflineError && (
+                                state.message.contains("No se encontraron rutas", ignoreCase = true) ||
+                                state.message.contains("No s'han trobat rutes", ignoreCase = true)
+                            )
+                            val localizedMessage = when {
+                                isOfflineError -> androidx.compose.ui.res.stringResource(com.example.R.string.routing_offline_explanation)
+                                isEmptyRouteResult -> if (appLanguage == AppLanguage.CA) {
+                                    "No s'han trobat rutes per al trajecte seleccionat. Prova amb un altre origen, destinació o mitjà de transport."
+                                } else {
+                                    "No se encontraron rutas para el trayecto seleccionado. Prueba con otro origen, destino o modo de transporte."
+                                }
+                                else -> state.message
+                            }
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -342,13 +356,33 @@ fun RoutePlannerScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
-                                    Icon(
-                                        imageVector = if (isOfflineError) Icons.Default.WifiOff else Icons.Default.ErrorOutline,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(52.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (isEmptyRouteResult) {
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                        } else {
+                                            MaterialTheme.colorScheme.errorContainer
+                                        },
+                                        modifier = Modifier.size(64.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = when {
+                                                    isOfflineError -> Icons.Default.WifiOff
+                                                    isEmptyRouteResult -> Icons.Default.SearchOff
+                                                    else -> Icons.Default.ErrorOutline
+                                                },
+                                                contentDescription = null,
+                                                tint = if (isEmptyRouteResult) {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                } else {
+                                                    MaterialTheme.colorScheme.error
+                                                },
+                                                modifier = Modifier.size(30.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
                                     Text(
                                         text = if (isOfflineError) {
                                             androidx.compose.ui.res.stringResource(com.example.R.string.offline_banner_title)
@@ -361,11 +395,7 @@ fun RoutePlannerScreen(
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
-                                        text = if (isOfflineError) {
-                                            androidx.compose.ui.res.stringResource(com.example.R.string.routing_offline_explanation)
-                                        } else {
-                                            state.message
-                                        },
+                                        text = localizedMessage,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center

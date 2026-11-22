@@ -220,7 +220,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     val useGpsOnOpen = _useGpsOnOpen.asStateFlow()
 
     private val _weatherCity = MutableStateFlow(
-        repository.getPreferenceSync("weather_city", "valencia")
+        repository.getPreferenceSync("weather_city", "València")
     )
     val weatherCity = _weatherCity.asStateFlow()
 
@@ -252,16 +252,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         ) "true" else "false"
 
-    val isDarkMode: StateFlow<Boolean> = repository.getPreferenceFlow(
-        "is_dark_mode",
-        repository.getPreferenceSync("is_dark_mode", systemDarkModeDefault)
+    private val _isDarkMode = MutableStateFlow(
+        repository.getPreferenceSync("is_dark_mode", systemDarkModeDefault).toBoolean()
     )
-        .map { it.toBoolean() }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = repository.getPreferenceSync("is_dark_mode", systemDarkModeDefault).toBoolean()
-        )
+    val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
+    private var pendingNightModeSync: Boolean? = null
+
+    private val initialColorLabConfig = com.example.ui.theme.ColorLabConfig.deserialize(
+        repository.getPreferenceSync("color_lab_config", "")
+    )
+    private val _colorLabConfig = MutableStateFlow(initialColorLabConfig)
+    val colorLabConfig: StateFlow<com.example.ui.theme.ColorLabConfig> = _colorLabConfig.asStateFlow()
 
     private val initialLanguage: AppLanguage = try {
         AppLanguage.valueOf(repository.getPreferenceSync("app_language", "CA"))
@@ -992,6 +993,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         clockJob?.cancel()
         clockJob = null
         activeTripManager.onAppBackgrounded()
+        pendingNightModeSync?.let { targetDark ->
+            pendingNightModeSync = null
+            syncApplicationNightModeIfNeeded(explicitDark = targetDark)
+        }
     }
 
     private fun startClock() {
@@ -1028,16 +1033,27 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private fun syncApplicationNightModeIfNeeded(explicitDark: Boolean? = null) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             try {
-                val uiModeManager = getApplication<Application>()
+                val app = getApplication<Application>()
+                val uiModeManager = app
                     .getSystemService(android.content.Context.UI_MODE_SERVICE) as? android.app.UiModeManager
                 if (uiModeManager != null) {
                     val saved = repository.getPreferenceSync("is_dark_mode", "")
-                    val mode = when {
-                        explicitDark == true || (explicitDark == null && saved == "true") ->
-                            android.app.UiModeManager.MODE_NIGHT_YES
-                        explicitDark == false || (explicitDark == null && saved == "false") ->
-                            android.app.UiModeManager.MODE_NIGHT_NO
-                        else -> android.app.UiModeManager.MODE_NIGHT_AUTO
+                    val targetDark = when {
+                        explicitDark != null -> explicitDark
+                        saved == "true" -> true
+                        saved == "false" -> false
+                        else -> null
+                    }
+                    val currentNight = (app.resources.configuration.uiMode and
+                        android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                        android.content.res.Configuration.UI_MODE_NIGHT_YES
+                    if (targetDark != null && currentNight == targetDark) {
+                        return
+                    }
+                    val mode = when (targetDark) {
+                        true -> android.app.UiModeManager.MODE_NIGHT_YES
+                        false -> android.app.UiModeManager.MODE_NIGHT_NO
+                        null -> android.app.UiModeManager.MODE_NIGHT_AUTO
                     }
                     uiModeManager.setApplicationNightMode(mode)
                 }
@@ -1046,11 +1062,27 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun toggleDarkMode() {
-        viewModelScope.launch {
-            val next = !isDarkMode.value
+        val next = !_isDarkMode.value
+        _isDarkMode.value = next
+        pendingNightModeSync = next
+        viewModelScope.launch(Dispatchers.IO) {
             repository.savePreference("is_dark_mode", next.toString())
-            syncApplicationNightModeIfNeeded(explicitDark = next)
         }
+    }
+
+    fun selectColorPreset(preset: com.example.ui.theme.AppColorPreset) {
+        updateColorLabConfig(com.example.ui.theme.ColorLabConfig.fromPreset(preset))
+    }
+
+    fun updateColorLabConfig(config: com.example.ui.theme.ColorLabConfig) {
+        _colorLabConfig.value = config
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.savePreference("color_lab_config", config.serialize())
+        }
+    }
+
+    fun resetColorLabConfig() {
+        updateColorLabConfig(com.example.ui.theme.ColorLabConfig.Default)
     }
 
     fun setAppLanguage(language: AppLanguage) {

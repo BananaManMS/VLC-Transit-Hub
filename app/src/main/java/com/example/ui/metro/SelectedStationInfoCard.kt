@@ -30,10 +30,10 @@ fun SelectedStationInfoCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         selectedStation?.let { station ->
-            val cardBg = if (isDarkMode) Color(0xFF222222) else Color(0xFFFFFFFF)
-            val borderStroke = if (isDarkMode) BorderStroke(1.dp, Color(0xFF333333)) else BorderStroke(1.dp, Color(0xFFE2E8F0))
-            val headerColor = if (isDarkMode) Color(0xFFA3A3A3) else Color(0xFF64748B)
-            val destinationTextColor = if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+            val cardBg = MaterialTheme.colorScheme.surface
+            val borderStroke = if (isDarkMode) BorderStroke(1.dp, Color(0xFF333333)) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+            val headerColor = MaterialTheme.colorScheme.onSurfaceVariant
+            val destinationTextColor = MaterialTheme.colorScheme.onSurface
 
             Card(
                 modifier = Modifier
@@ -42,9 +42,9 @@ fun SelectedStationInfoCard(
                 colors = CardDefaults.cardColors(
                     containerColor = cardBg
                 ),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 border = borderStroke,
-                elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkMode) 0.dp else 2.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -68,13 +68,13 @@ fun SelectedStationInfoCard(
 
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = if (isDarkMode) Color(0xFF1E3A8A) else Color(0xFFEFF6FF)
+                            color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
                                 text = zoneText,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isDarkMode) Color(0xFF93C5FD) else Color(0xFF1D4ED8),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                 letterSpacing = 0.5.sp
                             )

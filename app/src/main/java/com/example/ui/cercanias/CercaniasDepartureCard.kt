@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.*
 import androidx.compose.runtime.getValue
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.AppThemeColors
 import com.example.ui.theme.LiveTimerStyle
 import com.example.ui.theme.UnifiedAppCard
 
@@ -46,8 +48,8 @@ fun CercaniasDepartureCard(
     }
     val routeColor = com.example.ui.metro.TransitLogoUtils.getCercaniasLineColor(normalizedRoute)
     
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
-    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     val affectedAlerts = remember(alerts, departure) {
         val depRouteNorm = departure.routeId.uppercase().replace("-", "").replace(" ", "").trim()
@@ -86,15 +88,19 @@ fun CercaniasDepartureCard(
     } else {
         noNotices
     }
-    val avisoColor = if (hasAviso) Color(0xFFE53935) else if (isDarkMode) Color(0xFF8791A6) else Color.Gray
+    val avisoColor = if (hasAviso) AppThemeColors.statusError(isDarkMode) else subtextColor
+    val cardBgColor = routeColor
+        .copy(alpha = if (isDarkMode) 0.14f else 0.07f)
+        .compositeOver(MaterialTheme.colorScheme.surface)
     val cardBorder = BorderStroke(
         width = 1.dp,
-        color = if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        color = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     )
 
     UnifiedAppCard(
         onClick = onClick,
         border = cardBorder,
+        containerColor = cardBgColor,
         startContent = {
             com.example.ui.metro.CercaniasLineBadge(
                 routeId = departure.routeId,
@@ -126,18 +132,18 @@ fun CercaniasDepartureCard(
                 ) {
                     val canceledLabel = androidx.compose.ui.res.stringResource(com.example.R.string.validation_entry).let { "CANCELADO" } // or custom
                     val (statusLabel, statusColor) = when {
-                        departure.isCanceled -> Pair(androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_canceled_service).take(10).uppercase(), Color(0xFFB91C1C))
-                        departure.isSkippedAtStop -> Pair(androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_status_no_service), Color(0xFFB91C1C))
+                        departure.isCanceled -> Pair(androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_canceled_service).take(10).uppercase(), AppThemeColors.statusError(isDarkMode))
+                        departure.isSkippedAtStop -> Pair(androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_status_no_service), AppThemeColors.statusError(isDarkMode))
                         departure.isLive -> {
                             val delay = departure.delayMinutes
                             when {
-                                delay < 0 -> Pair("Adelantado ${delay} min", Color(0xFF0284C7))
-                                delay in 0..3 -> Pair(if (delay == 0) androidx.compose.ui.res.stringResource(com.example.R.string.status_normal) else "+${delay} min", Color(0xFF2ECC71))
-                                delay in 4..5 -> Pair("+$delay min", Color(0xFFF97316))
-                                else -> Pair("+$delay min", Color(0xFFE53935))
+                                delay < 0 -> Pair("Adelantado ${delay} min", AppThemeColors.statusAccessibility(isDarkMode))
+                                delay in 0..3 -> Pair(if (delay == 0) androidx.compose.ui.res.stringResource(com.example.R.string.status_normal) else "+${delay} min", AppThemeColors.statusOk(isDarkMode))
+                                delay in 4..5 -> Pair("+$delay min", AppThemeColors.statusWarning(isDarkMode))
+                                else -> Pair("+$delay min", AppThemeColors.statusError(isDarkMode))
                             }
                         }
-                        else -> Pair(androidx.compose.ui.res.stringResource(com.example.R.string.metro_status_programado), if (isDarkMode) Color(0xFF8791A6) else Color.Gray)
+                        else -> Pair(androidx.compose.ui.res.stringResource(com.example.R.string.metro_status_programado), subtextColor)
                     }
 
                     Text(
@@ -150,7 +156,7 @@ fun CercaniasDepartureCard(
                     Text(
                         text = "·",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isDarkMode) Color(0xFF8791A6).copy(alpha = 0.5f) else Color.Gray.copy(alpha = 0.5f),
+                        color = subtextColor.copy(alpha = 0.5f),
                         fontWeight = FontWeight.Bold
                     )
 
@@ -182,18 +188,18 @@ fun CercaniasDepartureCard(
             }
 
             val bigTextColor = when {
-                departure.isCanceled || departure.isSkippedAtStop -> Color(0xFFB91C1C)
-                departure.isRecoveredStopped -> Color(0xFFF97316)
+                departure.isCanceled || departure.isSkippedAtStop -> AppThemeColors.statusError(isDarkMode)
+                departure.isRecoveredStopped -> AppThemeColors.statusWarning(isDarkMode)
                 departure.isLive -> {
                     val delay = departure.delayMinutes
                     when {
-                        delay <= 3 -> Color(0xFF2ECC71)
-                        delay in 4..5 -> Color(0xFFF97316)
-                        else -> Color(0xFFE53935)
+                        delay <= 3 -> AppThemeColors.statusOk(isDarkMode)
+                        delay in 4..5 -> AppThemeColors.statusWarning(isDarkMode)
+                        else -> AppThemeColors.statusError(isDarkMode)
                     }
                 }
-                departure.isStoppedAt -> Color(0xFF2ECC71)
-                else -> if (isDarkMode) Color.White else Color.Black
+                departure.isStoppedAt -> AppThemeColors.statusOk(isDarkMode)
+                else -> textColor
             }
 
             Column(

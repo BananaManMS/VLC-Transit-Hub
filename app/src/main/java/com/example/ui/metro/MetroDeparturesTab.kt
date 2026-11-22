@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Block
@@ -390,13 +391,15 @@ fun ProximosTrenesScreen(
                 )
                 IconButton(
                     onClick = { showSearchDialog = true },
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("metro_add_favorites_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Settings,
+                        imageVector = Icons.Default.Add,
                         contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.edit_favorites_desc),
                         tint = accentColor,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }

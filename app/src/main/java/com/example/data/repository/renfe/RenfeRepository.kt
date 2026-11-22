@@ -155,7 +155,7 @@ class RenfeRepository(
             val dest = if (formattedDest.isNotBlank() && !formattedDest.equals("Civis", ignoreCase = true)) {
                 formattedDest
             } else {
-                syncManager.getTripDestination(tripId, line, currentStationName)
+                syncManager.getTripDestination(tripId, line, currentStationName, allTripIds)
             }
 
             // Exclude terminal arrivals: trains terminating at this station cannot be boarded for departure

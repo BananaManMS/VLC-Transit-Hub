@@ -53,6 +53,8 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -326,9 +328,8 @@ fun AccessibilityBocadilloDialog(
 ) {
     val greenColor = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669)
     val redColor = if (isDarkMode) Color(0xFFF87171) else Color(0xFFDC2626)
-    val cardBg = if (isDarkMode) Color(0xFF1B2232) else Color.White
-    val textColor = if (isDarkMode) Color(0xFFF3F4F6) else Color(0xFF111827)
-    val subtextColor = if (isDarkMode) Color(0xFF9CA3AF) else Color(0xFF4B5563)
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
     val borderCol = if (accessibilityInfo.isAccessible) greenColor.copy(alpha = 0.5f) else redColor.copy(alpha = 0.5f)
 
     val groupedIssues = remember(accessibilityInfo.issues, accessibilityInfo.stationName) {
@@ -337,19 +338,17 @@ fun AccessibilityBocadilloDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = AppDialogDefaults.Properties
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .widthIn(max = 420.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .shadow(elevation = 16.dp, shape = RoundedCornerShape(22.dp))
+                .appDialogWidth()
                 .testTag("accessibility_bocadillo_dialog"),
-            color = cardBg,
-            shape = RoundedCornerShape(22.dp),
+            color = AppDialogDefaults.containerColor(),
+            shape = AppDialogDefaults.Shape,
             border = BorderStroke(1.5.dp, borderCol),
-            tonalElevation = 8.dp
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation
         ) {
             Column(
                 modifier = Modifier

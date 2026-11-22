@@ -38,6 +38,8 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.SubcomposeAsyncImage
 import com.example.data.model.announcement.RemoteAnnouncement
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 
 @Composable
 fun RemoteAnnouncementDialog(
@@ -68,13 +70,14 @@ fun RemoteAnnouncementDialog(
             .build()
     }
 
+    val primaryColor = MaterialTheme.colorScheme.primary
     // Color semantic palette
-    val themeColor = remember(currentAnnouncement.type) {
+    val themeColor = remember(currentAnnouncement.type, primaryColor) {
         when (currentAnnouncement.type) {
             "rojo", "critical", "danger", "error" -> Color(0xFFE53935)
             "naranja", "warning", "amber" -> Color(0xFFF57C00)
             "verde", "feature", "success" -> Color(0xFF10B981)
-            else -> Color(0xFF0284C7) // "azul", info
+            else -> primaryColor // default brand accent instead of neon cyan
         }
     }
 
@@ -104,23 +107,18 @@ fun RemoteAnnouncementDialog(
             }
             onCloseAll()
         },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
+        properties = AppDialogDefaults.Properties
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .widthIn(max = 520.dp)
+                .appDialogWidth()
                 .padding(vertical = 12.dp)
                 .testTag("remote_announcement_dialog"),
-            shape = RoundedCornerShape(22.dp),
-            color = if (isDarkMode) Color(0xFF1C1E2A) else MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.5.dp, themeColor.copy(alpha = if (isDarkMode) 0.45f else 0.3f)),
-            tonalElevation = 6.dp,
-            shadowElevation = 10.dp
+            shape = AppDialogDefaults.Shape,
+            color = AppDialogDefaults.containerColor(),
+            border = AppDialogDefaults.border(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation
         ) {
             Column(
                 modifier = Modifier

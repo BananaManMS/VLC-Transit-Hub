@@ -37,6 +37,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 
 // FULL-FEATURED POPUP DIALOG TO ADD CUSTOM EVENTS OR TASKS
 @Composable
@@ -63,11 +65,17 @@ fun AddCalendarItemDialog(
     )
     var selectedColor by remember { mutableStateOf(colors.first()) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogDefaults.Properties
+    ) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            modifier = Modifier.width(360.dp)
+            shape = AppDialogDefaults.Shape,
+            color = AppDialogDefaults.containerColor(),
+            border = AppDialogDefaults.border(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation,
+            modifier = Modifier.appDialogWidth()
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(

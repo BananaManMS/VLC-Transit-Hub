@@ -60,7 +60,9 @@ import com.example.ui.dashboard.AppLanguage
 import com.example.ui.dashboard.AppTexts
 import com.example.ui.dashboard.TransitCardUiModel
 import com.example.ui.metro.MetroViewModel
+import com.example.ui.theme.AppDialogDefaults
 import com.example.ui.theme.appCardBorder
+import com.example.ui.theme.appDialogWidth
 
 enum class AddCardFlowStep {
     SELECT_METHOD,
@@ -110,10 +112,11 @@ fun AddTransitCardWizardDialog(
     when (currentStep) {
         AddCardFlowStep.SELECT_METHOD -> {
             AlertDialog(
-                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-                modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .widthIn(max = 500.dp),
+                properties = AppDialogDefaults.Properties,
+                modifier = Modifier.appDialogWidth(),
+                shape = AppDialogDefaults.Shape,
+                containerColor = AppDialogDefaults.containerColor(),
+                tonalElevation = AppDialogDefaults.TonalElevation,
                 onDismissRequest = onDismiss,
                 title = {
                     Text(
@@ -323,10 +326,11 @@ fun AddTransitCardWizardDialog(
             }
 
             AlertDialog(
-                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-                modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .widthIn(max = 500.dp),
+                properties = AppDialogDefaults.Properties,
+                modifier = Modifier.appDialogWidth(),
+                shape = AppDialogDefaults.Shape,
+                containerColor = AppDialogDefaults.containerColor(),
+                tonalElevation = AppDialogDefaults.TonalElevation,
                 onDismissRequest = {
                     if (!nfcProcessing) onDismiss()
                 },
@@ -471,6 +475,11 @@ fun AddTransitCardWizardDialog(
             val card = fetchedCardModel ?: metroViewModel.transitCardsFlow.value.find { it.cardNumber == scannedCardNumber }
             
             AlertDialog(
+                properties = AppDialogDefaults.Properties,
+                modifier = Modifier.appDialogWidth(),
+                shape = AppDialogDefaults.Shape,
+                containerColor = AppDialogDefaults.containerColor(),
+                tonalElevation = AppDialogDefaults.TonalElevation,
                 onDismissRequest = onDismiss,
                 title = {
                     Row(

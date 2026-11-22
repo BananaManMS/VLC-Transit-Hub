@@ -43,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import com.example.ui.theme.SpaceGroteskFontFamily
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -130,12 +131,12 @@ fun MetrobusTab(
                     focusManager.clearFocus()
                 }
             ),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(14.dp),
             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface,
-                unfocusedContainerColor = if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface,
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                 focusedBorderColor = MetrobusAmber,
-                unfocusedBorderColor = if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                unfocusedBorderColor = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
         )
 
@@ -268,10 +269,10 @@ fun FavoriteMetrobusStopCard(
     modifier: Modifier = Modifier,
     onCardClick: () -> Unit
 ) {
-    val cardBg = if (isDarkMode) Color(0xFF2B1F0F) else Color(0xFFFFF8E0)
-    val cardBorder = BorderStroke(1.dp, MetrobusAmber.copy(alpha = if (isDarkMode) 0.65f else 0.45f))
-    val cardTextColor = if (isDarkMode) Color(0xFFF2F4F8) else MaterialTheme.colorScheme.onSurface
-    val cardTextSecondaryColor = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
+    val cardBg = MetrobusAmber.copy(alpha = if (isDarkMode) 0.10f else 0.07f).compositeOver(MaterialTheme.colorScheme.surface)
+    val cardBorder = BorderStroke(1.dp, MetrobusAmber.copy(alpha = if (isDarkMode) 0.45f else 0.38f))
+    val cardTextColor = MaterialTheme.colorScheme.onSurface
+    val cardTextSecondaryColor = MaterialTheme.colorScheme.onSurfaceVariant
     val distFormatted = if (!stop.distanceText.isNullOrEmpty()) " • ${stop.distanceText}" else ""
 
     Card(
@@ -364,9 +365,9 @@ fun EmptyFavoriteMetrobusCard(
             .width(250.dp)
             .height(92.dp),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         colors = CardDefaults.cardColors(
-            containerColor = if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Row(
@@ -387,13 +388,13 @@ fun EmptyFavoriteMetrobusCard(
                     text = stringResource(com.example.R.string.metrobus_empty_favorites_title),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (isDarkMode) Color(0xFFF2F4F8) else MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = stringResource(com.example.R.string.metrobus_empty_favorites_hint),
                     style = MaterialTheme.typography.bodySmall,
                     fontSize = 11.sp,
-                    color = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -411,17 +412,17 @@ fun MetrobusStopCard(
     onEditAliasClick: (() -> Unit)? = null
 ) {
     val cardBg = if (isFav) {
-        if (isDarkMode) Color(0xFF2B1F0F) else Color(0xFFFFF8E0)
+        MetrobusAmber.copy(alpha = if (isDarkMode) 0.10f else 0.07f).compositeOver(MaterialTheme.colorScheme.surface)
     } else {
-        if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.surface
     }
     val cardBorder = if (isFav) {
-        BorderStroke(1.dp, MetrobusAmber.copy(alpha = if (isDarkMode) 0.65f else 0.45f))
+        BorderStroke(1.dp, MetrobusAmber.copy(alpha = if (isDarkMode) 0.45f else 0.38f))
     } else {
-        BorderStroke(1.dp, if (isDarkMode) Color(0xFF2E3545) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     }
-    val cardTextColor = if (isDarkMode) Color(0xFFF2F4F8) else MaterialTheme.colorScheme.onSurface
-    val cardTextSecondaryColor = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
+    val cardTextColor = MaterialTheme.colorScheme.onSurface
+    val cardTextSecondaryColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Card(
         onClick = onCardClick,
@@ -480,29 +481,26 @@ fun MetrobusStopCard(
                     )
                 }
 
-                Surface(
-                    shape = CircleShape,
-                    color = if (isDarkMode) Color(0xFF0F131E) else MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.size(40.dp)
+                IconButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("fav_metrobus_${stop.idParada}")
                 ) {
-                    IconButton(
-                        onClick = onToggleFavorite,
-                        modifier = Modifier.testTag("fav_metrobus_${stop.idParada}").fillMaxSize()
-                    ) {
-                        Icon(
-                            imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
-                            contentDescription = "Favorito",
-                            tint = if (isFav) Color(0xFFFFB300) else cardTextSecondaryColor
-                        )
-                    }
+                    Icon(
+                        imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
+                        contentDescription = "Favorito",
+                        tint = if (isFav) Color(0xFFFFB300) else cardTextSecondaryColor.copy(alpha = 0.7f),
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
             }
 
             if (stop.lineas.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 HorizontalDivider(
-                    color = if (isDarkMode) Color(0x1F8791A6) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    color = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                     thickness = 1.dp
                 )
 

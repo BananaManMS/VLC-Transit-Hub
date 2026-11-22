@@ -17,13 +17,24 @@ object CercaniasDepartureMapper {
      */
     private val normalizationCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
+    private fun stripAccentsLower(text: String): String {
+        return Normalizer.normalize(text, Normalizer.Form.NFD)
+            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+            .lowercase(Locale.ROOT)
+            .trim()
+    }
+
+    internal fun isPlatjaGandiaName(normalizedNoAccentsLower: String): Boolean {
+        return normalizedNoAccentsLower.contains("platja") ||
+            normalizedNoAccentsLower.contains("playa") ||
+            normalizedNoAccentsLower.contains("grau") ||
+            normalizedNoAccentsLower.contains("grao")
+    }
+
     fun normalizeStationName(name: String): String {
         if (name.isBlank()) return ""
         return normalizationCache.getOrPut(name) {
-            val normalized = Normalizer.normalize(name, Normalizer.Form.NFD)
-                .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
-                .lowercase(Locale.ROOT)
-                .trim()
+            val normalized = stripAccentsLower(name)
                 .replace("estacion", "estacio")
                 .replace("norte", "nord")
                 .replace("nord", "nord")
@@ -39,7 +50,7 @@ object CercaniasDepartureMapper {
                 normalized.contains("castello") -> "castello de la plana"
                 normalized.contains("xativa") -> "xativa"
                 normalized.contains("moixent") || normalized.contains("mogente") -> "moixent"
-                normalized.contains("platja") && normalized.contains("gandia") -> "platja i grau de gandia"
+                isPlatjaGandiaName(normalized) -> "platja i grau de gandia"
                 normalized.contains("gandia") -> "gandia"
                 normalized.contains("siete aguas") || normalized.contains("venta mina") -> "venta mina-siete aguas"
                 normalized.contains("utiel") -> "utiel"
@@ -57,15 +68,17 @@ object CercaniasDepartureMapper {
     fun formatStationDisplayName(name: String): String {
         if (name.isBlank()) return ""
         val lower = name.lowercase(Locale.ROOT).trim()
+        val normalized = stripAccentsLower(name)
         return when {
-            lower.contains("nord") || lower.contains("estacio del nord") || lower.contains("norte") -> "València Nord"
-            lower.contains("sant isidre") || lower.contains("st. isidre") -> "València St. Isidre"
-            lower.contains("cabanyal") -> "Cabanyal"
-            lower.contains("font de sant lluis") || lower.contains("sant lluis") || lower.contains("f. s. lluis") || lower.contains("lluís") -> "València F. S. Lluís"
-            lower.contains("alcudia") || lower.contains("alcúdia") || lower.contains("crespins") -> "L'Alcúdia de Crespins"
+            normalized.contains("nord") || normalized.contains("estacio del nord") || normalized.contains("norte") -> "València Nord"
+            normalized.contains("sant isidre") || normalized.contains("st. isidre") -> "València St. Isidre"
+            normalized.contains("cabanyal") -> "Cabanyal"
+            normalized.contains("font de sant lluis") || normalized.contains("sant lluis") || normalized.contains("f. s. lluis") -> "València F. S. Lluís"
+            normalized.contains("alcudia") || normalized.contains("crespins") -> "L'Alcúdia de Crespins"
             lower.contains("bunol") || lower.contains("buã") || lower.contains("buñ") || lower.contains("bunyol") -> "Buñol"
             lower.contains("puc") || lower.contains("puç") || lower.contains("puã") || lower.contains("pua") -> "Puçol"
-            lower.contains("platja") || lower.contains("grau") -> "Platja i Grau de Gandia"
+            isPlatjaGandiaName(normalized) -> "Platja i Grau de Gandia"
+            normalized.contains("gandia") -> "Gandia"
             else -> name
         }
     }
@@ -81,9 +94,8 @@ object CercaniasDepartureMapper {
         
         if (normCurrent.isBlank() || normDest.isBlank()) return false
         
-        // Prevent false positives between Gandia and Platja de Gandia
-        if ((normCurrent.contains("platja") && !normDest.contains("platja")) ||
-            (!normCurrent.contains("platja") && normDest.contains("platja"))) {
+        // Prevent false positives between Gandia and Platja i Grau de Gandia
+        if (isPlatjaGandiaName(normCurrent) != isPlatjaGandiaName(normDest)) {
             return false
         }
         

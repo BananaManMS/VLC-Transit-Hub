@@ -114,8 +114,16 @@ fun WeatherCard(
                     .fillMaxWidth()
                     .padding(vertical = 2.dp)
             ) {
+                val displayCity = remember(data?.cityName, appLanguage) {
+                    val raw = data?.cityName?.trim().orEmpty()
+                    when {
+                        raw.isEmpty() || raw.equals("valencia", ignoreCase = true) ->
+                            if (appLanguage == AppLanguage.CA) "València" else "Valencia"
+                        else -> raw.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                    }
+                }
                 Text(
-                    text = data?.cityName ?: "Valencia",
+                    text = displayCity,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = cardTextColor
                 )
@@ -316,7 +324,7 @@ fun WeatherCard(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "$displayTemp°",
+                                text = "${kotlin.math.round(displayTemp).toInt()}°",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = cardTextColor
@@ -714,9 +722,14 @@ fun DashboardClockWidget(
         val formattedDate = remember(appLanguage, isMidnightCross) {
             try {
                 val locale = if (appLanguage == AppLanguage.CA) java.util.Locale.forLanguageTag("ca-ES") else java.util.Locale.forLanguageTag("es-ES")
-                java.text.SimpleDateFormat("EEEE, d 'de' MMMM 'de' yyyy", locale).apply {
+                val rawDate = java.text.SimpleDateFormat("EEEE, d 'de' MMMM 'de' yyyy", locale).apply {
                     timeZone = java.util.TimeZone.getTimeZone("Europe/Madrid")
                 }.format(java.util.Date())
+                // Android ICU ca-ES standalone/format MMMM often already prepends "de " or "d'" (e.g. "de novembre", "d'abril")
+                rawDate
+                    .replace(" de de ", " de ")
+                    .replace(" de d'", " d'")
+                    .replace(" de d’", " d’")
             } catch (e: Exception) {
                 if (appLanguage == AppLanguage.CA) "diumenge, 19 de juliol de 2026" else "domingo, 19 de julio de 2026"
             }

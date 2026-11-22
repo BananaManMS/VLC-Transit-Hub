@@ -28,8 +28,8 @@ private val JumpLaunchInterpolator = PathInterpolator(0.20f, 0.82f, 0.28f, 1.0f)
 private val BackdropFadeInterpolator = PathInterpolator(0.25f, 0.0f, 0.25f, 1.0f)
 private val LogoFadeInterpolator = PathInterpolator(0.14f, 0.88f, 0.30f, 1.0f)
 
-private const val COLOR_VLC_RED = 0xFFEC1B4B.toInt()
-private const val COLOR_WAVE_CORAL = 0xFFFF88A4.toInt()
+private const val COLOR_VLC_RED = 0xFFFF6B2C.toInt()
+private const val COLOR_WAVE_CORAL = 0xFFFFB088.toInt()
 private const val COLOR_WAVE_WHITE = 0xFFFFFFFF.toInt()
 
 /**

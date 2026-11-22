@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -10,6 +11,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
@@ -21,7 +23,11 @@ fun LinkifiedText(
     textColor: Color,
     fontSize: TextUnit = 13.sp,
     linkText: String? = "Leer más",
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    linkColor: Color = MaterialTheme.colorScheme.secondary,
+    lineHeight: TextUnit = TextUnit.Unspecified,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip
 ) {
     val uriHandler = LocalUriHandler.current
     val urlPattern = Pattern.compile(
@@ -55,7 +61,7 @@ fun LinkifiedText(
             pushStringAnnotation(tag = "URL", annotation = url)
             withStyle(
                 style = SpanStyle(
-                    color = Color(0xFF4F8CFF),
+                    color = linkColor,
                     textDecoration = TextDecoration.Underline,
                     fontWeight = FontWeight.Medium
                 )
@@ -79,8 +85,11 @@ fun LinkifiedText(
         text = annotatedString,
         style = TextStyle(
             color = textColor,
-            fontSize = fontSize
+            fontSize = fontSize,
+            lineHeight = lineHeight
         ),
+        maxLines = maxLines,
+        overflow = overflow,
         modifier = modifier,
         onClick = { offset ->
             annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)

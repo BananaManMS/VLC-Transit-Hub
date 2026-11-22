@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.LiveRssFeedIcon
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.AppThemeColors
 
 @Composable
 fun UnifiedTransitDepartureCard(
@@ -45,19 +47,23 @@ fun UnifiedTransitDepartureCard(
     appLanguage: AppLanguage,
     modifier: Modifier = Modifier
 ) {
-    // Pure neutral backgrounds (No blue/navy tint)
-    val cardBg = if (isDarkMode) Color(0xFF1E1E1E) else Color.White
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF111827)
-    val subtextColor = if (isDarkMode) Color(0xFF9E9E9E) else Color(0xFF64748B)
     val opColor = Color(departure.operator.colorHex)
+    val cardBg = opColor
+        .copy(alpha = if (isDarkMode) 0.08f else 0.04f)
+        .compositeOver(MaterialTheme.colorScheme.surface)
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .testTag("unified_dep_${departure.operator}_${departure.lineCode}_${departure.minutesRemaining}"),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = cardBg),
-        border = if (isDarkMode) BorderStroke(1.dp, Color(0xFF2C2C2E)) else BorderStroke(1.dp, Color(0xFFE5E7EB)),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
@@ -150,10 +156,10 @@ fun UnifiedTransitDepartureCard(
                     }
 
                     val timeColor = when {
-                        isImmediate || mins <= 0 -> Color(0xFFE53935)
-                        mins <= 2 -> Color(0xFFED8936)
-                        mins <= 5 -> Color(0xFF38A169)
-                        else -> if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF111827)
+                        isImmediate || mins <= 0 -> AppThemeColors.statusError(isDarkMode)
+                        mins <= 2 -> AppThemeColors.statusWarning(isDarkMode)
+                        mins <= 5 -> AppThemeColors.statusOk(isDarkMode)
+                        else -> textColor
                     }
 
                     Row(
@@ -162,15 +168,15 @@ fun UnifiedTransitDepartureCard(
                     ) {
                         Text(
                             text = timeText,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                            fontWeight = FontWeight.ExtraBold,
                             color = timeColor
                         )
 
                         LiveRssFeedIcon(
                             contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.status_live),
-                            tint = Color(0xFF2ECC71),
-                            modifier = Modifier.size(16.dp)
+                            tint = AppThemeColors.statusOk(isDarkMode),
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 } else {
@@ -189,7 +195,7 @@ fun UnifiedTransitDepartureCard(
                     ) {
                         Text(
                             text = timeText,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
@@ -224,12 +230,15 @@ fun UnifiedDepartureCardSkeleton(
     isDarkMode: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val cardBg = if (isDarkMode) Color(0xFF1E1E1E) else Color.White
+    val cardBg = MaterialTheme.colorScheme.surface
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = cardBg),
-        border = if (isDarkMode) BorderStroke(1.dp, Color(0xFF2C2C2E)) else BorderStroke(1.dp, Color(0xFFE5E7EB)),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(

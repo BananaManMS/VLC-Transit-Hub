@@ -45,6 +45,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.dashboard.AppLanguage
 import com.example.ui.map.SelectedMapItem
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 
 @Composable
 fun DisambiguationDialog(
@@ -55,26 +57,23 @@ fun DisambiguationDialog(
     onSelectItem: (SelectedMapItem) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val dialogBg = if (isDarkMode) Color(0xFF1E1E1E) else Color(0xFFFFFFFF)
-    val titleColor = if (isDarkMode) Color(0xFFF1F5F9) else Color(0xFF0F172A)
-    val subtitleColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
-    val closeBtnBg = if (isDarkMode) Color(0xFF2C2C2C) else Color(0xFFF1F5F9)
+    val titleColor = MaterialTheme.colorScheme.onSurface
+    val subtitleColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val closeBtnBg = MaterialTheme.colorScheme.surfaceVariant
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false
-        )
+        properties = AppDialogDefaults.Properties
     ) {
         Surface(
             modifier = Modifier
-                .padding(horizontal = 24.dp, vertical = 20.dp)
-                .widthIn(max = 420.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            color = dialogBg,
-            tonalElevation = 6.dp,
-            shadowElevation = 12.dp
+                .appDialogWidth()
+                .padding(vertical = 20.dp),
+            shape = AppDialogDefaults.Shape,
+            color = AppDialogDefaults.containerColor(),
+            border = AppDialogDefaults.border(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation
         ) {
             Column(
                 modifier = Modifier
@@ -220,7 +219,7 @@ fun DisambiguationDialog(
                                 .testTag("disambiguation_item_${title}"),
                             shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isDarkMode) Color(0xFF282828) else Color(0xFFF8FAFC)
+                                containerColor = AppDialogDefaults.subContainerColor()
                             )
                         ) {
                             Row(
@@ -254,13 +253,13 @@ fun DisambiguationDialog(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
-                                    color = if (isDarkMode) Color(0xFF334155) else Color(0xFFEDF2F7)
+                                    color = MaterialTheme.colorScheme.surfaceVariant
                                 ) {
                                     Text(
                                         text = badge,
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF4A5568)
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         ),
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )

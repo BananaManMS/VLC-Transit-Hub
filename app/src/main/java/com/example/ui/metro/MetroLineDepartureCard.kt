@@ -89,15 +89,15 @@ fun MetroLineDepartureCard(
     val isDark = isDarkMode
 
     val containerBgColor = if (isDark) {
-        badgeColor.copy(alpha = 0.16f).compositeOver(Color(0xFF23252E))
+        badgeColor.copy(alpha = 0.16f).compositeOver(MaterialTheme.colorScheme.surface)
     } else {
-        badgeColor.copy(alpha = 0.08f)
+        badgeColor.copy(alpha = 0.08f).compositeOver(MaterialTheme.colorScheme.surface)
     }
 
     val cardTextColor = MaterialTheme.colorScheme.onSurface
     val departureBorder = BorderStroke(
         width = 1.dp,
-        color = if (isDark) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        color = if (isDark) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     )
     val hasMultipleDepartures = group.subsequentDepartures.isNotEmpty()
 
@@ -441,7 +441,7 @@ fun MetroLineDepartureCard(
                                 if (nextDep.originalDeparture.isRealTime) {
                                     com.example.ui.components.LiveRssFeedIcon(
                                         contentDescription = null,
-                                        tint = Color(0xFF2E7D32),
+                                        tint = com.example.ui.theme.AppThemeColors.statusOk(isDarkMode),
                                         modifier = Modifier.size(13.dp)
                                     )
                                 }
@@ -490,10 +490,10 @@ private fun MetroDepartureTimeCountdown(
     }
 
     val timeColor = when {
-        !departure.isRealTime -> if (isDarkMode) Color.White else Color(0xFF1E293B)
-        primaryUiModel.isWarningColor -> MaterialTheme.colorScheme.error
-        primaryUiModel.isSecondaryColor -> MaterialTheme.colorScheme.secondary
-        else -> if (isDarkMode) Color.White else Color(0xFF1E293B)
+        !departure.isRealTime -> MaterialTheme.colorScheme.onSurface
+        primaryUiModel.isWarningColor -> com.example.ui.theme.AppThemeColors.statusError(isDarkMode)
+        primaryUiModel.isSecondaryColor -> com.example.ui.theme.AppThemeColors.statusWarning(isDarkMode)
+        else -> MaterialTheme.colorScheme.onSurface
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "MetroCountdownBlink")
@@ -529,7 +529,7 @@ private fun MetroDepartureTimeCountdown(
         if (departure.isRealTime) {
             com.example.ui.components.LiveRssFeedIcon(
                 contentDescription = null,
-                tint = Color(0xFF2E7D32),
+                tint = com.example.ui.theme.AppThemeColors.statusOk(isDarkMode),
                 modifier = Modifier.size(14.dp)
             )
         }

@@ -111,7 +111,7 @@ fun MapControlsOverlay(
     isSatelliteMode: Boolean = false,
     onToggleSatelliteMode: () -> Unit = {},
     hasPersistentBottomPanel: Boolean = false,
-    currentNearbySheetHeight: androidx.compose.ui.unit.Dp = 240.dp,
+    currentNearbySheetHeight: androidx.compose.ui.unit.Dp = 0.dp,
     bottomPanelHeightPx: Float = 0f,
     isFollowingUser: Boolean = false,
     selectedItem: SelectedMapItem? = null,

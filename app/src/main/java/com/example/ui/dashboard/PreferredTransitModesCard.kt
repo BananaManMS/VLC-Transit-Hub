@@ -36,8 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.BorderStroke
+import com.example.ui.theme.AppThemeColors
 import com.example.ui.theme.SpaceGroteskFontFamily
-import com.example.ui.theme.appCardBorder
 
 data class TransitModeOption(
     val code: String,
@@ -101,8 +102,8 @@ fun PreferredTransitModesCard(
 
     val context = LocalContext.current
     val isCa = appLanguage == AppLanguage.CA
-    val cardBg = if (isDarkMode) Color(0xFF1E222B) else MaterialTheme.colorScheme.surface
-    val dividerColor = if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+    val cardBg = MaterialTheme.colorScheme.surface
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDarkMode) 0.7f else 0.55f)
 
     val activeCount = preferredModes.size
     val totalCount = ALL_TRANSIT_MODES.size
@@ -125,9 +126,9 @@ fun PreferredTransitModesCard(
         modifier = modifier
             .fillMaxWidth()
             .testTag("preferred_transit_modes_card"),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = cardBg),
-        border = appCardBorder(),
+        border = BorderStroke(1.dp, AppThemeColors.subtleBorder(isDarkMode).copy(alpha = if (isDarkMode) 1f else 0.6f)),
         elevation = CardDefaults.cardElevation(defaultElevation = if (isDarkMode) 0.dp else 1.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -181,7 +182,7 @@ fun PreferredTransitModesCard(
                 // Active counter badge
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.surfaceVariant
+                    color = MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Text(
                         text = "$activeCount/$totalCount",

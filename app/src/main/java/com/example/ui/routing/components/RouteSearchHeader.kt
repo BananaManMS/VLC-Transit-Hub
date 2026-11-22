@@ -140,18 +140,18 @@ fun RouteSearchHeader(
                     Box(
                         modifier = Modifier
                             .size(12.dp)
-                            .background(MaterialTheme.colorScheme.primary, CircleShape)
+                            .background(MaterialTheme.colorScheme.secondary, CircleShape)
                     )
                     Box(
                         modifier = Modifier
                             .width(2.dp)
                             .height(42.dp)
-                            .background(if (isDarkMode) Color(0xFF444444) else Color(0xFFCBD5E1))
+                            .background(MaterialTheme.colorScheme.outlineVariant)
                     )
                     Box(
                         modifier = Modifier
                             .size(12.dp)
-                            .background(Color(0xFFE53935), CircleShape)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape)
                     )
                 }
 
@@ -178,8 +178,8 @@ fun RouteSearchHeader(
                                 }
                                 .testTag("route_origin_gps_block"),
                             shape = RoundedCornerShape(12.dp),
-                            color = if (isDarkMode) Color(0xFF1E2D4A) else Color(0xFFEFF6FF),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.45f))
                         ) {
                             Row(
                                 modifier = Modifier
@@ -190,7 +190,7 @@ fun RouteSearchHeader(
                                 Icon(
                                     Icons.Default.MyLocation,
                                     contentDescription = "Ubicación actual",
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = MaterialTheme.colorScheme.secondary,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
@@ -198,7 +198,7 @@ fun RouteSearchHeader(
                                     text = androidx.compose.ui.res.stringResource(com.example.R.string.current_location_label),
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
                                         fontSize = 14.sp
                                     ),
                                     modifier = Modifier.weight(1f)
@@ -212,7 +212,7 @@ fun RouteSearchHeader(
                                     Icon(
                                         Icons.Default.Close,
                                         contentDescription = "Eliminar",
-                                        tint = MaterialTheme.colorScheme.primary,
+                                        tint = MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -291,8 +291,8 @@ fun RouteSearchHeader(
                                 }
                                 .testTag("route_destination_gps_block"),
                             shape = RoundedCornerShape(12.dp),
-                            color = if (isDarkMode) Color(0xFF1E2D4A) else Color(0xFFEFF6FF),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.45f))
                         ) {
                             Row(
                                 modifier = Modifier
@@ -303,7 +303,7 @@ fun RouteSearchHeader(
                                 Icon(
                                     Icons.Default.MyLocation,
                                     contentDescription = "Ubicación actual",
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = MaterialTheme.colorScheme.secondary,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
@@ -311,7 +311,7 @@ fun RouteSearchHeader(
                                     text = androidx.compose.ui.res.stringResource(com.example.R.string.current_location_label),
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
                                         fontSize = 14.sp
                                     ),
                                     modifier = Modifier.weight(1f)
@@ -325,7 +325,7 @@ fun RouteSearchHeader(
                                     Icon(
                                         Icons.Default.Close,
                                         contentDescription = "Eliminar",
-                                        tint = MaterialTheme.colorScheme.primary,
+                                        tint = MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -401,7 +401,7 @@ fun RouteSearchHeader(
                     Icon(
                         imageVector = Icons.Default.SwapVert,
                         contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.swap_origin_destination_desc),
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier
                             .size(22.dp)
                             .graphicsLayer {
@@ -415,9 +415,9 @@ fun RouteSearchHeader(
 
             // Mode Filters Horizontal Row
             val customChipColors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                selectedLeadingIconColor = MaterialTheme.colorScheme.secondary,
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 iconColor = MaterialTheme.colorScheme.onSurfaceVariant

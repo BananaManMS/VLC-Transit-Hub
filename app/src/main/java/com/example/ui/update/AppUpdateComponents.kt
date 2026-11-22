@@ -31,8 +31,10 @@ import com.example.BuildConfig
 import com.example.R
 import com.example.data.model.AppUpdateInfo
 import com.example.data.model.UpdateDownloadState
+import com.example.ui.theme.AppDialogDefaults
 import com.example.ui.theme.SpaceGroteskFontFamily
 import com.example.ui.theme.UnifiedAppCard
+import com.example.ui.theme.appDialogWidth
 import com.example.util.AppUpdateManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -161,9 +163,9 @@ fun AppUpdateSettingCard(
     val updateState by viewModel.updateState.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
 
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
-    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
-    val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val accentColor = MaterialTheme.colorScheme.primary
 
     val statusSubtitle = when (val state = updateState) {
         is UpdateDownloadState.Checking -> stringResource(R.string.update_status_checking)
@@ -200,16 +202,16 @@ fun AppUpdateSettingCard(
         startContent = {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(if (isDarkMode) Color(0xFF1E283F) else Color(0xFFE8EAF6)),
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(accentColor.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.CloudDownload,
                     contentDescription = null,
                     tint = accentColor,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
         },
@@ -287,18 +289,23 @@ fun AppUpdateDialog(
     val context = LocalContext.current
     val state by viewModel.updateState.collectAsState()
 
-    val surfaceColor = if (isDarkMode) Color(0xFF1E2433) else MaterialTheme.colorScheme.surface
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
-    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
-    val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val accentColor = MaterialTheme.colorScheme.primary
+    val borderColor = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogDefaults.Properties
+    ) {
         Surface(
-            modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .clip(RoundedCornerShape(20.dp)),
-            color = surfaceColor,
-            tonalElevation = 6.dp
+            modifier = Modifier.appDialogWidth(),
+            shape = AppDialogDefaults.Shape,
+            color = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation,
+            border = AppDialogDefaults.border()
         ) {
             Column(
                 modifier = Modifier
@@ -397,8 +404,8 @@ fun AppUpdateDialog(
                                     .heightIn(max = 140.dp)
                                     .verticalScroll(rememberScrollState())
                                     .background(
-                                        if (isDarkMode) Color(0xFF141822) else Color(0xFFF1F3F5),
-                                        RoundedCornerShape(8.dp)
+                                        com.example.ui.theme.AppDialogDefaults.subContainerColor(),
+                                        RoundedCornerShape(10.dp)
                                     )
                                     .padding(10.dp)
                             ) {

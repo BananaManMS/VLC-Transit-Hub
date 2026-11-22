@@ -47,6 +47,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 
 val STAR_PALETTE = listOf(
     "#F59E0B", // Ámbar / Dorado (Clásico)
@@ -88,6 +90,11 @@ fun SaveFavoriteDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = AppDialogDefaults.Properties,
+        modifier = Modifier.appDialogWidth(),
+        shape = AppDialogDefaults.Shape,
+        containerColor = AppDialogDefaults.containerColor(),
+        tonalElevation = AppDialogDefaults.TonalElevation,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(

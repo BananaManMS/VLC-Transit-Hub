@@ -175,20 +175,22 @@ fun CercaniasScreen(
             }
         }
 
-        // Dedicated Live Train Tracking Floating Action Button (FAB)
-        FloatingActionButton(
-            onClick = { viewModel.setShowLiveMap(true) },
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = Color.White,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(bottom = activeTripBottomPadding + 24.dp, end = 8.dp)
-                .testTag("cercanias_live_map_fab")
-        ) {
-            Icon(
-                imageVector = Icons.Default.Map,
-                contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_view_live_map)
-            )
+        // Dedicated Live Train Tracking Floating Action Button (FAB) — only on Salidas tab
+        if (pagerState.currentPage == 0) {
+            FloatingActionButton(
+                onClick = { viewModel.setShowLiveMap(true) },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = activeTripBottomPadding + 24.dp, end = 8.dp)
+                    .testTag("cercanias_live_map_fab")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Map,
+                    contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.cercanias_view_live_map)
+                )
+            }
         }
     }
 

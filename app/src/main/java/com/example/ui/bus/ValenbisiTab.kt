@@ -36,6 +36,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import com.example.ui.components.TransitPullRefreshIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,6 +60,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.SkeletonCardItem
 import com.example.ui.dashboard.AppLanguage
@@ -128,9 +132,21 @@ fun ValenbisiTab(
         )
     }
 
+    val pullToRefreshState = rememberPullToRefreshState()
+
     PullToRefreshBox(
         isRefreshing = isLoading,
         onRefresh = onRefresh,
+        state = pullToRefreshState,
+        indicator = {
+            TransitPullRefreshIndicator(
+                state = pullToRefreshState,
+                isRefreshing = isLoading,
+                appLanguage = appLanguage,
+                isInitialLoad = isLoading && valenbisiStations.isEmpty(),
+                refreshingText = if (appLanguage == AppLanguage.CA) "Actualitzant Valenbisi..." else "Actualizando Valenbisi..."
+            )
+        },
         modifier = Modifier.fillMaxSize()
     ) {
         Column(
@@ -184,12 +200,12 @@ fun ValenbisiTab(
                         focusManager.clearFocus()
                     }
                 ),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                     focusedBorderColor = brandColor,
-                    unfocusedBorderColor = if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    unfocusedBorderColor = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
             )
 
@@ -370,6 +386,11 @@ fun EditValenbisiAliasDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = AppDialogDefaults.Properties,
+        modifier = Modifier.appDialogWidth(),
+        shape = AppDialogDefaults.Shape,
+        containerColor = AppDialogDefaults.containerColor(),
+        tonalElevation = AppDialogDefaults.TonalElevation,
         title = {
             Text(
                 text = if (appLanguage == AppLanguage.CA) "Nom personalitzat" else "Nombre personalizado",

@@ -82,9 +82,9 @@ fun CercaniasDeparturesTab(
     }
     val stationDisplayName = selectedStationEntity?.displayName ?: selectedStationEntity?.nombre ?: "Estación"
 
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
-    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
-    val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val accentColor = MaterialTheme.colorScheme.primary
 
     if (showQuickPicker) {
         CercaniasQuickStationPickerDialog(
@@ -113,13 +113,15 @@ fun CercaniasDeparturesTab(
             )
             IconButton(
                 onClick = onOpenSearchDialog,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier
+                    .size(32.dp)
+                    .testTag("cercanias_add_favorites_button")
             ) {
                 Icon(
-                    imageVector = Icons.Default.Settings,
+                    imageVector = Icons.Default.Add,
                     contentDescription = androidx.compose.ui.res.stringResource(com.example.R.string.edit_favorites_desc),
                     tint = accentColor,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
@@ -133,7 +135,7 @@ fun CercaniasDeparturesTab(
             verticalAlignment = Alignment.CenterVertically
         ) {
             item {
-                val cardBgColor = if (isDarkMode) Color(0xFF222222) else MaterialTheme.colorScheme.surface
+                val cardBgColor = MaterialTheme.colorScheme.surface
                 Card(
                     modifier = Modifier
                         .width(48.dp)
@@ -142,6 +144,7 @@ fun CercaniasDeparturesTab(
                         .clickable { showQuickPicker = true }
                         .testTag("square_cercanias_picker_button"),
                     colors = CardDefaults.cardColors(containerColor = cardBgColor),
+                    border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Box(
@@ -167,7 +170,7 @@ fun CercaniasDeparturesTab(
                             .clickable { showQuickPicker = true }
                             .testTag("empty_favorite_cercanias_chip"),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isDarkMode) Color(0xFF1E293B) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                            containerColor = if (isDarkMode) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
                         ),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
                         shape = RoundedCornerShape(12.dp)
@@ -195,7 +198,7 @@ fun CercaniasDeparturesTab(
                     val borderStroke = if (isSelected) {
                         BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
                     } else {
-                        BorderStroke(1.dp, if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                     val animatedCornerRadius by animateDpAsState(
                         targetValue = if (isSelected) 8.dp else 18.dp,
@@ -240,7 +243,7 @@ fun CercaniasDeparturesTab(
                                         text = distanceText,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) (if (isDarkMode) Color(0xFF93C5FD) else MaterialTheme.colorScheme.primary) else subtextColor,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else subtextColor,
                                         modifier = Modifier.padding(start = 4.dp)
                                     )
                                 }
@@ -312,14 +315,14 @@ fun CercaniasDeparturesTab(
                         onClick = { viewModel.clearCercaniasLineFilters() },
                         shape = RoundedCornerShape(14.dp),
                         color = if (isAllSelected) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDarkMode) 0.6f else 0.9f)
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDarkMode) 0.85f else 0.9f)
                         } else {
-                            if (isDarkMode) Color(0xFF1E212A) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            if (isDarkMode) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                         },
                         border = if (isAllSelected) {
                             BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
                         } else {
-                            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                            BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         },
                         modifier = Modifier
                             .heightIn(min = 44.dp)
@@ -365,12 +368,12 @@ fun CercaniasDeparturesTab(
                         color = if (isSelected) {
                             lineColor.copy(alpha = if (isDarkMode) 0.28f else 0.15f)
                         } else {
-                            if (isDarkMode) Color(0xFF1E212A) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            if (isDarkMode) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                         },
                         border = if (isSelected) {
                             BorderStroke(1.5.dp, lineColor)
                         } else {
-                            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                            BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         },
                         modifier = Modifier
                             .heightIn(min = 44.dp)
@@ -563,9 +566,10 @@ fun CercaniasDeparturesTab(
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp, vertical = 8.dp),
                                     colors = CardDefaults.cardColors(
-                                        containerColor = if (isDarkMode) Color(0xFF1E293B) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        containerColor = MaterialTheme.colorScheme.surface
                                     ),
-                                    shape = RoundedCornerShape(12.dp)
+                                    border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                    shape = RoundedCornerShape(16.dp)
                                 ) {
                                     Text(
                                         text = "No hay avisos activos en este momento.",
@@ -585,7 +589,7 @@ fun CercaniasDeparturesTab(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 16.dp + activeTripBottomPadding)
+                        contentPadding = PaddingValues(bottom = 88.dp + activeTripBottomPadding)
                     ) {
                         if (todayDepartures.isNotEmpty()) {
                             items(todayDepartures, key = { "${it.tripId}_${it.routeId}_${it.departureTime}_today" }) { departure ->
@@ -609,7 +613,7 @@ fun CercaniasDeparturesTab(
                                 ) {
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
                                         modifier = Modifier.padding(end = 10.dp)
                                     ) {
                                         Row(
@@ -629,13 +633,13 @@ fun CercaniasDeparturesTab(
                                                     fontWeight = FontWeight.Bold,
                                                     fontSize = 13.sp
                                                 ),
-                                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
                                         }
                                     }
                                     HorizontalDivider(
                                         modifier = Modifier.weight(1f),
-                                        color = if (isDarkMode) Color(0xFF334155) else Color(0xFFCBD5E1),
+                                        color = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant,
                                         thickness = 1.dp
                                     )
                                 }
@@ -672,18 +676,25 @@ fun CercaniasNoticeFilteredCard(
     val badgeIcon = catEnum.icon
     val isUrgent = catEnum == CercaniasNoticeCategory.SUPRESION || catEnum == CercaniasNoticeCategory.INCIDENCIA
 
+    val cleanHeader = remember(alert.headerEs) { sanitizeRenfeNoticeText(alert.headerEs) }
+    val cleanDescription = remember(alert.descriptionEs) { sanitizeRenfeNoticeText(alert.descriptionEs) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("cercanias_filtered_notice_card_${alert.id}"),
         colors = CardDefaults.cardColors(
             containerColor = if (isUrgent) {
-                MaterialTheme.colorScheme.errorContainer.copy(alpha = if (isDarkMode) 0.35f else 0.18f)
+                com.example.ui.theme.AppThemeColors.statusErrorContainer(isDarkMode)
             } else {
-                if (isDarkMode) Color(0xFF232630) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                MaterialTheme.colorScheme.surface
             }
         ),
-        shape = RoundedCornerShape(18.dp)
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isUrgent) badgeColor.copy(alpha = 0.4f) else if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -725,22 +736,23 @@ fun CercaniasNoticeFilteredCard(
                 }
             }
 
-            if (alert.headerEs.isNotBlank()) {
+            if (cleanHeader.isNotBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = alert.headerEs,
+                    text = cleanHeader,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
-            if (alert.descriptionEs.isNotBlank() && !alert.descriptionEs.equals(alert.headerEs, ignoreCase = true)) {
+            if (cleanDescription.isNotBlank() && !cleanDescription.equals(cleanHeader, ignoreCase = true)) {
                 Spacer(modifier = Modifier.height(6.dp))
                 com.example.ui.components.LinkifiedText(
-                    text = alert.descriptionEs,
+                    text = cleanDescription,
                     textColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
                 )
             }
         }

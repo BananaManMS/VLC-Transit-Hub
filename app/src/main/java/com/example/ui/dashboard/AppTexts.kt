@@ -182,7 +182,7 @@ object AppTexts {
         settingGoogleCalendarSubtitle = "Sincroniza los eventos del calendario local del dispositivo",
         settingGoogleCalendarConnected = "✓ Sincronizado con el calendario",
         settingGoogleCalendarDisconnect = "Desconectar calendario",
-        settingGoogleCalendarConnect = "Conectar con calendario",
+        settingGoogleCalendarConnect = "Conectar",
         settingAboutTitle = "Acerca de la app",
         settingAboutSubtitle = "Autoría, fuentes de datos, exención de responsabilidad y privacidad",
 
@@ -339,7 +339,7 @@ object AppTexts {
         settingGoogleCalendarSubtitle = "Sincronitza els esdeveniments del calendari local del dispositiu",
         settingGoogleCalendarConnected = "✓ Sincronitzat amb el calendari",
         settingGoogleCalendarDisconnect = "Desconnectar calendari",
-        settingGoogleCalendarConnect = "Connectar amb calendari",
+        settingGoogleCalendarConnect = "Connectar",
         settingAboutTitle = "Quant a l'app",
         settingAboutSubtitle = "Autoria, fonts de dades, exempció de responsabilitat i privacitat",
 

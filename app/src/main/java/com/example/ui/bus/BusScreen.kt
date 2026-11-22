@@ -42,6 +42,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import com.example.ui.components.SkeletonCardItem
 import com.example.ui.components.EmptyStateCard
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
@@ -281,6 +283,11 @@ fun EmtBusScreen(
                 .fillMaxSize()
                 .testTag("emt_bus_screen")
         ) {
+        val activeBusTabAccent = when (pagerState.currentPage) {
+            0 -> if (isDarkMode) Color(0xFFEF5350) else EmtRed
+            1 -> MetrobusAmber
+            else -> getValenbisiBrandColor(isDarkMode)
+        }
         UnifiedTabRow(
             selectedTabIndex = pagerState.currentPage,
             tabs = listOf("EMT", "Metrobús", "Valenbisi"),
@@ -289,7 +296,8 @@ fun EmtBusScreen(
                     pagerState.animateScrollToPage(index)
                 }
             },
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.padding(bottom = 8.dp),
+            accentColor = activeBusTabAccent
         )
 
         HorizontalPager(
@@ -303,6 +311,8 @@ fun EmtBusScreen(
                     Column(
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        val emtHeaderColor = if (isDarkMode) Color(0xFFEF5350) else EmtRed
+
                         // Search bar: "Buscar parada o línea..."
                         OutlinedTextField(
                             value = searchQuery,
@@ -351,17 +361,16 @@ fun EmtBusScreen(
                                     focusManager.clearFocus()
                                 }
                             ),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(14.dp),
                             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface,
-                                unfocusedContainerColor = if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface,
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                focusedBorderColor = emtHeaderColor,
+                                unfocusedBorderColor = if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                             )
                         )
 
                         // Section 1: FAVORITAS GUARDADAS (visible when no active search query)
-                        val emtHeaderColor = if (isDarkMode) Color(0xFFEF5350) else EmtRed
 
                         if (searchQuery.isEmpty()) {
                             Row(
@@ -612,6 +621,11 @@ fun EmtBusScreen(
 
         AlertDialog(
             onDismissRequest = { editingStopForAlias = null },
+            properties = AppDialogDefaults.Properties,
+            modifier = Modifier.appDialogWidth(),
+            shape = AppDialogDefaults.Shape,
+            containerColor = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
             title = {
                 Text(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_title),
@@ -687,6 +701,11 @@ fun EmtBusScreen(
 
         AlertDialog(
             onDismissRequest = { editingMetrobusStopForAlias = null },
+            properties = AppDialogDefaults.Properties,
+            modifier = Modifier.appDialogWidth(),
+            shape = AppDialogDefaults.Shape,
+            containerColor = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
             title = {
                 Text(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.alias_dialog_title),

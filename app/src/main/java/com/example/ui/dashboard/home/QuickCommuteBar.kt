@@ -42,8 +42,8 @@ fun QuickCommuteBar(
     onEditCommute: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val fieldBg = if (isDarkMode) Color(0xFF222222) else MaterialTheme.colorScheme.surface
-    val fieldBorder = BorderStroke(1.dp, if (isDarkMode) Color(0xFF2D2D2D) else Color(0xFFE2E8F0))
+    val fieldBg = MaterialTheme.colorScheme.surface
+    val fieldBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
 
     Column(
         modifier = modifier.fillMaxWidth()
@@ -82,7 +82,7 @@ fun QuickCommuteBar(
                 }
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer
+                    color = MaterialTheme.colorScheme.secondaryContainer
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -91,7 +91,7 @@ fun QuickCommuteBar(
                         Icon(
                             imageVector = Icons.Default.AltRoute,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.secondary,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -99,7 +99,7 @@ fun QuickCommuteBar(
                             text = androidx.compose.ui.res.stringResource(com.example.R.string.commute_route_badge),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }

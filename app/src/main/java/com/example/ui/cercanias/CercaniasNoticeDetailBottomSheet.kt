@@ -132,11 +132,15 @@ fun CercaniasNoticeDetailContent(
             }
         }
 
+        val cleanHeader = remember(alert.headerEs) { sanitizeRenfeNoticeText(alert.headerEs) }
+        val cleanDescription = remember(alert.descriptionEs) { sanitizeRenfeNoticeText(alert.descriptionEs) }
+
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (alert.headerEs.isNotBlank()) {
+        if (cleanHeader.isNotBlank()) {
             Text(
-                text = alert.headerEs,
+                text = cleanHeader,
+                fontFamily = com.example.ui.theme.SpaceGroteskFontFamily,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -146,19 +150,20 @@ fun CercaniasNoticeDetailContent(
 
         HorizontalDivider(
             modifier = Modifier.padding(vertical = 16.dp),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         )
 
-        val fullBodyText = if (alert.descriptionEs.isNotBlank() && !alert.descriptionEs.equals(alert.headerEs, ignoreCase = true)) {
-            alert.descriptionEs
+        val fullBodyText = if (cleanDescription.isNotBlank() && !cleanDescription.equals(cleanHeader, ignoreCase = true)) {
+            cleanDescription
         } else {
-            alert.headerEs
+            cleanHeader
         }
 
         LinkifiedText(
             text = fullBodyText,
             textColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 14.sp
+            fontSize = 14.sp,
+            lineHeight = 21.sp
         )
     }
 }

@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,17 +63,17 @@ fun BusStopCard(
     onEditAliasClick: (() -> Unit)? = null
 ) {
     val cardBg = if (isFav) {
-        if (isDarkMode) Color(0xFF1E1414) else Color(0xFFFFF5F5)
+        EmtRed.copy(alpha = if (isDarkMode) 0.10f else 0.06f).compositeOver(MaterialTheme.colorScheme.surface)
     } else {
-        if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.surface
     }
     val cardBorder = if (isFav) {
-        BorderStroke(1.dp, EmtRed.copy(alpha = if (isDarkMode) 0.65f else 0.45f))
+        BorderStroke(1.dp, EmtRed.copy(alpha = if (isDarkMode) 0.45f else 0.35f))
     } else {
-        BorderStroke(1.dp, if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     }
-    val cardTextColor = if (isDarkMode) Color(0xFFF2F4F8) else MaterialTheme.colorScheme.onSurface
-    val cardTextSecondaryColor = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
+    val cardTextColor = MaterialTheme.colorScheme.onSurface
+    val cardTextSecondaryColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     val distFormatted = if (stop.distanceText.isNotEmpty()) {
         val clean = stop.distanceText.removePrefix("a ").trim()
@@ -116,9 +117,9 @@ fun BusStopCard(
 
                     if (!alias.isNullOrBlank()) {
                         Surface(
-                            color = if (isDarkMode) Color(0xFF2E1C20) else Color(0xFFFFEBEE),
+                            color = EmtRed.copy(alpha = if (isDarkMode) 0.16f else 0.10f).compositeOver(MaterialTheme.colorScheme.surface),
                             shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(0.5.dp, EmtRed.copy(alpha = 0.4f))
+                            border = BorderStroke(0.5.dp, EmtRed.copy(alpha = 0.38f))
                         ) {
                             Text(
                                 text = alias,
@@ -230,10 +231,10 @@ fun FavoriteBusStopCard(
     onCardClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val cardBg = if (isDarkMode) Color(0xFF1E1414) else Color(0xFFFFF5F5)
-    val cardBorder = BorderStroke(1.dp, EmtRed.copy(alpha = if (isDarkMode) 0.65f else 0.45f))
-    val cardTextColor = if (isDarkMode) Color(0xFFF2F4F8) else MaterialTheme.colorScheme.onSurface
-    val cardTextSecondaryColor = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
+    val cardBg = EmtRed.copy(alpha = if (isDarkMode) 0.10f else 0.06f).compositeOver(MaterialTheme.colorScheme.surface)
+    val cardBorder = BorderStroke(1.dp, EmtRed.copy(alpha = if (isDarkMode) 0.45f else 0.35f))
+    val cardTextColor = MaterialTheme.colorScheme.onSurface
+    val cardTextSecondaryColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     val distFormatted = if (stop.distanceText.isNotEmpty()) {
         val clean = stop.distanceText.removePrefix("a ").trim()
@@ -359,9 +360,9 @@ fun EmptyFavoriteBusCard(
             .width(250.dp)
             .height(92.dp),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF333333) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         colors = CardDefaults.cardColors(
-            containerColor = if (isDarkMode) Color(0xFF151821) else MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Row(
@@ -382,13 +383,13 @@ fun EmptyFavoriteBusCard(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.bus_empty_favorites_title),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (isDarkMode) Color(0xFFF2F4F8) else MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.bus_empty_favorites_hint),
                     style = MaterialTheme.typography.bodySmall,
                     fontSize = 11.sp,
-                    color = if (isDarkMode) Color(0xFF8791A6) else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

@@ -29,7 +29,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.example.ui.dashboard.DashboardScreen
 import com.example.ui.dashboard.DashboardViewModel
+import com.example.ui.theme.AppDialogDefaults
 import com.example.ui.theme.VlcMetroTheme
+import com.example.ui.theme.appDialogWidth
 import com.example.util.CrashCatcher
 
 val LocalMainActivity = androidx.compose.runtime.staticCompositionLocalOf<android.app.Activity?> { null }
@@ -65,6 +67,7 @@ class MainActivity : ComponentActivity() {
         com.example.util.StartupProfiler.log("MainActivity", "setContent starting")
         setContent {
             val isDark by dashboardViewModel.isDarkMode.collectAsState()
+            val colorLabConfig by dashboardViewModel.colorLabConfig.collectAsState()
             val appLanguage by dashboardViewModel.appLanguage.collectAsState()
 
             val locale = remember(appLanguage) {
@@ -105,7 +108,7 @@ class MainActivity : ComponentActivity() {
                 androidx.activity.compose.LocalActivityResultRegistryOwner provides activityResultRegistryOwner,
                 LocalMainActivity provides this@MainActivity
             ) {
-                VlcMetroTheme(darkTheme = isDark) {
+                VlcMetroTheme(darkTheme = isDark, colorLabConfig = colorLabConfig) {
                     val isSplashAnimationFinished by dashboardViewModel.isSplashAnimationFinished.collectAsState()
                     var crashReport by remember { mutableStateOf(CrashCatcher.getCrashReport(applicationContext)) }
                     
@@ -115,6 +118,11 @@ class MainActivity : ComponentActivity() {
                     val currentReport = crashReport!!
                     AlertDialog(
                         onDismissRequest = { /* Prevent dismissal without action */ },
+                        properties = AppDialogDefaults.NonDismissableProperties,
+                        modifier = Modifier.appDialogWidth(),
+                        shape = AppDialogDefaults.Shape,
+                        containerColor = AppDialogDefaults.containerColor(),
+                        tonalElevation = AppDialogDefaults.TonalElevation,
                         title = { Text(text = "Informe de Error Reciente", fontSize = 18.sp) },
                         text = {
                             Column(modifier = Modifier.fillMaxWidth()) {

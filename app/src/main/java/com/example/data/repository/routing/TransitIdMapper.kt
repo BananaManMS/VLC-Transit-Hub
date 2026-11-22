@@ -529,12 +529,29 @@ object TransitIdMapper {
         "L8" to listOf("maritim", "maritim - serreria", "maritim serreria", "grau - la marina", "grau la marina", "neptu"),
         "L9" to listOf("alboraia peris arago", "alboraia palmaret", "machado", "benimaclet", "facultats", "alameda", "colon", "xativa", "angel guimera", "av. del cid", "avenida del cid", "nou d'octubre", "nou doctubre", "mislata", "mislata almassil", "faitanar", "quart de poblet", "salt de l'aigua", "salt de laigua", "manises", "roses", "rosas", "la cova", "la presa", "valencia la vella", "riba-roja de turia", "riba roja de turia"),
         "L10" to listOf("alacant", "alicante", "russafa", "ruzafa", "amado granell - montolivet", "amado granell montolivet", "quatre carreres", "ciutat arts i ciencies - justicia", "ciutat arts i ciencies justicia", "ciutat arts i ciencies", "oceanografic", "moreres", "natzaret"),
-        "C1" to listOf("valencia nord", "estacio del nord", "estacio de franca", "alfafar - benetusser", "alfafar benetusser", "massanassa", "catarroja", "silla", "el romani", "sollana", "sueca", "cullera", "tavernes de la valldigna", "xeraco", "gandia", "platja de gandia"),
+        "C1" to listOf("valencia nord", "estacio del nord", "estacio de franca", "alfafar - benetusser", "alfafar benetusser", "massanassa", "catarroja", "silla", "el romani", "sollana", "sueca", "cullera", "tavernes de la valldigna", "xeraco", "gandia", "platja i grau de gandia"),
         "C2" to listOf("valencia nord", "estacio del nord", "estacio de franca", "alfafar - benetusser", "alfafar benetusser", "massanassa", "catarroja", "silla", "benifaio - almussafes", "benifaio almussafes", "algemesi", "alzira", "carcaixent", "la pobla llarga", "manuel - l'enova", "manuel lenova", "xativa", "l'alcudia de crespins", "lalcudia de crespins", "montesa", "vallada", "moixent"),
         "C3" to listOf("valencia nord", "estacio del nord", "valencia - font de sant lluis", "valencia font de sant lluis", "valencia - sant isidre", "valencia sant isidre", "sant isidre", "xirivella - alqueries", "xirivella alqueries", "aldaia", "loriguilla - reva", "loriguilla reva", "circuit gp", "cheste", "chiva", "bunol", "bunyol", "venta mina", "siete aguas", "requena", "san antonio de requena", "utiel"),
         "C5" to listOf("valencia nord", "estacio del nord", "valencia - cabanyal", "valencia cabanyal", "cabanyal", "pucol", "sagunt", "sagunto", "gilet", "estivella - beselga", "estivella beselga", "algimia d'alfara", "algimia dalfara", "soneja", "segorbe - ciutat", "segorbe ciutat", "segorbe - san antonio", "segorbe san antonio", "navajas", "jerica - viver", "jerica viver", "caudiel"),
         "C6" to listOf("valencia nord", "estacio del nord", "valencia - cabanyal", "valencia cabanyal", "cabanyal", "roca - cuper", "roca cuper", "albuixech", "massalfassar", "el puig", "pucol", "sagunt", "sagunto", "les valls", "xilxes", "la llosa", "almenara", "moncofa", "nules - villavieja", "nules villavieja", "borriana - alqueries de nino perdido", "borriana alqueries de nino perdido", "vila-real", "vila real", "almassora", "castello de la plana", "vinaros")
     )
+
+    private fun isPlatjaGandiaNorm(norm: String): Boolean {
+        return norm.contains("gandia") &&
+            (norm.contains("platja") || norm.contains("playa") || norm.contains("grau") || norm.contains("grao"))
+    }
+
+    private fun isGandiaPlatjaConflict(a: String, b: String): Boolean {
+        if (!a.contains("gandia") || !b.contains("gandia")) return false
+        return isPlatjaGandiaNorm(a) != isPlatjaGandiaNorm(b)
+    }
+
+    private fun matchesStationToken(entry: String, query: String): Boolean {
+        if (entry.isBlank() || query.isBlank()) return false
+        if (isGandiaPlatjaConflict(entry, query)) return false
+        if (isPlatjaGandiaNorm(entry) && isPlatjaGandiaNorm(query)) return true
+        return entry == query || entry.contains(query) || query.contains(entry)
+    }
 
     /**
      * Finds alternative train or metro lines that serve both fromName and toName.
@@ -579,8 +596,8 @@ object TransitIdMapper {
         // Strictly verify that the real physical line route connects both fromIndex and toIndex
         // in the valid travel direction (fromIndex to toIndex without topological breaks)
         for ((lineKey, stationList) in RAIL_SUBWAY_LINE_STATIONS) {
-            val fromIndex = stationList.indexOfFirst { it == fromNorm || it.contains(fromNorm) || fromNorm.contains(it) }
-            val toIndex = stationList.indexOfFirst { it == toNorm || it.contains(toNorm) || toNorm.contains(it) }
+            val fromIndex = stationList.indexOfFirst { matchesStationToken(it, fromNorm) }
+            val toIndex = stationList.indexOfFirst { matchesStationToken(it, toNorm) }
 
             // Both fromName AND toName MUST be physically served by this candidate line
             if (fromIndex != -1 && toIndex != -1 && fromIndex != toIndex) {
@@ -646,9 +663,9 @@ object TransitIdMapper {
         }
 
         for ((_, stationList) in linesToCheck) {
-            val fromIdx = stationList.indexOfFirst { it == fromNorm || it.contains(fromNorm) || fromNorm.contains(it) }
-            val toIdx = stationList.indexOfFirst { it == toNorm || it.contains(toNorm) || toNorm.contains(it) }
-            val destIdx = stationList.indexOfFirst { it == destNorm || it.contains(destNorm) || destNorm.contains(it) }
+            val fromIdx = stationList.indexOfFirst { matchesStationToken(it, fromNorm) }
+            val toIdx = stationList.indexOfFirst { matchesStationToken(it, toNorm) }
+            val destIdx = stationList.indexOfFirst { matchesStationToken(it, destNorm) }
 
             if (fromIdx != -1 && toIdx != -1 && destIdx != -1 && fromIdx != toIdx) {
                 // Forward travel along increasing index: from < to <= dest
@@ -681,7 +698,8 @@ object TransitIdMapper {
         val fromNameNorm = normalizeStationName(leg.fromName)
 
         // 1. Explicitly reject if departure matches origin stop name (heading backwards towards start or terminating at start)
-        if (fromNameNorm.isNotBlank() && (depNorm == fromNameNorm || depNorm.contains(fromNameNorm))) {
+        if (fromNameNorm.isNotBlank() && !isGandiaPlatjaConflict(depNorm, fromNameNorm) &&
+            (depNorm == fromNameNorm || depNorm.contains(fromNameNorm))) {
             return false
         }
 
@@ -696,8 +714,8 @@ object TransitIdMapper {
             }?.value
 
             if (stationList != null) {
-                val fromIdx = stationList.indexOfFirst { it == fromNameNorm || it.contains(fromNameNorm) || fromNameNorm.contains(it) }
-                val toIdx = stationList.indexOfFirst { it == toNameNorm || it.contains(toNameNorm) || toNameNorm.contains(it) }
+                val fromIdx = stationList.indexOfFirst { matchesStationToken(it, fromNameNorm) }
+                val toIdx = stationList.indexOfFirst { matchesStationToken(it, toNameNorm) }
                 if (fromIdx != -1 && toIdx == -1) {
                     return false
                 }
@@ -706,14 +724,14 @@ object TransitIdMapper {
 
         // 3. Direct or bidirectional match with headsign
         if (headsignNorm.isNotBlank()) {
-            if (depNorm == headsignNorm || depNorm.contains(headsignNorm) || headsignNorm.contains(depNorm)) {
+            if (matchesStationToken(depNorm, headsignNorm)) {
                 return true
             }
         }
 
         // 4. Direct or bidirectional match with leg destination name
         if (toNameNorm.isNotBlank()) {
-            if (depNorm == toNameNorm || depNorm.contains(toNameNorm) || toNameNorm.contains(depNorm)) {
+            if (matchesStationToken(depNorm, toNameNorm)) {
                 return true
             }
         }
@@ -723,11 +741,13 @@ object TransitIdMapper {
         val headsignWords = headsignNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 4 }
         val toWords = toNameNorm.split(" ", "/", "-").map { it.trim() }.filter { it.length >= 4 }
 
-        if (headsignWords.isNotEmpty() && depWords.any { dw -> headsignWords.any { hw -> dw == hw } }) {
+        if (headsignWords.isNotEmpty() && !isGandiaPlatjaConflict(depNorm, headsignNorm) &&
+            depWords.any { dw -> headsignWords.any { hw -> dw == hw } }) {
             return true
         }
 
-        if (toWords.isNotEmpty() && depWords.any { dw -> toWords.any { tw -> dw == tw } }) {
+        if (toWords.isNotEmpty() && !isGandiaPlatjaConflict(depNorm, toNameNorm) &&
+            depWords.any { dw -> toWords.any { tw -> dw == tw } }) {
             return true
         }
 

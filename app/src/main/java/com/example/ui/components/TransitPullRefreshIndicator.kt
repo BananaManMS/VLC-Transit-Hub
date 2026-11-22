@@ -45,10 +45,11 @@ import com.example.ui.dashboard.AppLanguage
 fun BoxScope.TransitPullRefreshIndicator(
     state: PullToRefreshState,
     isRefreshing: Boolean,
-    stationName: String,
-    operatorName: String,
+    stationName: String = "",
+    operatorName: String = "",
     appLanguage: AppLanguage,
     isInitialLoad: Boolean = false,
+    refreshingText: String? = null,
     modifier: Modifier = Modifier
 ) {
     val distance = state.distanceFraction
@@ -65,9 +66,10 @@ fun BoxScope.TransitPullRefreshIndicator(
     ) {
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
             shadowElevation = 4.dp,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.testTag("transit_pull_refresh_indicator")
         ) {
             Row(
@@ -95,15 +97,19 @@ fun BoxScope.TransitPullRefreshIndicator(
 
                 val statusText = when {
                     isRefreshing -> {
-                        if (isInitialLoad) {
-                            when (appLanguage) {
+                        when {
+                            !refreshingText.isNullOrBlank() -> refreshingText
+                            stationName.isNotBlank() && isInitialLoad -> when (appLanguage) {
                                 AppLanguage.CA -> "Consultant eixides de $stationName..."
                                 else -> "Consultando salidas de $stationName..."
                             }
-                        } else {
-                            when (appLanguage) {
+                            stationName.isNotBlank() -> when (appLanguage) {
                                 AppLanguage.CA -> "Actualitzant eixides de $stationName..."
                                 else -> "Actualizando salidas de $stationName..."
+                            }
+                            else -> when (appLanguage) {
+                                AppLanguage.CA -> "Actualitzant..."
+                                else -> "Actualizando..."
                             }
                         }
                     }

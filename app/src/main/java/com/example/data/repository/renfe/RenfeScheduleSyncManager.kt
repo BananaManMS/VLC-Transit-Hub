@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.File
 import java.net.URL
+import java.text.Normalizer
 import java.util.Locale
 
 class RenfeScheduleSyncManager(
@@ -290,26 +291,23 @@ class RenfeScheduleSyncManager(
             var versionUpgraded = false
             try {
                 val currentAssetsVersion = database.preferenceDao().getPreference("cercanias_assets_version")?.value ?: "0"
-                if (currentAssetsVersion != "19") {
+                if (currentAssetsVersion != "20") {
                     versionUpgraded = true
                     try {
                         if (localScheduleFile.exists()) {
                             localScheduleFile.delete()
                         }
                     } catch (e: Exception) {}
-                    try {
-                        stationDao.deleteAllStations()
-                    } catch (e: Exception) {}
                     database.preferenceDao().insertPreference(
-                        com.example.data.database.PreferenceEntity("cercanias_assets_version", "19")
+                        com.example.data.database.PreferenceEntity("cercanias_assets_version", "20")
                     )
                     database.preferenceDao().insertPreference(
-                        com.example.data.database.PreferenceEntity("cercanias_db_healthy_v19", "false")
+                        com.example.data.database.PreferenceEntity("cercanias_db_healthy_v20", "false")
                     )
                 } else {
                     val count = try { stationDao.getStationCount() } catch (_: Exception) { 0 }
                     val fastHealthy = try {
-                        database.preferenceDao().getPreference("cercanias_db_healthy_v19")?.value == "true"
+                        database.preferenceDao().getPreference("cercanias_db_healthy_v20")?.value == "true"
                     } catch (_: Exception) { false }
                     if (count >= 10 && fastHealthy) {
                         initializedDbHash = dbHash
@@ -342,7 +340,7 @@ class RenfeScheduleSyncManager(
             if (count >= 10 && !hasMojibake && !hasTorreblanca && !hasOldAlcudia && !hasUnnormalizedStations && !hasEmptyHorarios) {
                 try {
                     database.preferenceDao().insertPreference(
-                        com.example.data.database.PreferenceEntity("cercanias_db_healthy_v19", "true")
+                        com.example.data.database.PreferenceEntity("cercanias_db_healthy_v20", "true")
                     )
                 } catch (_: Exception) {}
                 initializedDbHash = dbHash
@@ -360,7 +358,7 @@ class RenfeScheduleSyncManager(
                 loadAndSaveScheduleJson(jsonArray)
                 try {
                     database.preferenceDao().insertPreference(
-                        com.example.data.database.PreferenceEntity("cercanias_db_healthy_v19", "true")
+                        com.example.data.database.PreferenceEntity("cercanias_db_healthy_v20", "true")
                     )
                 } catch (_: Exception) {}
                 initializedDbHash = dbHash
@@ -491,7 +489,7 @@ class RenfeScheduleSyncManager(
     }
 
     private fun processTripDestinationMap(jsonArray: JSONArray): Map<String, String> {
-        val tripMap = mutableMapOf<String, Pair<String, Int>>()
+        val tripStops = mutableMapOf<String, MutableList<Pair<String, Int>>>()
         for (i in 0 until jsonArray.length()) {
             val obj = jsonArray.optJSONObject(i) ?: continue
             val stopId = obj.optString("stop_id", "")
@@ -509,15 +507,19 @@ class RenfeScheduleSyncManager(
                 for (k in 0 until tripsArr.length()) {
                     val tid = tripsArr.getString(k).trim()
                     if (tid.isNotEmpty()) {
-                        val prev = tripMap[tid]
-                        if (prev == null || timeSec > prev.second) {
-                            tripMap[tid] = Pair(nombre, timeSec)
-                        }
+                        tripStops.getOrPut(tid) { mutableListOf() }.add(Pair(nombre, timeSec))
                     }
                 }
             }
         }
-        return tripMap.mapValues { it.value.first }
+        return tripStops.mapValues { (_, stops) ->
+            val hasLate = stops.any { it.second >= 20 * 3600 }
+            val hasEarly = stops.any { it.second < 4 * 3600 }
+            val terminal = stops.maxByOrNull { (_, sec) ->
+                if (hasLate && hasEarly && sec < 4 * 3600) sec + 86400 else sec
+            }
+            terminal?.first ?: ""
+        }
     }
 
     fun buildTripDestinationMapFromAssets() {
@@ -532,11 +534,24 @@ class RenfeScheduleSyncManager(
         }
     }
 
-    fun getTripDestination(tripId: String, line: String, currentStationName: String): String {
+    fun getTripDestination(
+        tripId: String,
+        line: String,
+        currentStationName: String,
+        allTripIds: List<String> = emptyList()
+    ): String {
         if (tripDestinationMap == null) {
             buildTripDestinationMapFromAssets()
         }
-        val rawDest = tripDestinationMap?.get(tripId)
+        val candidateIds = (listOf(tripId) + allTripIds).filter { it.isNotBlank() }.distinct()
+        var rawDest: String? = null
+        for (id in candidateIds) {
+            val found = tripDestinationMap?.get(id)
+            if (!found.isNullOrBlank()) {
+                rawDest = found
+                break
+            }
+        }
         val destName = if (!rawDest.isNullOrBlank()) {
             formatDestinationName(rawDest)
         } else {
@@ -557,7 +572,7 @@ class RenfeScheduleSyncManager(
     }
 
     internal fun formatDestinationName(rawDest: String): String {
-        var cleaned = rawDest.trim()
+        val cleaned = rawDest.trim()
             .replace("(?i)\\bCIVIS\\b".toRegex(), "")
             .replace("(?i)\\bCIVI\\b".toRegex(), "")
             .replace("(?i)\\bSEMIDIRECTO\\b".toRegex(), "")
@@ -572,25 +587,28 @@ class RenfeScheduleSyncManager(
 
         val dest = cleaned
         val lower = dest.lowercase(Locale.ROOT)
+        val normalized = Normalizer.normalize(dest, Normalizer.Form.NFD)
+            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+            .lowercase(Locale.ROOT)
         return when {
-            dest.equals("Estacio del Nord", ignoreCase = true) || lower.contains("valencia nord") || lower.contains("estacio del nord") || lower.contains("norte") -> "València Nord"
-            lower.contains("sant isidre") || lower.contains("st. isidre") -> "València St. Isidre"
-            lower.contains("cabanyal") -> "Cabanyal"
-            lower.contains("font de sant lluis") || lower.contains("sant lluis") || lower.contains("f. s. lluis") || lower.contains("lluís") -> "València F. S. Lluís"
-            lower.contains("vinaros") || lower.contains("vinaròs") -> "Vinaròs"
-            lower.contains("cullera") -> "Cullera"
-            lower.contains("benicarlo") || lower.contains("benicarló") || lower.contains("peniscola") -> "Benicarló-Peníscola"
-            lower.contains("castello") || lower.contains("castellon") || lower.contains("castelló") -> "Castelló de la Plana"
-            lower.contains("xativa") || lower.contains("xàtiva") -> "Xàtiva"
-            lower.contains("alcudia") || lower.contains("alcúdia") -> "L'Alcúdia de Crespins"
-            lower.contains("bunol") || lower.contains("buã") || lower.contains("buñ") || lower.contains("bunyol") || (lower.contains("bu") && lower.contains("ol")) -> "Buñol"
+            dest.equals("Estacio del Nord", ignoreCase = true) || normalized.contains("valencia nord") || normalized.contains("estacio del nord") || normalized.contains("norte") -> "València Nord"
+            normalized.contains("sant isidre") || normalized.contains("st. isidre") -> "València St. Isidre"
+            normalized.contains("cabanyal") -> "Cabanyal"
+            normalized.contains("font de sant lluis") || normalized.contains("sant lluis") || normalized.contains("f. s. lluis") -> "València F. S. Lluís"
+            normalized.contains("vinaros") -> "Vinaròs"
+            normalized.contains("cullera") -> "Cullera"
+            normalized.contains("benicarlo") || normalized.contains("peniscola") -> "Benicarló-Peníscola"
+            normalized.contains("castello") || normalized.contains("castellon") -> "Castelló de la Plana"
+            normalized.contains("xativa") -> "Xàtiva"
+            normalized.contains("alcudia") -> "L'Alcúdia de Crespins"
+            lower.contains("bunol") || lower.contains("buã") || lower.contains("buñ") || lower.contains("bunyol") || (normalized.contains("bu") && normalized.contains("ol")) -> "Buñol"
             lower.contains("puc") || lower.contains("puç") || lower.contains("puã") || lower.contains("pua") -> "Puçol"
-            lower.contains("burriana") || lower.contains("alquerias") || lower.contains("niño") -> "Burriana - Alquerías del Niño Perdido"
-            lower.contains("platja") || lower.contains("grau") -> "Platja i Grau de Gandia"
-            lower.contains("gandia") -> "Gandia"
-            lower.contains("moixent") || lower.contains("mogente") -> "Moixent"
-            lower.contains("utiel") -> "Utiel"
-            lower.contains("caudiel") -> "Caudiel"
+            normalized.contains("burriana") || normalized.contains("alquerias") || lower.contains("niño") -> "Burriana - Alquerías del Niño Perdido"
+            normalized.contains("platja") || normalized.contains("playa") || normalized.contains("grau") || normalized.contains("grao") -> "Platja i Grau de Gandia"
+            normalized.contains("gandia") -> "Gandia"
+            normalized.contains("moixent") || normalized.contains("mogente") -> "Moixent"
+            normalized.contains("utiel") -> "Utiel"
+            normalized.contains("caudiel") -> "Caudiel"
             else -> dest
         }
     }

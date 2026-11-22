@@ -81,6 +81,7 @@ fun DashboardScreen(
     }
 
     val isDarkMode by viewModel.isDarkMode.collectAsState()
+    val colorLabConfig by viewModel.colorLabConfig.collectAsState()
     val isFahrenheit by viewModel.isFahrenheit.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val appLanguage by viewModel.appLanguage.collectAsState()
@@ -104,8 +105,8 @@ fun DashboardScreen(
 
     val appUpdateViewModel = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.update.AppUpdateViewModel>()
 
-    var activeTab by remember { mutableStateOf(DashboardTab.Inicio) }
-    var previousTabForBack by remember { mutableStateOf<DashboardTab?>(null) }
+    var activeTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(DashboardTab.Inicio) }
+    var previousTabForBack by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<DashboardTab?>(null) }
     var busInitialPage by remember { androidx.compose.runtime.mutableIntStateOf(-1) }
     var metroInitialPage by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var cercaniasInitialPage by remember { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -236,7 +237,7 @@ fun DashboardScreen(
         }
     }
 
-    VlcMetroTheme(darkTheme = isDarkMode) {
+    VlcMetroTheme(darkTheme = isDarkMode, colorLabConfig = colorLabConfig) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
@@ -269,61 +270,63 @@ fun DashboardScreen(
                 modifier = modifier.fillMaxSize(),
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
-                    DashboardBottomNavBar(
-                        activeTab = activeTab,
-                        isDarkMode = isDarkMode,
-                        onTabSelected = { selectedTab ->
-                            when (selectedTab) {
-                                DashboardTab.Inicio -> {
-                                    previousTabForBack = null
-                                    if (activeTrip == null) {
-                                        activeMapItinerary = null
-                                        isViewingPlannerItineraryOnMap = false
+                    if (activeTab != DashboardTab.Ajustes) {
+                        DashboardBottomNavBar(
+                            activeTab = activeTab,
+                            isDarkMode = isDarkMode,
+                            onTabSelected = { selectedTab ->
+                                when (selectedTab) {
+                                    DashboardTab.Inicio -> {
+                                        previousTabForBack = null
+                                        if (activeTrip == null) {
+                                            activeMapItinerary = null
+                                            isViewingPlannerItineraryOnMap = false
+                                        }
+                                        activeTab = DashboardTab.Inicio
                                     }
-                                    activeTab = DashboardTab.Inicio
-                                }
-                                DashboardTab.Mapa -> {
-                                    previousTabForBack = null
-                                    val currentTrip = activeTrip
-                                    if (currentTrip != null && !userDismissedActiveMapItinerary) {
-                                        activeMapItinerary = currentTrip.itinerary
+                                    DashboardTab.Mapa -> {
+                                        previousTabForBack = null
+                                        val currentTrip = activeTrip
+                                        if (currentTrip != null && !userDismissedActiveMapItinerary) {
+                                            activeMapItinerary = currentTrip.itinerary
+                                        }
+                                        activeTab = DashboardTab.Mapa
                                     }
-                                    activeTab = DashboardTab.Mapa
-                                }
-                                DashboardTab.Bus -> {
-                                    previousTabForBack = null
-                                    busInitialPage = -1
-                                    if (activeTrip == null) {
-                                        activeMapItinerary = null
-                                        isViewingPlannerItineraryOnMap = false
+                                    DashboardTab.Bus -> {
+                                        previousTabForBack = null
+                                        busInitialPage = -1
+                                        if (activeTrip == null) {
+                                            activeMapItinerary = null
+                                            isViewingPlannerItineraryOnMap = false
+                                        }
+                                        activeTab = DashboardTab.Bus
                                     }
-                                    activeTab = DashboardTab.Bus
-                                }
-                                DashboardTab.Metro -> {
-                                    previousTabForBack = null
-                                    metroInitialPage = 0
-                                    if (activeTrip == null) {
-                                        activeMapItinerary = null
-                                        isViewingPlannerItineraryOnMap = false
+                                    DashboardTab.Metro -> {
+                                        previousTabForBack = null
+                                        metroInitialPage = 0
+                                        if (activeTrip == null) {
+                                            activeMapItinerary = null
+                                            isViewingPlannerItineraryOnMap = false
+                                        }
+                                        activeTab = DashboardTab.Metro
                                     }
-                                    activeTab = DashboardTab.Metro
-                                }
-                                DashboardTab.Cercanias -> {
-                                    previousTabForBack = null
-                                    cercaniasInitialPage = 0
-                                    if (activeTrip == null) {
-                                        activeMapItinerary = null
-                                        isViewingPlannerItineraryOnMap = false
+                                    DashboardTab.Cercanias -> {
+                                        previousTabForBack = null
+                                        cercaniasInitialPage = 0
+                                        if (activeTrip == null) {
+                                            activeMapItinerary = null
+                                            isViewingPlannerItineraryOnMap = false
+                                        }
+                                        activeTab = DashboardTab.Cercanias
                                     }
-                                    activeTab = DashboardTab.Cercanias
-                                }
-                                DashboardTab.Ajustes -> {
-                                    previousTabForBack = null
-                                    activeTab = DashboardTab.Ajustes
+                                    DashboardTab.Ajustes -> {
+                                        previousTabForBack = null
+                                        activeTab = DashboardTab.Ajustes
+                                    }
                                 }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             ) { innerPadding ->
                 BoxWithConstraints(

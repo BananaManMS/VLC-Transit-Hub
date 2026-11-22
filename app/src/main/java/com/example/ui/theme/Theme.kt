@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import android.app.Activity
 import androidx.core.view.WindowCompat
@@ -49,55 +50,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 
-private val DarkColorScheme = darkColorScheme(
-    background = Color(0xFF171717),
-    surface = Color(0xFF222222),
-    surfaceVariant = Color(0xFF2C2C2C),
-    primary = Color(0xFF60A5FA),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFF1E3A8A),
-    onPrimaryContainer = Color(0xFFFFFFFF), // Pure white text/icons on primaryContainer for crisp contrast
-    secondary = Color(0xFF60A5FA),
-    onSecondary = Color(0xFF171717),
-    secondaryContainer = Color(0xFF222222),
-    onSecondaryContainer = Color(0xFFF8FAFC),
-    tertiary = Color(0xFF38BDF8),
-    onTertiary = Color(0xFF171717),
-    tertiaryContainer = Color(0xFF0369A1),
-    onTertiaryContainer = Color(0xFFFFFFFF),
-    onBackground = Color(0xFFF8FAFC),
-    onSurface = Color(0xFFF8FAFC),
-    onSurfaceVariant = Color(0xFFA3A3A3),
-    error = Color(0xFFEF4444),
-    errorContainer = Color(0xFF3F1F1F),
-    onError = Color(0xFFFFFFFF),
-    onErrorContainer = Color(0xFFFCA5A5),
-    outline = Color(0xFF404040),
-    outlineVariant = Color(0xFF333333)
-)
+val LocalColorLabConfig = staticCompositionLocalOf { ColorLabConfig.Default }
 
-private val LightColorScheme = lightColorScheme(
-    background = Color(0xFFFAFAFA), // Blanco roto #FAFAFA neutral background
-    surface = Color(0xFFFFFFFF),    // Pure white cards
-    surfaceVariant = Color(0xFFF1F5F9),
-    primary = Color(0xFF2563EB),
-    primaryContainer = Color(0xFFEFF6FF),
-    secondary = Color(0xFF3B82F6),
-    secondaryContainer = Color(0xFFDBEAFE),
-    onBackground = Color(0xFF0F172A),
-    onSurface = Color(0xFF0F172A),
-    onSurfaceVariant = Color(0xFF475569),
-    onPrimary = Color(0xFFFFFFFF),
-    onSecondary = Color(0xFFFFFFFF),
-    onPrimaryContainer = Color(0xFF1D4ED8),
-    onSecondaryContainer = Color(0xFF1E40AF),
-    error = Color(0xFFEF4444),
-    errorContainer = Color(0xFFFEE2E2),
-    onError = Color(0xFFFFFFFF),
-    onErrorContainer = Color(0xFF991B1B),
-    outline = Color(0xFF94A3B8),
-    outlineVariant = Color(0xFFE2E8F0)
-)
+private val DarkColorScheme = buildAppColorScheme(ColorLabConfig.Default, darkTheme = true)
+private val LightColorScheme = buildAppColorScheme(ColorLabConfig.Default, darkTheme = false)
 
 // ============================================================================
 // 2. TIPOGRAFÍA UNIFICADA (Fuentes Locales TTF con Pesos Específicos)
@@ -318,18 +274,19 @@ fun UnifiedTabRow(
     selectedTabIndex: Int,
     tabs: List<String>,
     modifier: Modifier = Modifier,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
     onTabSelected: (Int) -> Unit
 ) {
     TabRow(
         selectedTabIndex = selectedTabIndex,
         modifier = modifier.fillMaxWidth(),
         containerColor = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.primary,
+        contentColor = accentColor,
         indicator = { tabPositions ->
             if (selectedTabIndex < tabPositions.size) {
                 TabRowDefaults.SecondaryIndicator(
                     modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                    color = MaterialTheme.colorScheme.primary
+                    color = accentColor
                 )
             }
         }
@@ -348,7 +305,7 @@ fun UnifiedTabRow(
                         text = capitalizedTitle,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
-                        color = if (selectedTabIndex == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (selectedTabIndex == index) accentColor else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             )
@@ -375,6 +332,7 @@ fun UnifiedAppCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     border: BorderStroke? = null,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
     startContent: @Composable () -> Unit,
     centerContent: @Composable () -> Unit,
     endContent: @Composable () -> Unit
@@ -390,7 +348,7 @@ fun UnifiedAppCard(
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val effectiveBorder = border ?: BorderStroke(
         width = 1.dp,
-        color = if (isDark) Color(0xFF262C3A) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        color = if (isDark) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
     )
 
     Card(
@@ -399,7 +357,7 @@ fun UnifiedAppCard(
         elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp),
         border = effectiveBorder,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = containerColor
         )
     ) {
         Row(
@@ -453,6 +411,15 @@ object AppThemeColors {
     fun subtleBorder(isDark: Boolean): Color = if (isDark) Color(0xFF333333) else Color(0xFFE2E8F0)
     fun textPrimary(isDark: Boolean): Color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     fun textSecondary(isDark: Boolean): Color = if (isDark) Color(0xFFA3A3A3) else Color(0xFF64748B)
+
+    // Semantic operational status tokens (never conflate with brand primary)
+    fun statusOk(isDark: Boolean): Color = if (isDark) Color(0xFF10B981) else Color(0xFF059669)
+    fun statusOkContainer(isDark: Boolean): Color = if (isDark) Color(0xFF102820) else Color(0xFFECFDF5)
+    fun statusWarning(isDark: Boolean): Color = if (isDark) Color(0xFFFBBF24) else Color(0xFFD97706)
+    fun statusWarningContainer(isDark: Boolean): Color = if (isDark) Color(0xFF2A2215) else Color(0xFFFEF3C7)
+    fun statusError(isDark: Boolean): Color = if (isDark) Color(0xFFF87171) else Color(0xFFDC2626)
+    fun statusErrorContainer(isDark: Boolean): Color = if (isDark) Color(0xFF33181A) else Color(0xFFFEE2E2)
+    fun statusAccessibility(isDark: Boolean): Color = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
 }
 
 // ============================================================================
@@ -462,8 +429,10 @@ object AppThemeColors {
 fun MyApplicationTheme(
     darkTheme: Boolean = true,
     dynamicColor: Boolean = false, // Desactivado para mantener coherencia de transporte
+    colorLabConfig: ColorLabConfig = LocalColorLabConfig.current,
     content: @Composable () -> Unit
 ) {
+    val colorScheme = buildAppColorScheme(config = colorLabConfig, darkTheme = darkTheme)
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -471,16 +440,16 @@ fun MyApplicationTheme(
             if (window != null) {
                 WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
                 WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
-                window.statusBarColor = if (darkTheme) android.graphics.Color.parseColor("#171717") else android.graphics.Color.parseColor("#FAFAFA")
+                window.statusBarColor = colorScheme.background.toArgb()
                 window.navigationBarColor = if (darkTheme) android.graphics.Color.parseColor("#000000") else android.graphics.Color.parseColor("#FFFFFF")
             }
         }
     }
 
     CompositionLocalProvider(
-        LocalAppDimens provides Dimensions()
+        LocalAppDimens provides Dimensions(),
+        LocalColorLabConfig provides colorLabConfig
     ) {
-        val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
         MaterialTheme(
             colorScheme = colorScheme,
             typography = AppTypography,
@@ -492,7 +461,12 @@ fun MyApplicationTheme(
 @Composable
 fun VlcMetroTheme(
     darkTheme: Boolean = true,
+    colorLabConfig: ColorLabConfig = LocalColorLabConfig.current,
     content: @Composable () -> Unit
 ) {
-    MyApplicationTheme(darkTheme = darkTheme, content = content)
+    MyApplicationTheme(
+        darkTheme = darkTheme,
+        colorLabConfig = colorLabConfig,
+        content = content
+    )
 }

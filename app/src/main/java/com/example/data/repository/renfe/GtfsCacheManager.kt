@@ -58,6 +58,12 @@ class GtfsCacheManager(private val context: Context) {
         private var lastVehiclePositionsEmissionTimestamp: Long = 0L
 
         @Volatile
+        private var cachedFlotaCoveredKeys: Set<String> = emptySet()
+
+        @Volatile
+        private var lastFlotaSuccessTimeMs: Long = 0L
+
+        @Volatile
         private var lastFlotaEtag: String = ""
 
         @Volatile
@@ -113,9 +119,16 @@ class GtfsCacheManager(private val context: Context) {
      * Discards trains from Madrid, Barcelona, Sevilla, etc. from nationwide GTFS-RT feeds.
      */
     fun isValenciaNucleus40(vehicle: LiveVehicleInfo): Boolean {
+        val lat = vehicle.latitude
+        val lon = vehicle.longitude
+        val hasValidCoords = lat != null && lon != null && !lat.isNaN() && !lon.isNaN() && lat != 0.0 && lon != 0.0
+        if (hasValidCoords && (lat!! !in 38.65..40.65 || lon!! !in -1.50..0.65)) {
+            return false
+        }
+
         val r = vehicle.routeId.trim()
         if (r.isNotBlank()) {
-            if (r.startsWith("40") || CANONICAL_LINE_REGEX.matches(r.uppercase(Locale.ROOT))) return true
+            if (r.startsWith("40")) return true
             if (OTHER_NUCLEUS_PREFIXES.any { r.startsWith(it) }) {
                 return false
             }
@@ -127,6 +140,9 @@ class GtfsCacheManager(private val context: Context) {
                 return false
             }
         }
+        if (r.isNotBlank() && CANONICAL_LINE_REGEX.matches(r.uppercase(Locale.ROOT))) {
+            return true
+        }
 
         // Check València station ID if known
         val stopIds = CercaniasRouteUtils.getValenciaStopIds()
@@ -137,11 +153,7 @@ class GtfsCacheManager(private val context: Context) {
             return true
         }
 
-        val lat = vehicle.latitude ?: return false
-        val lon = vehicle.longitude ?: return false
-        if (lat.isNaN() || lon.isNaN() || lat == 0.0 || lon == 0.0) return false
-
-        return lat in 38.65..40.65 && lon in -1.50..0.65
+        return hasValidCoords
     }
 
     suspend fun getUniqueLiveVehicles(): List<LiveVehicleInfo> = withContext(Dispatchers.IO) {
@@ -345,19 +357,39 @@ class GtfsCacheManager(private val context: Context) {
             joinAll(jobFlota, jobTripUpdates)
         }
 
+        if (flotaCoveredKeys.isNotEmpty()) {
+            cachedFlotaCoveredKeys = flotaCoveredKeys.toSet()
+            lastFlotaSuccessTimeMs = System.currentTimeMillis()
+        }
+
+        val nowMs = System.currentTimeMillis()
+        val effectiveFlotaCoveredKeys: Set<String> = when {
+            flotaCoveredKeys.isNotEmpty() -> flotaCoveredKeys
+            cachedFlotaCoveredKeys.isNotEmpty() && (nowMs - lastFlotaSuccessTimeMs) < 180_000L -> cachedFlotaCoveredKeys
+            else -> emptySet()
+        }
+
         val vpExtraMap = mutableMapOf<String, LiveVehicleInfo>()
+        val cachedVpForEnrichment = if (flotaVpMap.isEmpty() && effectiveFlotaCoveredKeys.isNotEmpty()) {
+            val cutoff = (nowMs / 1000L) - 180L
+            cachedVehiclePositions.filterValues { it.timestamp >= cutoff }.toMutableMap()
+        } else null
+
         if (includeVehiclePositions && !vpBody.isNullOrBlank()) {
             // Merge trip updates so header trains from VP can read delayMinutes/routeId in one pass
             val combinedTuForEnrichment = cachedTripUpdates.toMutableMap().apply { putAll(tuMap) }
             val isVpFresh = parseVehiclePositionsJson(
                 jsonStr = vpBody!!,
                 outMap = vpExtraMap,
-                flotaCoveredKeys = flotaCoveredKeys,
-                flotaVpMap = flotaVpMap,
+                flotaCoveredKeys = effectiveFlotaCoveredKeys,
+                flotaVpMap = cachedVpForEnrichment ?: flotaVpMap,
                 tripUpdatesForEnrichment = combinedTuForEnrichment
             )
             if (isVpFresh) {
                 anyFeedUpdated.set(true)
+                if (cachedVpForEnrichment != null && cachedVpForEnrichment.isNotEmpty()) {
+                    flotaVpMap.putAll(cachedVpForEnrichment)
+                }
             }
         }
 
@@ -941,9 +973,19 @@ class GtfsCacheManager(private val context: Context) {
             val speed = posObj?.optDouble("speed", Double.NaN)?.takeIf { !it.isNaN() }
             val bearing = posObj?.optDouble("bearing", Double.NaN)?.takeIf { !it.isNaN() }?.toFloat()
 
+            val vehicleObj = vehEntity.optJSONObject("vehicle")
+            val vehicleId = vehicleObj?.optString("id", "")?.trim() ?: ""
+            val vehicleLabel = vehicleObj?.optString("label", "")?.trim() ?: ""
+
+            val canonicalLine = CercaniasRouteUtils.getCanonicalLineCode(routeId, tripId)
+            val effectiveTrainNum = CercaniasRouteUtils.getEffectiveTrainNumber(vehicleId, tripId)
+
             // If flota.json already parsed this active train with complete via/nextVia/origin/dest/delay,
             // skip reconstructing LiveVehicleInfo and only supplement missing speed/bearing if present.
-            val candidateKeys = CercaniasRouteUtils.getExactAndBaseTripKeys(tripId)
+            val candidateKeys = CercaniasRouteUtils.getExactAndBaseTripKeys(tripId).toMutableList()
+            if (canonicalLine.isNotBlank() && effectiveTrainNum.isNotBlank()) {
+                candidateKeys.add("${canonicalLine}_$effectiveTrainNum")
+            }
             val coveredKey = candidateKeys.firstOrNull { it in flotaCoveredKeys }
             if (coveredKey != null) {
                 if (speed != null || bearing != null) {
@@ -964,10 +1006,6 @@ class GtfsCacheManager(private val context: Context) {
             val status = vehEntity.optString("current_status", vehEntity.optString("currentStatus", "IN_TRANSIT_TO")).trim()
             val timestamp = vehEntity.optLong("timestamp", nowSec)
 
-            val vehicleObj = vehEntity.optJSONObject("vehicle")
-            val vehicleId = vehicleObj?.optString("id", "")?.trim() ?: ""
-            val vehicleLabel = vehicleObj?.optString("label", "")?.trim() ?: ""
-
             var platform = vehicleObj?.optString("platform", "")?.trim() ?: ""
             if (platform.isBlank() && vehicleLabel.isNotBlank()) {
                 val m = PLATF_REGEX.find(vehicleLabel)
@@ -977,8 +1015,6 @@ class GtfsCacheManager(private val context: Context) {
             }
 
             if (tripId.isNotBlank() || vehicleId.isNotBlank()) {
-                val canonicalLine = CercaniasRouteUtils.getCanonicalLineCode(routeId, tripId)
-                val effectiveTrainNum = CercaniasRouteUtils.getEffectiveTrainNumber(vehicleId, tripId)
 
                 // Enrich header/pre-departure train from trip_updates.json if available
                 val tuMatch = candidateKeys.firstNotNullOfOrNull { tripUpdatesForEnrichment[it] }

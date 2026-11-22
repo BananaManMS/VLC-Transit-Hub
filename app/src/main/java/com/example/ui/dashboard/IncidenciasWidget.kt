@@ -255,8 +255,7 @@ fun IncidenciasWidget(
             if (showMetro) {
                 OperatorIncidentsRow(
                     operatorName = androidx.compose.ui.res.stringResource(com.example.R.string.operator_metrovalencia),
-                    iconVector = Icons.Default.Subway,
-                    iconTint = Color(0xFF1E88E5),
+                    logoRes = com.example.R.drawable.logo_metrovalencia,
                     incidentsCount = totalMetroIncidents,
                     affectedLines = metroAffectedLines,
                     categoryBadges = metroCategoryBadges,
@@ -283,8 +282,7 @@ fun IncidenciasWidget(
             if (showCercanias) {
                 OperatorIncidentsRow(
                     operatorName = androidx.compose.ui.res.stringResource(com.example.R.string.operator_cercanias_valencia),
-                    iconVector = Icons.Default.DirectionsRailway,
-                    iconTint = Color(0xFFE53935),
+                    logoRes = com.example.R.drawable.logo_cercanias,
                     incidentsCount = filteredCercaniasAlerts.size,
                     affectedLines = cercaniasAffectedLines,
                     hasAllLines = cercaniasHasAll,
@@ -305,8 +303,7 @@ fun IncidenciasWidget(
 @Composable
 private fun OperatorIncidentsRow(
     operatorName: String,
-    iconVector: androidx.compose.ui.graphics.vector.ImageVector,
-    iconTint: Color,
+    logoRes: Int,
     incidentsCount: Int,
     affectedLines: List<LineAlertStatus>,
     categoryBadges: List<CategoryCountBadge> = emptyList(),
@@ -334,11 +331,11 @@ private fun OperatorIncidentsRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(
-                imageVector = iconVector,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(22.dp)
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(id = logoRes),
+                contentDescription = operatorName,
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                modifier = Modifier.size(24.dp)
             )
 
             Column(
@@ -372,16 +369,28 @@ private fun OperatorIncidentsRow(
                         Text(
                             text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_info_unavailable),
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (isDarkMode) Color(0xFFFBBF24) else Color(0xFFD97706),
+                            color = com.example.ui.theme.AppThemeColors.statusWarning(isDarkMode),
                             fontSize = 12.sp
                         )
                     } else {
                         Text(
                             text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_no_incidents),
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF10B981),
+                            color = com.example.ui.theme.AppThemeColors.statusOk(isDarkMode),
                             fontSize = 12.sp
                         )
+                    }
+                } else if (affectedLines.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        affectedLines.forEach { lineStatus ->
+                            LineBadgeChip(lineStatus = lineStatus)
+                        }
                     }
                 } else if (categoryBadges.isNotEmpty()) {
                     Row(
@@ -394,7 +403,7 @@ private fun OperatorIncidentsRow(
                         categoryBadges.forEach { badge ->
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
-                                color = badge.color.copy(alpha = 0.12f)
+                                color = badge.color.copy(alpha = 0.14f)
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -428,12 +437,12 @@ private fun OperatorIncidentsRow(
                         Text(
                             text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_affects_all_lines),
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFFF9800),
+                            color = com.example.ui.theme.AppThemeColors.statusWarning(isDarkMode),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
                         )
                     }
-                } else if (affectedLines.isEmpty()) {
+                } else {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -443,21 +452,9 @@ private fun OperatorIncidentsRow(
                         Text(
                             text = androidx.compose.ui.res.stringResource(com.example.R.string.incidencias_active_count, incidentsCount),
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFFF9800),
+                            color = com.example.ui.theme.AppThemeColors.statusWarning(isDarkMode),
                             fontSize = 12.sp
                         )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        affectedLines.forEach { lineStatus ->
-                            LineBadgeChip(lineStatus = lineStatus)
-                        }
                     }
                 }
             }

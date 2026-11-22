@@ -35,6 +35,8 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.model.announcement.RemoteAnnouncement
 import com.example.ui.dashboard.AppLanguage
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 
 @Composable
 fun ActiveAnnouncementsDialog(
@@ -49,22 +51,18 @@ fun ActiveAnnouncementsDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
+        properties = AppDialogDefaults.Properties
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.94f)
+                .appDialogWidth()
                 .fillMaxHeight(0.85f)
-                .widthIn(max = 540.dp)
                 .padding(vertical = 12.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = if (isDarkMode) Color(0xFF1C1E2A) else MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
-            shadowElevation = 10.dp
+            shape = AppDialogDefaults.Shape,
+            color = AppDialogDefaults.containerColor(),
+            border = AppDialogDefaults.border(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation
         ) {
             Column(
                 modifier = Modifier
@@ -225,12 +223,12 @@ fun ActiveAnnouncementCard(
         announcement.actionTextCa ?: "Veure més"
     }
 
-    // Borderless card with style of startup announcement elements
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        color = if (isDarkMode) Color(0xFF262938) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        tonalElevation = 2.dp,
+        color = AppDialogDefaults.subContainerColor(),
+        border = AppDialogDefaults.border(),
+        tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
         Column(

@@ -49,8 +49,10 @@ import com.example.data.model.ValenciaMetroData
 import com.example.ui.metro.MetroViewModel
 import com.example.ui.metro.MetroStationSelectionDialog
 import com.example.ui.metro.computeMetroSearchScore
+import com.example.ui.theme.AppDialogDefaults
 import com.example.ui.theme.ScreenHeader
 import com.example.ui.theme.UnifiedAppCard
+import com.example.ui.theme.appDialogWidth
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -63,22 +65,24 @@ fun AboutAppDialog(
     onDismiss: () -> Unit
 ) {
     val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
-    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
-    val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
-    val borderColor = if (isDarkMode) Color(0xFF2D3748) else Color(0xFFE2E8F0)
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val accentColor = MaterialTheme.colorScheme.primary
+    val borderColor = MaterialTheme.colorScheme.outlineVariant
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = AppDialogDefaults.Properties
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.85f)
-                .clip(RoundedCornerShape(20.dp)),
-            color = if (isDarkMode) Color(0xFF131824) else MaterialTheme.colorScheme.surface,
-            tonalElevation = 4.dp
+                .appDialogWidth()
+                .fillMaxHeight(0.85f),
+            shape = AppDialogDefaults.Shape,
+            color = AppDialogDefaults.containerColor(),
+            border = AppDialogDefaults.border(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation
         ) {
             Column(
                 modifier = Modifier
@@ -346,10 +350,10 @@ fun PrivacyPolicyDialog(
     onDismiss: () -> Unit
 ) {
     val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
-    val textColor = if (isDarkMode) Color(0xFFF2F4F8) else Color(0xFF1C1B1F)
-    val subtextColor = if (isDarkMode) Color(0xFF8791A6) else Color(0xFF49454F)
-    val accentColor = if (isDarkMode) Color(0xFF4F8CFF) else MaterialTheme.colorScheme.primary
-    val borderColor = if (isDarkMode) Color(0xFF2D3748) else Color(0xFFE2E8F0)
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val accentColor = MaterialTheme.colorScheme.primary
+    val borderColor = MaterialTheme.colorScheme.outlineVariant
 
     val sections = listOf(
         com.example.R.string.privacy_sec_no_account_title to com.example.R.string.privacy_sec_no_account_body,
@@ -362,15 +366,17 @@ fun PrivacyPolicyDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = AppDialogDefaults.Properties
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.82f)
-                .clip(RoundedCornerShape(20.dp)),
-            color = if (isDarkMode) Color(0xFF131824) else MaterialTheme.colorScheme.surface,
-            tonalElevation = 4.dp
+                .appDialogWidth()
+                .fillMaxHeight(0.82f),
+            shape = AppDialogDefaults.Shape,
+            color = AppDialogDefaults.containerColor(),
+            border = AppDialogDefaults.border(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
+            shadowElevation = AppDialogDefaults.ShadowElevation
         ) {
             Column(
                 modifier = Modifier

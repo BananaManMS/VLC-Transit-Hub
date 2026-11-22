@@ -59,6 +59,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -79,10 +80,10 @@ import com.example.R
 import com.example.ui.theme.AppThemeColors
 import com.example.ui.theme.SpaceGroteskFontFamily
 
-internal val TransitBrandBlue = Color(0xFF2563EB)
 internal val TransitMetroCrimson = Color(0xFFEC1B4B)
+internal val TransitBrandBlue = TransitMetroCrimson
 internal val TransitEmerald = Color(0xFF10B981)
-internal val TransitEmtSky = Color(0xFF0284C7)
+internal val TransitEmtSky = Color(0xFFE53935)
 internal val TransitCercaniasPurple = Color(0xFF702B7B)
 internal val TransitAmber = Color(0xFFF59E0B)
 
@@ -165,11 +166,12 @@ internal fun MetroLineOnboardingHeader(
         bottomStart = 24.dp,
         bottomEnd = 24.dp
     )
-    val headerBg = if (isDarkMode) Color(0xFF1E222B) else MaterialTheme.colorScheme.surface
-    val bottomOutlineColor = if (isDarkMode) Color(0xFF313A4D) else Color(0xFFCBD5E1)
-    val stripBg = if (isDarkMode) Color(0xFF141821) else Color(0xFFF1F5F9)
-    val stripBorder = if (isDarkMode) Color(0xFF282F3E) else Color(0xFFE2E8F0)
-    val trackInactiveColor = if (isDarkMode) Color(0xFF333D52) else Color(0xFFCBD5E1)
+    val headerBg = MaterialTheme.colorScheme.surface
+    val bottomOutlineColor = MaterialTheme.colorScheme.outlineVariant
+    val stripBg = MaterialTheme.colorScheme.background
+    val stripBorder = MaterialTheme.colorScheme.outlineVariant
+    val trackInactiveColor = if (isDarkMode) MaterialTheme.colorScheme.outlineVariant else Color(0xFFCBD5E1)
+    val activeAccent = MaterialTheme.colorScheme.primary
 
     Surface(
         modifier = modifier
@@ -325,7 +327,7 @@ internal fun MetroLineOnboardingHeader(
                             val activeEndX = startX + span * pagerProgress
                             if (activeEndX > startX) {
                                 drawLine(
-                                    color = TransitMetroCrimson,
+                                    color = activeAccent,
                                     start = Offset(startX, y),
                                     end = Offset(activeEndX, y),
                                     strokeWidth = trackStroke,
@@ -341,7 +343,7 @@ internal fun MetroLineOnboardingHeader(
                                 // Pequeño tick vertical hacia el nombre de estación (estética termómetro metro)
                                 drawLine(
                                     color = when {
-                                        isCurrent || isCompleted -> TransitMetroCrimson.copy(alpha = 0.75f)
+                                        isCurrent || isCompleted -> activeAccent.copy(alpha = 0.75f)
                                         else -> trackInactiveColor.copy(alpha = 0.65f)
                                     },
                                     start = Offset(cx, y + 6.dp.toPx()),
@@ -353,7 +355,7 @@ internal fun MetroLineOnboardingHeader(
                                 when {
                                     isCurrent -> {
                                         drawCircle(
-                                            color = TransitMetroCrimson.copy(alpha = 0.24f),
+                                            color = activeAccent.copy(alpha = 0.24f),
                                             radius = 10.5.dp.toPx() * pulseScale,
                                             center = Offset(cx, y)
                                         )
@@ -363,13 +365,13 @@ internal fun MetroLineOnboardingHeader(
                                             center = Offset(cx, y)
                                         )
                                         drawCircle(
-                                            color = TransitMetroCrimson,
+                                            color = activeAccent,
                                             radius = 8.dp.toPx(),
                                             center = Offset(cx, y),
                                             style = Stroke(width = 3.dp.toPx())
                                         )
                                         drawCircle(
-                                            color = TransitMetroCrimson,
+                                            color = activeAccent,
                                             radius = 2.5.dp.toPx(),
                                             center = Offset(cx, y)
                                         )
@@ -377,7 +379,7 @@ internal fun MetroLineOnboardingHeader(
 
                                     isCompleted -> {
                                         drawCircle(
-                                            color = TransitMetroCrimson,
+                                            color = activeAccent,
                                             radius = 7.5.dp.toPx(),
                                             center = Offset(cx, y)
                                         )
@@ -424,7 +426,7 @@ internal fun MetroLineOnboardingHeader(
                                         fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
                                         color = when {
                                             isCurrent -> MaterialTheme.colorScheme.onSurface
-                                            isCompleted -> TransitMetroCrimson
+                                            isCompleted -> activeAccent
                                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                                         },
                                         textAlign = TextAlign.Center,
@@ -452,7 +454,7 @@ internal fun SegmentedTogglePill(
     firstTag: String,
     secondTag: String
 ) {
-    val trackBg = if (isDarkMode) Color(0xFF282F3E) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+    val trackBg = if (isDarkMode) Color(0xFF2C2C2C) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(11.dp))
@@ -484,7 +486,7 @@ private fun SegmentOptionItem(
     testTag: String
 ) {
     val bg by animateColorAsState(
-        targetValue = if (selected) TransitBrandBlue else Color.Transparent,
+        targetValue = if (selected) MaterialTheme.colorScheme.secondary else Color.Transparent,
         animationSpec = tween(180),
         label = "segment_bg"
     )
@@ -503,7 +505,7 @@ private fun SegmentOptionItem(
             style = MaterialTheme.typography.labelMedium,
             fontFamily = SpaceGroteskFontFamily,
             fontWeight = FontWeight.Bold,
-            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (selected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -544,13 +546,30 @@ internal fun PermissionActionPill(
             }
         }
     } else {
-        Button(
+        val isAmberWarning = accentColor == TransitAmber
+        val containerColor = if (isAmberWarning) {
+            TransitAmber.copy(alpha = 0.16f)
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        }
+        val contentColor = if (isAmberWarning) {
+            TransitAmber
+        } else {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        }
+        val borderColor = if (isAmberWarning) {
+            TransitAmber.copy(alpha = 0.35f)
+        } else {
+            MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f)
+        }
+        androidx.compose.material3.FilledTonalButton(
             onClick = onClick,
             shape = RoundedCornerShape(10.dp),
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = accentColor,
-                contentColor = Color.White
+            border = BorderStroke(1.dp, borderColor),
+            colors = ButtonDefaults.filledTonalButtonColors(
+                containerColor = containerColor,
+                contentColor = contentColor
             ),
             modifier = modifier.defaultMinSize(minHeight = 44.dp)
         ) {
@@ -577,18 +596,18 @@ internal fun TransitModeBentoTile(
 ) {
     val bgColor by animateColorAsState(
         targetValue = if (isSelected) {
-            brandColor.copy(alpha = if (isDarkMode) 0.18f else 0.10f)
+            brandColor.copy(alpha = if (isDarkMode) 0.14f else 0.08f).compositeOver(MaterialTheme.colorScheme.surface)
         } else {
-            if (isDarkMode) Color(0xFF151820) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+            if (isDarkMode) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         },
         animationSpec = tween(durationMillis = 180),
         label = "mode_tile_bg"
     )
     val borderColor by animateColorAsState(
         targetValue = if (isSelected) {
-            brandColor.copy(alpha = 0.85f)
+            brandColor.copy(alpha = if (isDarkMode) 0.55f else 0.45f)
         } else {
-            if (isDarkMode) Color(0xFF282F3E) else AppThemeColors.subtleBorder(false)
+            if (isDarkMode) Color(0xFF333333) else AppThemeColors.subtleBorder(false)
         },
         animationSpec = tween(durationMillis = 180),
         label = "mode_tile_border"

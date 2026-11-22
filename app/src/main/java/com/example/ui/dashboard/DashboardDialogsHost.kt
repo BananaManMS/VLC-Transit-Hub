@@ -30,6 +30,8 @@ import com.example.ui.metro.MetroSearchDialog
 import com.example.ui.metro.MetroStationSelectionDialog
 import com.example.ui.metro.MetroViewModel
 import com.example.ui.routing.components.RouteDetailBottomSheet
+import com.example.ui.theme.AppDialogDefaults
+import com.example.ui.theme.appDialogWidth
 import com.example.util.RealTimeTripStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -137,6 +139,11 @@ fun DashboardDialogsHost(
         val currentDest = activeTrip?.destinationName ?: ""
         AlertDialog(
             onDismissRequest = onDismissReplaceActiveTrip,
+            properties = AppDialogDefaults.Properties,
+            modifier = Modifier.appDialogWidth(),
+            shape = AppDialogDefaults.Shape,
+            containerColor = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
             title = {
                 Text(
                     text = androidx.compose.ui.res.stringResource(com.example.R.string.trip_replace_confirm_title),
@@ -181,6 +188,11 @@ fun DashboardDialogsHost(
 
         AlertDialog(
             onDismissRequest = onDismissTransferRiskDialog,
+            properties = AppDialogDefaults.Properties,
+            modifier = Modifier.appDialogWidth(),
+            shape = AppDialogDefaults.Shape,
+            containerColor = AppDialogDefaults.containerColor(),
+            tonalElevation = AppDialogDefaults.TonalElevation,
             icon = {
                 Icon(
                     imageVector = Icons.Default.Warning,

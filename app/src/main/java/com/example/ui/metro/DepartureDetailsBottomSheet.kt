@@ -454,11 +454,12 @@ fun DepartureDetailsBottomSheet(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .height(48.dp)
                             .testTag("departure_details_track_btn"),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isDarkMode) lineColor.copy(alpha = 0.22f).compositeOver(Color(0xFF262832)) else lineColor.copy(alpha = 0.12f),
-                            contentColor = if (isDarkMode) Color.White else lineColor
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
                         Icon(
@@ -633,7 +634,7 @@ fun DepartureDetailsBottomSheet(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isDarkMode) lineColor.copy(alpha = 0.22f).compositeOver(Color(0xFF232630)) else lineColor.copy(alpha = 0.12f)
+                            containerColor = if (isDarkMode) lineColor.copy(alpha = 0.20f).compositeOver(MaterialTheme.colorScheme.surface) else lineColor.copy(alpha = 0.10f).compositeOver(MaterialTheme.colorScheme.surface)
                         )
                     ) {
                         Row(
@@ -687,9 +688,9 @@ fun DepartureDetailsBottomSheet(
                             }
 
                             val currentStationTimeContainerColor = if (isDarkMode) {
-                                lineColor.copy(alpha = 0.35f).compositeOver(Color(0xFF232632))
+                                lineColor.copy(alpha = 0.32f).compositeOver(MaterialTheme.colorScheme.surface)
                             } else {
-                                lineColor.copy(alpha = 0.18f)
+                                lineColor.copy(alpha = 0.16f).compositeOver(MaterialTheme.colorScheme.surface)
                             }
                             val currentStationTimeContentColor = if (isDarkMode) Color.White else lineColor
 
