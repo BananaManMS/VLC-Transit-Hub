@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.metro.MetroLineBadge
 import com.example.ui.metro.TransitLogoUtils
+import com.example.ui.theme.AppDialogDefaults
 import com.example.util.LineColorResolver
 import com.example.util.MetrobusLineColorResolver
 
@@ -102,9 +103,9 @@ fun HabitualLinesSheet(
         }
     }
 
-    val sheetBg = if (isDarkMode) Color(0xFF1E212A) else MaterialTheme.colorScheme.surface
-    val textColor = if (isDarkMode) Color.White else MaterialTheme.colorScheme.onSurface
-    val subtextColor = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
+    val sheetBg = AppDialogDefaults.containerColor()
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subtextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -188,7 +189,7 @@ fun HabitualLinesSheet(
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFCBD5E1)
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                 )
             )
 
@@ -288,20 +289,20 @@ private fun HabitualLineChip(
     val chipBg = if (isSelected) {
         baseColor
     } else {
-        if (isDarkMode) Color(0xFF272A34) else Color(0xFFF1F5F9)
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
     }
 
     val contentColor = if (isSelected) {
         Color.White
     } else {
-        if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF334155)
+        MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(10.dp),
         color = chipBg,
-        border = if (isSelected) BorderStroke(2.dp, Color.White.copy(alpha = 0.8f)) else BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFCBD5E1)),
+        border = if (isSelected) BorderStroke(2.dp, Color.White.copy(alpha = 0.8f)) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.testTag("habitual_chip_${operatorKey}_$cleanLine")
     ) {
         Row(
