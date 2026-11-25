@@ -35,13 +35,13 @@ class ValenbisiRepository {
 
     suspend fun fetchStations(force: Boolean = false): List<ValenbisiStation> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        if (!force && cachedStationsList.isNotEmpty() && (now - lastFetchTimestamp < CACHE_DURATION_MS)) {
+        if (!force && !isFallbackCache && cachedStationsList.isNotEmpty() && (now - lastFetchTimestamp < CACHE_DURATION_MS)) {
             return@withContext cachedStationsList
         }
 
         fetchMutex.withLock {
             val lockNow = System.currentTimeMillis()
-            if (!force && cachedStationsList.isNotEmpty() && (lockNow - lastFetchTimestamp < CACHE_DURATION_MS)) {
+            if (!force && !isFallbackCache && cachedStationsList.isNotEmpty() && (lockNow - lastFetchTimestamp < CACHE_DURATION_MS)) {
                 return@withLock cachedStationsList
             }
 
@@ -258,8 +258,13 @@ class ValenbisiRepository {
             }
         }
 
-        // 4. Fallback: Core Valencia landmarks & Valenbisi stations
-        if (list.isEmpty()) {
+        // 4. Fallback: Preserve prior real stations if available, otherwise core Valencia landmarks (without poisoning cache TTL)
+        val fetchedFromNetwork = list.isNotEmpty()
+        if (!fetchedFromNetwork) {
+            if (cachedStationsList.isNotEmpty() && !isFallbackCache) {
+                _sharedStationsFlow.value = cachedStationsList
+                return@withLock cachedStationsList
+            }
             val defaultStations = listOf(
                 ValenbisiStation(1, "Plaça de l'Ajuntament", 1, "Plaça de l'Ajuntament, 1", true, 8, 12, 20, true, 39.46975, -0.37639),
                 ValenbisiStation(2, "Estació del Nord - Xàtiva", 2, "Carrer de Xàtiva, 24", true, 11, 9, 20, true, 39.46670, -0.37720),
@@ -279,7 +284,13 @@ class ValenbisiRepository {
 
         val sortedList = list.distinctBy { it.number }.sortedBy { it.number }
         cachedStationsList = sortedList
-        lastFetchTimestamp = System.currentTimeMillis()
+        if (fetchedFromNetwork) {
+            isFallbackCache = false
+            lastFetchTimestamp = System.currentTimeMillis()
+        } else {
+            isFallbackCache = true
+            lastFetchTimestamp = 0L
+        }
         _sharedStationsFlow.value = sortedList
         sortedList
         }
@@ -294,17 +305,39 @@ class ValenbisiRepository {
     }
 
     companion object {
-        private const val CACHE_DURATION_MS = 600_000L // 10 minutes cache
+        internal const val CACHE_DURATION_MS = 10 * 60 * 1000L // 10 minutes cache
         private val fetchMutex = Mutex()
 
         @Volatile
         private var lastFetchTimestamp: Long = 0L
 
         @Volatile
+        private var isFallbackCache: Boolean = false
+
+        @Volatile
         private var cachedStationsList: List<ValenbisiStation> = emptyList()
 
         private val _sharedStationsFlow = MutableStateFlow<List<ValenbisiStation>>(emptyList())
         val sharedStationsFlow = _sharedStationsFlow.asStateFlow()
+
+        fun hasValidCache(): Boolean {
+            val now = System.currentTimeMillis()
+            return !isFallbackCache && cachedStationsList.isNotEmpty() && (now - lastFetchTimestamp < CACHE_DURATION_MS)
+        }
+
+        fun getCacheRemainingMs(): Long {
+            if (isFallbackCache || cachedStationsList.isEmpty() || lastFetchTimestamp <= 0L) return 0L
+            val remaining = CACHE_DURATION_MS - (System.currentTimeMillis() - lastFetchTimestamp)
+            return if (remaining > 0L) remaining else 0L
+        }
+
+        @androidx.annotation.VisibleForTesting
+        fun clearCacheForTesting() {
+            lastFetchTimestamp = 0L
+            isFallbackCache = false
+            cachedStationsList = emptyList()
+            _sharedStationsFlow.value = emptyList()
+        }
 
         fun getCachedStations(): List<ValenbisiStation> {
             return cachedStationsList

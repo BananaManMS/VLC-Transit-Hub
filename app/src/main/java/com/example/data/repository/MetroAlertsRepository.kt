@@ -16,9 +16,12 @@ import com.example.data.network.NetworkModule
 import okhttp3.OkHttpClient
 import org.json.JSONObject
 
-class MetroAlertsRepository {
+class MetroAlertsRepository(
+    private val httpClient: OkHttpClient = defaultClient
+) {
     companion object {
-        private const val CACHE_DURATION_MS = 120_000L // 2 minutes in-memory TTL
+        internal const val CACHE_DURATION_MS = 15 * 60 * 1000L // 15 minutes unified alerts TTL
+        internal const val NEWS_CACHE_DURATION_MS = 6 * 60 * 60 * 1000L // 6 hours TTL for rarely changing news
         @Volatile private var cachedAccessibility: List<AccessibilityIncident> = emptyList()
         @Volatile private var cachedIncidents: List<MetroIncident> = emptyList()
         @Volatile private var cachedNotices: List<MetroNotice> = emptyList()
@@ -28,7 +31,7 @@ class MetroAlertsRepository {
         private val fetchMutex = kotlinx.coroutines.sync.Mutex()
         private val newsMutex = kotlinx.coroutines.sync.Mutex()
 
-        private val client: OkHttpClient by lazy {
+        private val defaultClient: OkHttpClient by lazy {
             NetworkModule.okHttpClient.newBuilder()
                 .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -41,11 +44,35 @@ class MetroAlertsRepository {
         private val _metroNews = MutableStateFlow<List<MetroNewsItem>>(emptyList())
         private val _isAlertsLoading = MutableStateFlow(true)
         private val _hasAlertsError = MutableStateFlow(false)
+        private val _alertsErrorDetail = MutableStateFlow<String?>(null)
         private val _isNewsLoading = MutableStateFlow(false)
 
         fun hasValidCache(): Boolean {
             val now = System.currentTimeMillis()
             return lastFetchTimestamp > 0L && (now - lastFetchTimestamp < CACHE_DURATION_MS)
+        }
+
+        fun hasValidNewsCache(): Boolean {
+            val now = System.currentTimeMillis()
+            return lastNewsFetchTimestamp > 0L && (now - lastNewsFetchTimestamp < NEWS_CACHE_DURATION_MS)
+        }
+
+        @androidx.annotation.VisibleForTesting
+        fun clearCacheForTesting() {
+            lastFetchTimestamp = 0L
+            lastNewsFetchTimestamp = 0L
+            cachedAccessibility = emptyList()
+            cachedIncidents = emptyList()
+            cachedNotices = emptyList()
+            cachedNews = emptyList()
+            _accessibilityIncidents.value = emptyList()
+            _activeIncidents.value = emptyList()
+            _specialNotices.value = emptyList()
+            _metroNews.value = emptyList()
+            _hasAlertsError.value = false
+            _alertsErrorDetail.value = null
+            _isAlertsLoading.value = false
+            _isNewsLoading.value = false
         }
 
         fun getCachedIncidents(): List<MetroIncident> = cachedIncidents
@@ -59,6 +86,7 @@ class MetroAlertsRepository {
     val metroNews = _metroNews.asStateFlow()
     val isAlertsLoading = _isAlertsLoading.asStateFlow()
     val hasAlertsError = _hasAlertsError.asStateFlow()
+    val alertsErrorDetail = _alertsErrorDetail.asStateFlow()
     val isNewsLoading = _isNewsLoading.asStateFlow()
 
     suspend fun fetchAllAlerts(force: Boolean = false, includeNews: Boolean = false) = withContext(Dispatchers.IO) {
@@ -67,12 +95,15 @@ class MetroAlertsRepository {
             _accessibilityIncidents.value = cachedAccessibility
             _activeIncidents.value = cachedIncidents
             _specialNotices.value = cachedNotices
-            if (cachedNews.isNotEmpty()) {
+            if (cachedNews.isNotEmpty() || lastNewsFetchTimestamp > 0L) {
                 _metroNews.value = cachedNews
                 _isNewsLoading.value = false
             }
             _isAlertsLoading.value = false
             _hasAlertsError.value = false
+            if (includeNews) {
+                fetchNews(force = false)
+            }
             return@withContext
         }
 
@@ -93,14 +124,16 @@ class MetroAlertsRepository {
 
             _isAlertsLoading.value = true
             _hasAlertsError.value = false
+            _alertsErrorDetail.value = null
             try {
-                val url = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/avisos"
+                val url = "${NetworkModule.VIATGEM_PROXY_BASE_URL}/v1/avisos"
                 val request = okhttp3.Request.Builder()
                     .url(url)
                     .header("User-Agent", NetworkModule.USER_AGENT)
+                    .header("X-App-Secret", com.example.BuildConfig.METROVALENCIA_API_SECRET.trim())
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                httpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         throw Exception("HTTP Error: ${response.code}")
                     }
@@ -169,10 +202,12 @@ class MetroAlertsRepository {
                             }
                             _accessibilityIncidents.value = accList
 
-                            // 2. Map prioritarios (Network Incidents) - Only genuine circulation incidents (incidencia, aviso)
+                            // 2. Map prioritarios (Network Incidents) - Genuine circulation incidents & circulation notices
                             val prioArray = dataObj.optJSONArray("prioritarios") ?: org.json.JSONArray()
                             val prioList = mutableListOf<MetroIncident>()
                             val prioNoticesForGeneralTab = mutableListOf<MetroNotice>()
+                            val promotedPriorityIds = mutableSetOf<String>()
+                            val promotedPrioritySignatures = mutableSetOf<String>()
 
                             for (i in 0 until prioArray.length()) {
                                 val item = prioArray.optJSONObject(i) ?: continue
@@ -193,15 +228,36 @@ class MetroAlertsRepository {
                                     ?: item.optCleanStr("updated_at")
                                     ?: item.optCleanStr("fecha")
 
-                                // Strict filter: only real circulation incidents (incidencia or aviso impacting transit)
-                                if (MetroNoticeCategory.isRealCirculationIncident(categoria, titulo, descripcion)) {
-                                    prioList.add(MetroIncident(id, fullDesc, fullDesc, fullDesc, lineaFgv, updatedAt, categoria))
-                                } else if (!categoria.equals("accesibilidad", ignoreCase = true)) {
-                                    // Non-circulation priority items (e.g. weather alerts, promotions) go to general notices
+                                val resolvedCat = MetroNoticeCategory.resolveEffectiveCategory(
+                                    category = categoria,
+                                    categoryName = catNombre,
+                                    title = titulo,
+                                    description = descripcion,
+                                    isFromPriorityFeed = true,
+                                    hasAffectedLines = !lineaFgv.isNullOrBlank()
+                                )
+
+                                // Promote genuine circulation incidents & priority circulation notices to active network incidents
+                                if (resolvedCat.isCirculationImpact) {
+                                    promotedPriorityIds.add(id)
+                                    promotedPrioritySignatures.add("${titulo.trim().lowercase()}|${descripcion.trim().lowercase()}")
+                                    prioList.add(
+                                        MetroIncident(
+                                            id = id,
+                                            descriptionEs = fullDesc,
+                                            descriptionCa = fullDesc,
+                                            descriptionEn = fullDesc,
+                                            lineaFgv = lineaFgv,
+                                            updatedAt = updatedAt,
+                                            category = resolvedCat.rawKey
+                                        )
+                                    )
+                                } else if (resolvedCat != MetroNoticeCategory.ACCESIBILIDAD) {
+                                    // Non-circulation priority items (e.g. weather alerts, promotions, planned works) go to general notices
                                     prioNoticesForGeneralTab.add(
                                         MetroNotice(
                                             id = id,
-                                            category = categoria,
+                                            category = resolvedCat.rawKey,
                                             categoryName = catNombre,
                                             title = titulo,
                                             description = descripcion,
@@ -213,7 +269,7 @@ class MetroAlertsRepository {
                             }
                             _activeIncidents.value = prioList
 
-                            // 3. Map avisos (Special Notices, Works & General Announcements - filtering out accessibility)
+                            // 3. Map avisos (Special Notices, Works & General Announcements - filtering out accessibility and promoted priority incidents)
                             val avisosArray = dataObj.optJSONArray("avisos") ?: org.json.JSONArray()
                             val avisosList = mutableListOf<MetroIncident>()
                             val specialNoticesList = mutableListOf<MetroNotice>()
@@ -229,17 +285,31 @@ class MetroAlertsRepository {
                                 val descripcion = item.optCleanStr("descripcion") ?: ""
                                 if (titulo.isBlank() && descripcion.isBlank()) continue
 
+                                val signature = "${titulo.trim().lowercase()}|${descripcion.trim().lowercase()}"
+                                if (id in promotedPriorityIds || signature in promotedPrioritySignatures) {
+                                    continue
+                                }
+
                                 val fecha = item.optCleanStr("fecha_publicacion")
                                     ?: item.optCleanStr("updated_at")
                                     ?: item.optCleanStr("fecha")
                                 val lineaFgv = formatLines(item)
 
+                                val resolvedCat = MetroNoticeCategory.resolveEffectiveCategory(
+                                    category = categoria,
+                                    categoryName = catNombre,
+                                    title = titulo,
+                                    description = descripcion,
+                                    isFromPriorityFeed = false,
+                                    hasAffectedLines = !lineaFgv.isNullOrBlank()
+                                )
+
                                 // Add to special notices if category is not accessibility
-                                if (!categoria.equals("accesibilidad", ignoreCase = true)) {
+                                if (resolvedCat != MetroNoticeCategory.ACCESIBILIDAD) {
                                     specialNoticesList.add(
                                         MetroNotice(
                                             id = "aviso_$id",
-                                            category = categoria,
+                                            category = resolvedCat.rawKey,
                                             categoryName = catNombre,
                                             title = titulo,
                                             description = descripcion,
@@ -254,7 +324,17 @@ class MetroAlertsRepository {
                                 } else {
                                     if (titulo.isNotBlank()) titulo else descripcion
                                 }
-                                avisosList.add(MetroIncident("aviso_$id", fullDesc, fullDesc, fullDesc, lineaFgv, fecha, categoria))
+                                avisosList.add(
+                                    MetroIncident(
+                                        id = "aviso_$id",
+                                        descriptionEs = fullDesc,
+                                        descriptionCa = fullDesc,
+                                        descriptionEn = fullDesc,
+                                        lineaFgv = lineaFgv,
+                                        updatedAt = fecha,
+                                        category = resolvedCat.rawKey
+                                    )
+                                )
                             }
                             avisosList.sortByDescending { it.updatedAt ?: "" }
                             val notices = specialNoticesList.distinctBy { "${it.category}_${it.title}_${it.publicationDate}" }
@@ -269,8 +349,11 @@ class MetroAlertsRepository {
                     }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             _hasAlertsError.value = true
+            _alertsErrorDetail.value = e.message
             Log.w("MetroAlertsRepository", "Notice: Unified alerts unavailable or timed out: ${e.message}")
         } finally {
             _isAlertsLoading.value = false
@@ -279,17 +362,15 @@ class MetroAlertsRepository {
 
         // Fetch news lazily only when explicitly requested (e.g., from Avisos tab)
         if (includeNews) {
-            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    this@MetroAlertsRepository.fetchNews(force = force)
-                } catch (_: Exception) {}
-            }
+            try {
+                fetchNews(force = force)
+            } catch (_: Exception) {}
         }
     }
 
     suspend fun fetchNews(force: Boolean = false) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        if (!force && lastNewsFetchTimestamp > 0L && (now - lastNewsFetchTimestamp < CACHE_DURATION_MS)) {
+        if (!force && lastNewsFetchTimestamp > 0L && (now - lastNewsFetchTimestamp < NEWS_CACHE_DURATION_MS)) {
             _metroNews.value = cachedNews
             _isNewsLoading.value = false
             return@withContext
@@ -297,7 +378,7 @@ class MetroAlertsRepository {
 
         newsMutex.withLock {
             val lockNow = System.currentTimeMillis()
-            if (!force && lastNewsFetchTimestamp > 0L && (lockNow - lastNewsFetchTimestamp < CACHE_DURATION_MS)) {
+            if (!force && lastNewsFetchTimestamp > 0L && (lockNow - lastNewsFetchTimestamp < NEWS_CACHE_DURATION_MS)) {
                 _metroNews.value = cachedNews
                 _isNewsLoading.value = false
                 return@withLock
@@ -305,13 +386,14 @@ class MetroAlertsRepository {
 
             _isNewsLoading.value = true
             try {
-                val url = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/noticias"
+                val url = "${NetworkModule.VIATGEM_PROXY_BASE_URL}/v1/noticias"
                 val request = okhttp3.Request.Builder()
                     .url(url)
                     .header("User-Agent", NetworkModule.USER_AGENT)
+                    .header("X-App-Secret", com.example.BuildConfig.METROVALENCIA_API_SECRET.trim())
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                httpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) return@use
                     val body = response.body?.string() ?: return@use
                     val root = JSONObject(body)

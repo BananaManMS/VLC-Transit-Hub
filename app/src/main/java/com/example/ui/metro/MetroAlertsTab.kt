@@ -94,6 +94,7 @@ fun AvisosTab(
     val metroNews by metroViewModel.metroNews.collectAsState()
     val isMetroAlertsLoading by metroViewModel.isMetroAlertsLoading.collectAsState()
     val hasMetroAlertsError by metroViewModel.hasMetroAlertsError.collectAsState()
+    val metroAlertsErrorDetail by metroViewModel.metroAlertsErrorDetail.collectAsState()
     val isNewsLoading by metroViewModel.isNewsLoading.collectAsState()
     val allNetworkStations by metroViewModel.allNetworkStations.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -195,15 +196,19 @@ fun AvisosTab(
     }
 
     val pullToRefreshState = rememberPullToRefreshState()
+    val (isPullRefreshing, triggerAlertsRefresh) = com.example.ui.components.rememberPullRefreshFeedback(
+        isLoading = isMetroAlertsLoading,
+        onRefresh = { metroViewModel.fetchAllAlerts(force = false, includeNews = true) }
+    )
 
     PullToRefreshBox(
-        isRefreshing = isMetroAlertsLoading,
-        onRefresh = { metroViewModel.fetchAllAlerts(force = true, includeNews = true) },
+        isRefreshing = isPullRefreshing,
+        onRefresh = triggerAlertsRefresh,
         state = pullToRefreshState,
         indicator = {
             TransitPullRefreshIndicator(
                 state = pullToRefreshState,
-                isRefreshing = isMetroAlertsLoading,
+                isRefreshing = isPullRefreshing,
                 appLanguage = appLanguage,
                 refreshingText = if (appLanguage == AppLanguage.CA) "Actualitzant avisos..." else "Actualizando avisos..."
             )
@@ -344,6 +349,15 @@ fun AvisosTab(
                                             fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        if (!metroAlertsErrorDetail.isNullOrBlank()) {
+                                            Text(
+                                                text = metroAlertsErrorDetail!!,
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))

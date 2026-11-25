@@ -18,6 +18,7 @@ fun DashboardBusTab(
     isDarkMode: Boolean,
     activeTripBottomPadding: Dp,
     initialPage: Int = -1,
+    isScreenVisible: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     EmtBusScreen(
@@ -29,6 +30,7 @@ fun DashboardBusTab(
             .statusBarsPadding()
             .padding(start = 16.dp, end = 16.dp, top = 8.dp),
         isDarkMode = isDarkMode,
-        activeTripBottomPadding = activeTripBottomPadding
+        activeTripBottomPadding = activeTripBottomPadding,
+        isScreenVisible = isScreenVisible
     )
 }

@@ -742,6 +742,19 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun refreshRemoteAnnouncements(force: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isAnnouncementsLoading.value = true
+            try {
+                val (active, all) = remoteAnnouncementRepository.fetchActiveAndAllAnnouncements(force = force)
+                _remoteAnnouncements.value = active
+                _allActiveAnnouncements.value = all
+            } finally {
+                _isAnnouncementsLoading.value = false
+            }
+        }
+    }
+
     fun dismissRemoteAnnouncement(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             remoteAnnouncementRepository.markAnnouncementDismissed(id)
@@ -844,10 +857,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 com.example.util.StartupProfiler.log("DashboardVM", "Phase 1 ready (stations + stops + lastLocation)")
             }
 
-            // 2. Phase 2: Immediately load home widgets' live alerts & weather (parallel, non-blocking)
+            // 2. Phase 2: Immediately load home widgets' live alerts, transit cards (once on app open) & weather (parallel, non-blocking)
             launch {
                 if (!_shouldShowOnboarding.value) {
                     fetchAllDashboardAlerts()
+                }
+            }
+            launch {
+                try {
+                    metroCardRepository.refreshTransitCardsOnAppOpen()
+                } catch (e: Exception) {
+                    Log.w("DashboardViewModel", "Error refreshing transit cards on app open: ${e.message}")
                 }
             }
             launch {
@@ -884,8 +904,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             launch {
                 delay(800L)
                 if (!_shouldShowOnboarding.value) {
-                    checkForRemoteAnnouncements()
-                    loadAllActiveAnnouncements()
+                    refreshRemoteAnnouncements(force = false)
                 }
             }
 
@@ -982,13 +1001,74 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun onAppForegrounded() {
+    @Volatile
+    private var lastBackgroundedTimestampMs: Long = 0L
+
+    fun onAppForegrounded(isHomeVisible: Boolean = true) {
+        val wasBackgrounded = lastBackgroundedTimestampMs > 0L
         _isAppInForeground.value = true
         startClock()
         activeTripManager.onAppForegrounded()
+
+        if (wasBackgrounded && isHomeVisible && !_shouldShowOnboarding.value) {
+            refreshStaleDashboardDataOnResume()
+        }
+    }
+
+    fun onHomeTabBecameVisible() {
+        if (lastBackgroundedTimestampMs > 0L && !_shouldShowOnboarding.value) {
+            refreshStaleDashboardDataOnResume()
+        }
+    }
+
+    private fun refreshStaleDashboardDataOnResume() {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1. Avisos unificados (15 min): refresca solo si alguno expiró mientras la app dormía
+            if (!com.example.data.repository.MetroAlertsRepository.hasValidCache() ||
+                !com.example.data.repository.renfe.RenfeAlertsRepository.hasValidCache()
+            ) {
+                fetchAllDashboardAlerts(force = false)
+            }
+
+            // 2. Anuncios remotos (30 min en sesión): refresca solo si la caché de sesión expiró
+            if (!com.example.data.repository.RemoteAnnouncementRepository.hasValidSessionCache()) {
+                refreshRemoteAnnouncements(force = false)
+            }
+
+            // 3. Clima (30 min): refresca también para usuarios sin permiso GPS (ciudad manual)
+            try {
+                val cachedTimestamp = repository.getPreferenceSync("cached_weather_timestamp", "0").toLongOrNull() ?: 0L
+                val isWeatherExpired = (System.currentTimeMillis() - cachedTimestamp) > 30 * 60 * 1000L
+                if (_weatherData.value == null || isWeatherExpired) {
+                    val weather = withTimeoutOrNull(3500L) {
+                        val currentLoc = _lastLocation.value
+                        if (currentLoc != null) {
+                            WeatherService.getWeatherDataByCoords(currentLoc.first, currentLoc.second, _weatherCity.value)
+                        } else {
+                            WeatherService.getWeatherData(_weatherCity.value)
+                        }
+                    }
+                    if (weather != null) {
+                        _weatherData.value = weather
+                        try {
+                            repository.savePreference("cached_weather_json", gson.toJson(weather))
+                            repository.savePreference("cached_weather_timestamp", System.currentTimeMillis().toString())
+                            val currentLoc = _lastLocation.value
+                            if (currentLoc != null) {
+                                repository.savePreference("cached_weather_lat", currentLoc.first.toString())
+                                repository.savePreference("cached_weather_lon", currentLoc.second.toString())
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("DashboardViewModel", "Resume weather refresh failed: ${e.message}")
+            }
+        }
     }
 
     fun onAppBackgrounded() {
+        lastBackgroundedTimestampMs = System.currentTimeMillis()
         _isAppInForeground.value = false
         clockJob?.cancel()
         clockJob = null
@@ -1110,8 +1190,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             repository.savePreference("has_completed_onboarding", "true")
             _shouldShowOnboarding.value = false
             fetchAllDashboardAlerts()
-            checkForRemoteAnnouncements()
-            loadAllActiveAnnouncements()
+            refreshRemoteAnnouncements(force = false)
             if (!hasSyncedRemoteTransitThisSession) {
                 try {
                     syncRemoteTransitDataInBackground()
@@ -1148,24 +1227,32 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             val startTime = System.currentTimeMillis()
             _isRefreshing.value = true
-            checkForRemoteAnnouncements(force = true)
-            loadAllActiveAnnouncements(force = true)
+            refreshRemoteAnnouncements(force = false)
+
             val currentLocation = if (_useGpsOnOpen.value) _lastLocation.value else null
-            val newData = if (currentLocation != null) {
-                WeatherService.getWeatherDataByCoords(currentLocation.first, currentLocation.second, _weatherCity.value)
-            } else {
-                WeatherService.getWeatherData(_weatherCity.value)
-            }
-            if (newData != null) {
-                _weatherData.value = newData
-                try {
-                    repository.savePreference("cached_weather_json", gson.toJson(newData))
-                    repository.savePreference("cached_weather_timestamp", System.currentTimeMillis().toString())
-                    if (currentLocation != null) {
-                        repository.savePreference("cached_weather_lat", currentLocation.first.toString())
-                        repository.savePreference("cached_weather_lon", currentLocation.second.toString())
-                    }
-                } catch (_: Exception) {}
+            val cachedTs = repository.getPreferenceSync("cached_weather_timestamp", "0").toLongOrNull() ?: 0L
+            val isWeatherCacheFresh = _weatherData.value != null &&
+                (System.currentTimeMillis() - cachedTs) in 0L until (15 * 60 * 1000L) &&
+                _weatherData.value?.cityName == _weatherCity.value
+
+            if (!isWeatherCacheFresh) {
+                val (lat, lon) = if (currentLocation != null) {
+                    currentLocation
+                } else {
+                    Pair(39.46975, -0.37639)
+                }
+                val newData = WeatherService.fetchWeatherDataByCoordsOrNull(lat, lon, _weatherCity.value)
+                if (newData != null) {
+                    _weatherData.value = newData
+                    try {
+                        repository.savePreference("cached_weather_json", gson.toJson(newData))
+                        repository.savePreference("cached_weather_timestamp", System.currentTimeMillis().toString())
+                        if (currentLocation != null) {
+                            repository.savePreference("cached_weather_lat", currentLocation.first.toString())
+                            repository.savePreference("cached_weather_lon", currentLocation.second.toString())
+                        }
+                    } catch (_: Exception) {}
+                }
             }
             val elapsed = System.currentTimeMillis() - startTime
             if (elapsed < 400L) {

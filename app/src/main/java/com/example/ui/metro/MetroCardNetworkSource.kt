@@ -43,8 +43,8 @@ object MetroCardNetworkSource {
         card: String,
         client: OkHttpClient
     ): JSONObject {
-        val url = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/tarjetas/consultar"
-        val apiSecret = BuildConfig.METROVALENCIA_API_SECRET
+        val url = "${com.example.data.network.NetworkModule.VIATGEM_PROXY_BASE_URL}/v1/tarjetas/consultar"
+        val apiSecret = BuildConfig.METROVALENCIA_API_SECRET.trim()
 
         val jsonPayload = JSONObject().apply {
             put("numero", card)
@@ -58,8 +58,8 @@ object MetroCardNetworkSource {
         val request = Request.Builder()
             .url(url)
             .post(requestBody)
-            .addHeader("X-App-Secret", apiSecret)
-            .addHeader("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
+            .header("X-App-Secret", apiSecret)
+            .header("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
             .build()
 
         var responseString: String? = null
@@ -76,8 +76,8 @@ object MetroCardNetworkSource {
             val getUrl = "$url?numero=$card"
             val getRequest = Request.Builder()
                 .url(getUrl)
-                .addHeader("X-App-Secret", apiSecret)
-                .addHeader("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
+                .header("X-App-Secret", apiSecret)
+                .header("User-Agent", com.example.data.network.NetworkModule.USER_AGENT)
                 .build()
 
             client.newCall(getRequest).execute().use { response ->

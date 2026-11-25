@@ -51,7 +51,7 @@ object LiveTrainMarkerManager {
     private var startBearing: Float = 0f
     private var targetBearing: Float = 0f
     private var animStartTime: Long = 0L
-    private const val ANIMATION_DURATION_MS = 26_000L // 26s transition matching API updates
+    private const val ANIMATION_DURATION_MS = 30_000L // 30s transition matching unified Cercanías polling
     private val interpolator: Interpolator = LinearInterpolator()
 
     private var lastMatchedTripId: String? = null
@@ -119,7 +119,7 @@ object LiveTrainMarkerManager {
                 } catch (e: Exception) {
                     android.util.Log.w("LiveTrainMarkerManager", "Error fetching live train: ${e.message}")
                 }
-                delay(26_000L) // 26s official Renfe GTFS-RT update cadence
+                delay(30_250L) // 30s unified Cercanías GTFS-RT update cadence
             }
         }
     }

@@ -21,25 +21,45 @@ import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
-class RemoteAnnouncementRepository(private val context: Context) {
+class RemoteAnnouncementRepository(
+    private val context: Context,
+    private val clientOverride: OkHttpClient? = null
+) {
 
     companion object {
         private const val TAG = "RemoteAnnouncementRepo"
         const val ANNOUNCEMENTS_URL = "https://raw.githubusercontent.com/BananaManMS/metro_valencia_schedule/refs/heads/mapas/Avisos/text.json"
         private const val PREFS_NAME = "remote_announcements_prefs"
         private const val KEY_DISMISSED_IDS = "dismissed_ids"
-        private const val PREF_LAST_FETCH = "last_announcements_fetch"
-        private const val CACHE_TTL_MS = 30 * 60 * 1000L // 30 minutes
+        private const val CACHE_TTL_MS = 30 * 60 * 1000L // 30 minutes within same app session
         private val fetchMutex = Mutex()
+        @Volatile private var sessionLastFetchTimestamp: Long = 0L
+        @Volatile private var sessionCachedJson: String? = null
+
+        fun hasValidSessionCache(): Boolean {
+            val now = System.currentTimeMillis()
+            return sessionLastFetchTimestamp > 0L &&
+                !sessionCachedJson.isNullOrBlank() &&
+                (now - sessionLastFetchTimestamp < CACHE_TTL_MS)
+        }
+
+        @androidx.annotation.VisibleForTesting
+        fun resetSessionCacheForTesting() {
+            sessionLastFetchTimestamp = 0L
+            sessionCachedJson = null
+        }
     }
 
-    private val httpClient: OkHttpClient by lazy {
+    private val defaultHttpClient: OkHttpClient by lazy {
         NetworkModule.okHttpClient.newBuilder()
             .connectTimeout(4000, TimeUnit.MILLISECONDS)
             .readTimeout(4000, TimeUnit.MILLISECONDS)
             .callTimeout(5000, TimeUnit.MILLISECONDS)
             .build()
     }
+
+    private val httpClient: OkHttpClient
+        get() = clientOverride ?: defaultHttpClient
 
     private val prefs by lazy {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -62,18 +82,13 @@ class RemoteAnnouncementRepository(private val context: Context) {
 
     private suspend fun getOrFetchRawAnnouncementsJson(force: Boolean = false): String? = withContext(Dispatchers.IO) {
         fetchMutex.withLock {
-            val db = AppDatabase.getDatabase(context)
             val now = System.currentTimeMillis()
-            val lastFetchStr = try {
-                db.preferenceDao().getPreference(PREF_LAST_FETCH)?.value
-            } catch (_: Exception) { null }
-            val lastFetch = lastFetchStr?.toLongOrNull() ?: 0L
-
-            val hasValidFile = localCacheFile.exists() && localCacheFile.length() > 0
-            if (!force && (now - lastFetch < CACHE_TTL_MS) && hasValidFile) {
-                return@withLock try { localCacheFile.readText() } catch (_: Exception) { null }
+            val cachedInSession = sessionCachedJson
+            if (!force && sessionLastFetchTimestamp > 0L && (now - sessionLastFetchTimestamp < CACHE_TTL_MS) && !cachedInSession.isNullOrBlank()) {
+                return@withLock cachedInSession
             }
 
+            val hasValidFile = localCacheFile.exists() && localCacheFile.length() > 0
             var downloadedBody: String? = null
             try {
                 val request = Request.Builder()
@@ -93,9 +108,10 @@ class RemoteAnnouncementRepository(private val context: Context) {
 
                 if (!responseBody.isNullOrBlank()) {
                     downloadedBody = responseBody
+                    sessionCachedJson = responseBody
+                    sessionLastFetchTimestamp = System.currentTimeMillis()
                     try {
                         localCacheFile.writeText(responseBody)
-                        db.preferenceDao().insertPreference(PreferenceEntity(PREF_LAST_FETCH, now.toString()))
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed writing cached announcements to disk: ${e.message}")
                     }
@@ -106,6 +122,8 @@ class RemoteAnnouncementRepository(private val context: Context) {
 
             if (!downloadedBody.isNullOrBlank()) {
                 downloadedBody
+            } else if (!cachedInSession.isNullOrBlank()) {
+                cachedInSession
             } else if (hasValidFile) {
                 Log.i(TAG, "Using fallback cached announcements JSON after network failure.")
                 try { localCacheFile.readText() } catch (_: Exception) { null }
@@ -224,5 +242,22 @@ class RemoteAnnouncementRepository(private val context: Context) {
     suspend fun fetchAllAnnouncements(force: Boolean = false): List<RemoteAnnouncement> = withContext(Dispatchers.IO) {
         val rawJson = getOrFetchRawAnnouncementsJson(force) ?: return@withContext emptyList()
         parseAnnouncementsFromJson(rawJson, activeOnly = false)
+    }
+
+    suspend fun fetchActiveAndAllAnnouncements(
+        force: Boolean = false
+    ): Pair<List<RemoteAnnouncement>, List<RemoteAnnouncement>> = withContext(Dispatchers.IO) {
+        val rawJson = getOrFetchRawAnnouncementsJson(force) ?: return@withContext Pair(emptyList(), emptyList())
+        val active = parseAnnouncementsFromJson(rawJson, activeOnly = true)
+        val all = parseAnnouncementsFromJson(rawJson, activeOnly = false)
+        Pair(active, all)
+    }
+
+    @androidx.annotation.VisibleForTesting
+    suspend fun clearCacheForTesting() = withContext(Dispatchers.IO) {
+        resetSessionCacheForTesting()
+        try {
+            if (localCacheFile.exists()) localCacheFile.delete()
+        } catch (_: Exception) {}
     }
 }

@@ -314,10 +314,12 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun fetchCercaniasDepartures() {
+    fun fetchCercaniasDepartures(isSilentResume: Boolean = false) {
         triggerHeavyInitialization()
         cercaniasJob?.cancel()
-        _cercaniasLoading.value = true
+        if (!isSilentResume || _cercaniasDepartures.value.isEmpty()) {
+            _cercaniasLoading.value = true
+        }
         _cercaniasError.value = null
 
         cercaniasJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -372,11 +374,18 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                 }
                 
-                // Polling delay: guaranteed refresh every 30s (20s if departure is imminent)
-                val minMins = _cercaniasDepartures.value.minOfOrNull { it.minutesRemaining } ?: 999
-                val nextDelayMs = if (minMins < 3) 20000L else 30000L
+                // Polling delay: sleep remaining 30s GTFS-RT cache TTL (or 30.25s)
+                val remainingCacheMs = com.example.data.repository.renfe.GtfsCacheManager.getDeparturesCacheRemainingMs()
+                val nextDelayMs = if (remainingCacheMs > 0L) remainingCacheMs + 250L else 30_250L
                 delay(nextDelayMs)
             }
+        }
+    }
+
+    fun resumeDeparturesPollingIfNeeded() {
+        if (cercaniasJob?.isActive == true) return
+        if (_cercaniasSelectedStationId.value.isNotBlank()) {
+            fetchCercaniasDepartures(isSilentResume = _cercaniasDepartures.value.isNotEmpty())
         }
     }
 
@@ -420,7 +429,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun refreshCercaniasAll() {
         fetchCercaniasDepartures()
-        fetchCercaniasRealTimeAlerts(force = true)
+        fetchCercaniasRealTimeAlerts(force = false)
     }
 
     fun selectCercaniasStation(stationId: String, isUserAction: Boolean = true) {
@@ -612,7 +621,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         _isLiveMapLoading.value = true
         liveTrainsJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val (vehicles, isFresh) = renfeRepository.getLiveVehiclesWithFreshness(forceFetch = true)
+                val (vehicles, isFresh) = renfeRepository.getLiveVehiclesWithFreshness(forceFetch = false)
                 _liveCercaniasVehicles.value = vehicles
             } catch (e: Exception) {
                 Log.d("CercaniasViewModel", "Error fetching live vehicles: ${e.message}")
@@ -621,9 +630,9 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
             }
 
             while (isActive) {
-                delay(26_000L)
+                delay(30_250L)
                 try {
-                    val (vehicles, isFresh) = renfeRepository.getLiveVehiclesWithFreshness(forceFetch = true)
+                    val (vehicles, isFresh) = renfeRepository.getLiveVehiclesWithFreshness(forceFetch = false)
                     if (isFresh || _liveCercaniasVehicles.value.isEmpty()) {
                         _liveCercaniasVehicles.value = vehicles
                     }
@@ -669,9 +678,7 @@ class CercaniasViewModel(application: Application) : AndroidViewModel(applicatio
         }
         if (wasDeparturesPollingActive) {
             wasDeparturesPollingActive = false
-            if (_cercaniasSelectedStationId.value.isNotBlank()) {
-                fetchCercaniasDepartures()
-            }
+            resumeDeparturesPollingIfNeeded()
         }
     }
 }

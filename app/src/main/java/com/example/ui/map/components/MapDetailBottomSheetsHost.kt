@@ -331,7 +331,7 @@ fun BoxScope.MapDetailBottomSheetsHost(
                         )
                     )
                 },
-                onRefresh = { mapViewModel.fetchMetrobusTimes(item.stop.id_parada, forceRefresh = true) },
+                onRefresh = { mapViewModel.fetchMetrobusTimes(item.stop.id_parada, forceRefresh = false) },
                 maxExpandedHeight = maxExpandedSheetHeight,
                 sheetState = detailSheetState,
                 onSheetStateChanged = onDetailSheetStateChanged,

@@ -220,7 +220,9 @@ fun MapScreen(
     LaunchedEffect(isActiveInForeground, mapFilter.showValenbisi, context) {
         if (isActiveInForeground) {
             mapViewModel.startLocationTracking(context)
+            mapViewModel.refreshSelectedItemIfStale()
             if (mapFilter.showValenbisi) {
+                mapViewModel.refreshValenbisiStations(force = false)
                 mapViewModel.startValenbisiPeriodicRefresh()
             } else {
                 mapViewModel.stopValenbisiPeriodicRefresh()

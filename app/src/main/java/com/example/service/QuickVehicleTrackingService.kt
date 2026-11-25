@@ -281,7 +281,7 @@ class QuickVehicleTrackingService : Service() {
                             if (numericStationId != null) {
                                 val arrivals = RealTimeTransitRepository.getMetroLiveArrivals(
                                     stationId = numericStationId.toString(),
-                                    forceRefresh = true
+                                    forceRefresh = false
                                 )
                                 val cleanLine = vehicle.cleanLineNumber
                                 val matchingArrivals = arrivals.filter { arr ->
@@ -386,7 +386,7 @@ class QuickVehicleTrackingService : Service() {
                                 try {
                                     val destArrivals = RealTimeTransitRepository.getMetroLiveArrivals(
                                         stationId = targetNumericId,
-                                        forceRefresh = true
+                                        forceRefresh = (pollIntervalMs < 30_000L)
                                     )
                                     val cleanLine = vehicle.cleanLineNumber
                                     val destMatching = destArrivals.filter { arr ->
@@ -489,7 +489,7 @@ class QuickVehicleTrackingService : Service() {
                                 try {
                                     val penArrivals = RealTimeTransitRepository.getMetroLiveArrivals(
                                         stationId = penNumericId,
-                                        forceRefresh = true
+                                        forceRefresh = (pollIntervalMs < 30_000L)
                                     )
                                     val cleanLine = vehicle.cleanLineNumber
                                     val penMatching = penArrivals.filter { arr ->

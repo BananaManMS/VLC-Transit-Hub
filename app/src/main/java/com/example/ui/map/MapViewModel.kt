@@ -570,10 +570,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             _mapFilter.collect { filter ->
-                if (filter.showValenbisi) {
-                    dataLoader.refreshValenbisiStations()
-                    dataLoader.startValenbisiPeriodicRefresh()
-                } else {
+                if (!filter.showValenbisi) {
                     dataLoader.stopValenbisiPeriodicRefresh()
                 }
             }
@@ -617,6 +614,38 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshValenbisiStations(force: Boolean = false) = dataLoader.refreshValenbisiStations(force)
     fun startValenbisiPeriodicRefresh() = dataLoader.startValenbisiPeriodicRefresh()
     fun stopValenbisiPeriodicRefresh() = dataLoader.stopValenbisiPeriodicRefresh()
+
+    fun refreshSelectedItemIfStale() {
+        when (val item = selectedMapItem.value) {
+            is SelectedMapItem.BusStop -> {
+                if (com.example.data.repository.RealTimeTransitRepository.getEmtCacheRemainingMs(item.stop.id_parada) <= 0L) {
+                    fetchBusTimes(item.stop.id_parada, item.stop.denominacion)
+                }
+            }
+            is SelectedMapItem.Metro -> {
+                if (com.example.data.repository.RealTimeTransitRepository.getMetroCacheRemainingMs(item.station.id) <= 0L) {
+                    fetchMetroDepartures(item.station)
+                }
+            }
+            is SelectedMapItem.Cercanias -> {
+                if (com.example.data.repository.renfe.GtfsCacheManager.getDeparturesCacheRemainingMs() <= 0L) {
+                    fetchCercaniasDepartures(item.station.stop_id)
+                }
+            }
+            is SelectedMapItem.MetrobusStopItem -> {
+                if (com.example.data.repository.MetrobusRepository.getRtCacheRemainingMs(item.stop.id_parada) <= 0L) {
+                    fetchMetrobusTimes(item.stop.id_parada, forceRefresh = false)
+                }
+            }
+            is SelectedMapItem.Valenbisi -> {
+                if (!ValenbisiRepository.hasValidCache()) {
+                    refreshValenbisiStations(force = false)
+                }
+            }
+            else -> {}
+        }
+    }
+
     fun fetchBusTimes(stopId: String, stopName: String? = null) = dataLoader.fetchBusTimes(stopId, stopName)
     fun loadMoreScheduledBusTimes(stopId: String) = dataLoader.loadMoreScheduledBusTimes(stopId)
     fun fetchMetroDepartures(station: MetroStation) = dataLoader.fetchMetroDepartures(station)

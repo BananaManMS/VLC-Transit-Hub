@@ -26,16 +26,16 @@ class MetrobusRepository(
 
     companion object {
         private const val TAG = "MetrobusRepository"
-        private val API_SECRET = BuildConfig.METROVALENCIA_API_SECRET
+        private val API_SECRET = BuildConfig.METROVALENCIA_API_SECRET.trim()
         private const val KEY_LINES_ETAG = "metrobus_lines_etag"
         private const val KEY_LINES_JSON = "metrobus_lines_json"
         private const val KEY_STOPS_ETAG = "metrobus_stops_etag"
         private const val LINES_URL = "https://raw.githubusercontent.com/BananaManMS/metrobus_valencia_schedule/refs/heads/main/data/metrobus_lines.json"
-        private const val METROBUS_API_BASE = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/metrobus"
+        private const val METROBUS_API_BASE = "${com.example.data.network.NetworkModule.VIATGEM_PROXY_BASE_URL}/v1/metrobus"
         private const val SHAPES_INDEX_URL = "https://raw.githubusercontent.com/BananaManMS/metrobus_valencia_schedule/refs/heads/main/data/metrobus_shapes.json"
         private const val SHAPE_BASE_URL = "https://raw.githubusercontent.com/BananaManMS/metrobus_valencia_schedule/refs/heads/main/data/shapes"
         private const val STOPS_URL = "https://raw.githubusercontent.com/BananaManMS/metrobus_valencia_schedule/refs/heads/main/data/metrobus_stops.json"
-        private const val RT_CACHE_TTL_MS = 25_000L
+        internal const val RT_CACHE_TTL_MS = 30_000L
 
         @Volatile
         private var cachedShapesIndex: JSONObject? = null
@@ -66,6 +66,14 @@ class MetrobusRepository(
             invalidateLinesAndShapesCache()
             invalidateStopsCache()
             rtEstimationsCache.clear()
+        }
+
+        fun getRtCacheRemainingMs(stopId: String): Long {
+            val cleanStop = stopId.trim()
+            val cached = rtEstimationsCache[cleanStop] ?: return 0L
+            val elapsed = System.currentTimeMillis() - cached.first
+            val remaining = RT_CACHE_TTL_MS - elapsed
+            return if (remaining > 0L) remaining else 0L
         }
     }
 
@@ -283,7 +291,11 @@ class MetrobusRepository(
 
     private fun getValidCachedRt(cleanStop: String, now: Long): List<MetrobusDepartureUiModel>? {
         val (timestamp, data) = rtEstimationsCache[cleanStop] ?: return null
-        if (now - timestamp >= RT_CACHE_TTL_MS) return null
+        if (now - timestamp >= RT_CACHE_TTL_MS) {
+            rtEstimationsCache.remove(cleanStop)
+            return null
+        }
+        if (data.isEmpty()) return emptyList()
         val elapsedSec = ((now - timestamp) / 1000L).toInt()
         val adjusted = data.mapNotNull { item ->
             if (item.secondsRemaining > 0) {
@@ -323,6 +335,7 @@ class MetrobusRepository(
             }
 
             val list = mutableListOf<MetrobusDepartureUiModel>()
+            var isValidApiResponse = false
             val madridZone = java.util.TimeZone.getTimeZone("Europe/Madrid")
             val calNow = java.util.Calendar.getInstance(madridZone)
             val currentSecond = calNow.get(java.util.Calendar.SECOND)
@@ -331,13 +344,14 @@ class MetrobusRepository(
                 val url = "$METROBUS_API_BASE/estimacion/$cleanStop"
                 val request = Request.Builder()
                     .url(url)
-                    .addHeader("X-App-Secret", API_SECRET)
+                    .header("X-App-Secret", API_SECRET)
                     .build()
                 client.newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
                         val body = response.body?.string() ?: ""
                         if (body.isNotBlank()) {
                             val root = JSONObject(body)
+                            isValidApiResponse = root.has("data") || root.has("estimations") || root.optBoolean("success", false)
 
                             // Format 1: Cloudflare Worker Metrobus format with "data" array
                             val dataArray = root.optJSONArray("data")
@@ -443,7 +457,7 @@ class MetrobusRepository(
                 Log.e(TAG, "Error fetching real-time estimations for stop $stopId", e)
             }
             val sorted = list.sortedBy { it.minutesRemaining }
-            if (sorted.isNotEmpty()) {
+            if (sorted.isNotEmpty() || isValidApiResponse) {
                 rtEstimationsCache[cleanStop] = Pair(System.currentTimeMillis(), sorted)
             }
             sorted

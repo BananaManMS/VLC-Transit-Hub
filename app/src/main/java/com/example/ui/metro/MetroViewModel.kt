@@ -80,6 +80,7 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
     val activeIncidents = metroAlertsRepository.activeIncidents
     val isMetroAlertsLoading = metroAlertsRepository.isAlertsLoading
     val hasMetroAlertsError = metroAlertsRepository.hasAlertsError
+    val metroAlertsErrorDetail = metroAlertsRepository.alertsErrorDetail
 
     val accessibilityIncidents = metroAlertsRepository.accessibilityIncidents
     val specialNotices = metroAlertsRepository.specialNotices
@@ -111,6 +112,9 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
 
     
     private var fetchDeparturesJob: Job? = null
+    private var inFlightFetchStationId: String? = null
+    private var inFlightFetchIsForce: Boolean = false
+    private var activeFetchGeneration: Long = 0L
     private var realTimeRefreshJob: Job? = null
     private var alertsRefreshJob: Job? = null
 
@@ -394,9 +398,31 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
         isAutoRefresh: Boolean = false,
         forceRefresh: Boolean = false
     ) {
+        // Protect against duplicate concurrent requests for the same station:
+        // if a request for this station is already in flight, let it finish instead of cancelling and re-querying.
+        if (fetchDeparturesJob?.isActive == true && inFlightFetchStationId == stationId) {
+            if (isAutoRefresh || !forceRefresh || inFlightFetchIsForce) {
+                return
+            }
+        }
+
+        // If this is an auto-refresh and the 30s cache is still fresh with loaded data, skip redundant work.
+        if (isAutoRefresh &&
+            !forceRefresh &&
+            _realTimeSelectedStationId.value == stationId &&
+            _realTimeError.value == null &&
+            com.example.data.repository.RealTimeTransitRepository.getMetroCacheRemainingMs(stationId) > 0L
+        ) {
+            return
+        }
+
+        val myGeneration = ++activeFetchGeneration
         if (!isAutoRefresh) {
             fetchDeparturesJob?.cancel()
         }
+        inFlightFetchStationId = stationId
+        inFlightFetchIsForce = forceRefresh
+
         fetchDeparturesJob = viewModelScope.launch {
             val startTime = System.currentTimeMillis()
             if (!isAutoRefresh) {
@@ -502,7 +528,7 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
                     }
                 }
 
-                if (_realTimeSelectedStationId.value == stationId) {
+                if (activeFetchGeneration == myGeneration && _realTimeSelectedStationId.value == stationId) {
                     if (filteredList.isNotEmpty()) {
                         _realTimeDepartures.value = filteredList
                         _realTimeError.value = null
@@ -531,21 +557,33 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
                     }
                     _stationAforoBloqueado.value = detectedAforo
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Never treat coroutine cancellation (e.g. switching stations) as a network error
+                throw e
             } catch (e: Exception) {
                 Log.w("RealTimeMetro", "Could not fetch live departures for $stationId: ${e.message}")
-                if (_realTimeSelectedStationId.value == stationId && !isAutoRefresh) {
+                if (activeFetchGeneration == myGeneration && _realTimeSelectedStationId.value == stationId && !isAutoRefresh) {
                     _realTimeDepartures.value = emptyList()
                     val isOffline = !com.example.util.isNetworkAvailable(getApplication())
                     _realTimeError.value = if (isOffline) "Sin conexión a internet" else "Error al cargar salidas"
                 }
             } finally {
-                if (!isAutoRefresh && _realTimeSelectedStationId.value == stationId) {
-                    val elapsed = System.currentTimeMillis() - startTime
-                    if (elapsed < 300L) {
-                        delay(300L - elapsed)
+                try {
+                    if (activeFetchGeneration == myGeneration && !isAutoRefresh && _realTimeSelectedStationId.value == stationId) {
+                        val elapsed = System.currentTimeMillis() - startTime
+                        if (elapsed < 300L) {
+                            delay(300L - elapsed)
+                        }
+                        if (activeFetchGeneration == myGeneration && _realTimeSelectedStationId.value == stationId) {
+                            _realTimeLoading.value = false
+                            _hasCompletedInitialLiveFetch.value = true
+                        }
                     }
-                    _realTimeLoading.value = false
-                    _hasCompletedInitialLiveFetch.value = true
+                } finally {
+                    if (activeFetchGeneration == myGeneration) {
+                        inFlightFetchStationId = null
+                        inFlightFetchIsForce = false
+                    }
                 }
             }
         }
@@ -557,16 +595,35 @@ class MetroViewModel(application: Application, private val metroRepository: Metr
         return LocationUtils.formatDistance(dist)
     }
 
-    fun startRealTimeRefreshTicker() {
+    fun startRealTimeRefreshTicker(fetchImmediatelyIfStale: Boolean = true) {
         realTimeRefreshJob?.cancel()
         realTimeRefreshJob = viewModelScope.launch {
             try {
-                while (true) {
-                    // Metrovalencia live API refresh interval: 30 seconds (delay before repeating to avoid double initial fetch)
-                    delay(30000L)
+                // Wait for any in-flight fetch before checking remaining TTL
+                fetchDeparturesJob?.join()
+                val initialStation = _realTimeSelectedStationId.value
+                if (initialStation.isBlank()) return@launch
+
+                // If the app was backgrounded/asleep longer than the 30s TTL, refresh immediately
+                // instead of sleeping 30s with stale departures.
+                val initialRemainingMs = com.example.data.repository.RealTimeTransitRepository
+                    .getMetroCacheRemainingMs(initialStation)
+                if (fetchImmediatelyIfStale && initialRemainingMs <= 0L) {
+                    fetchRealTimeDepartures(initialStation, isAutoRefresh = true, forceRefresh = false)
+                    fetchDeparturesJob?.join()
+                }
+
+                while (isActive) {
+                    fetchDeparturesJob?.join()
+                    val activeStation = _realTimeSelectedStationId.value
+                    if (activeStation.isBlank()) return@launch
+                    val remainingCacheMs = com.example.data.repository.RealTimeTransitRepository
+                        .getMetroCacheRemainingMs(activeStation)
+                    val sleepMs = if (remainingCacheMs > 0L) remainingCacheMs + 250L else 30_200L
+                    delay(sleepMs)
                     val currentStation = _realTimeSelectedStationId.value
                     if (currentStation.isBlank()) return@launch
-                    fetchRealTimeDepartures(currentStation, isAutoRefresh = true, forceRefresh = true)
+                    fetchRealTimeDepartures(currentStation, isAutoRefresh = true, forceRefresh = false)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 // Expected when ticker is cancelled/restarted
@@ -642,11 +699,18 @@ fun autoSelectNearestMetroStationIfNeeded(force: Boolean = false) {
         }
     }
 
-    fun onAppForegrounded() {
+    fun onAppForegrounded(isSalidasTab: Boolean = true, isAvisosTab: Boolean = false) {
         _isAppInForeground.value = true
-        val now = System.currentTimeMillis()
-        if (now - lastAlertsFetchTime >= 15 * 60 * 1000L) { // 15 minutes
-            fetchAllAlerts()
+        if ((isSalidasTab || isAvisosTab) &&
+            (!com.example.data.repository.MetroAlertsRepository.hasValidCache() ||
+                (isAvisosTab && !com.example.data.repository.MetroAlertsRepository.hasValidNewsCache()))
+        ) {
+            fetchAllAlerts(force = false, includeNews = isAvisosTab)
+        }
+        if (isSalidasTab) {
+            startRealTimeRefreshTicker(fetchImmediatelyIfStale = true)
+        } else {
+            stopRealTimeRefreshTicker()
         }
     }
 
@@ -675,26 +739,43 @@ fun autoSelectNearestMetroStationIfNeeded(force: Boolean = false) {
             hasUserManuallySelectedStation = true
         }
         val sameStation = _realTimeSelectedStationId.value == stationId
-        _realTimeSelectedStationId.value = stationId
 
-        // Si es la misma estación y se dispara automáticamente, no cancelar ni relanzar peticiones activas
-        if (sameStation && !isUserAction && (_realTimeLoading.value || _realTimeDepartures.value.isNotEmpty())) {
-            return
+        if (sameStation) {
+            // If a fetch for this exact station is already running, never cancel or duplicate it.
+            if (fetchDeparturesJob?.isActive == true && inFlightFetchStationId == stationId) {
+                return
+            }
+            // If fresh cached data (within 30s TTL) is already displayed without errors, do not re-trigger.
+            val cacheFresh = com.example.data.repository.RealTimeTransitRepository
+                .getMetroCacheRemainingMs(stationId) > 0L
+            if (cacheFresh && _realTimeError.value == null && (_hasCompletedInitialLiveFetch.value || _realTimeDepartures.value.isNotEmpty())) {
+                return
+            }
+            if (!isUserAction && (_realTimeLoading.value || _realTimeDepartures.value.isNotEmpty())) {
+                return
+            }
         }
 
+        _realTimeSelectedStationId.value = stationId
+
         if (!sameStation) {
+            activeFetchGeneration++
             fetchDeparturesJob?.cancel()
+            inFlightFetchStationId = null
+            inFlightFetchIsForce = false
             _realTimeDepartures.value = emptyList()
             _realTimeLoading.value = true
             _hasCompletedInitialLiveFetch.value = false
             _realTimeError.value = null
         }
 
+        // Persist preference asynchronously without delaying fetch registration (prevents double-tap races)
         viewModelScope.launch {
             repository.savePreference("selected_station", stationId)
-            fetchRealTimeDepartures(stationId, isAutoRefresh = false)
-            startRealTimeRefreshTicker()
         }
+
+        fetchRealTimeDepartures(stationId, isAutoRefresh = false)
+        startRealTimeRefreshTicker()
     }
 
     fun toggleFavoriteStation(stationId: String) {
@@ -824,10 +905,15 @@ fun autoSelectNearestMetroStationIfNeeded(force: Boolean = false) {
 
     fun refreshTransitCards() {
         viewModelScope.launch {
+            val startTime = System.currentTimeMillis()
             _isRefreshingCards.value = true
             try {
-                metroCardRepository.refreshTransitCards()
+                metroCardRepository.refreshTransitCards(minCooldownMs = 0L)
             } finally {
+                val elapsed = System.currentTimeMillis() - startTime
+                if (elapsed < 300L) {
+                    delay(300L - elapsed)
+                }
                 _isRefreshingCards.value = false
             }
         }
@@ -836,7 +922,7 @@ fun autoSelectNearestMetroStationIfNeeded(force: Boolean = false) {
     fun autoRefreshCardsIfNeeded() {
         viewModelScope.launch {
             try {
-                metroCardRepository.refreshTransitCardsIfNeeded()
+                metroCardRepository.refreshTransitCardsOnAppOpen()
             } catch (e: Exception) {
                 e.printStackTrace()
             }

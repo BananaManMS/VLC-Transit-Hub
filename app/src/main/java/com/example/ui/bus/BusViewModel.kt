@@ -115,8 +115,8 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
             _selectedBusTabIndex.value = validIndex
             prefs.edit().putInt("last_selected_bus_tab", validIndex).apply()
         }
-        if (validIndex == 2 && _valenbisiStations.value.isEmpty() && !_valenbisiLoading.value) {
-            fetchValenbisiStations()
+        if (validIndex == 2 && (!com.example.data.repository.ValenbisiRepository.hasValidCache() || _valenbisiStations.value.isEmpty()) && !_valenbisiLoading.value) {
+            fetchValenbisiStations(force = false, isUserPullRefresh = false)
         }
     }
 
@@ -277,8 +277,16 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         _valenbisiSearchQuery.value = query
     }
 
-    fun fetchValenbisiStations(force: Boolean = false) {
+    fun fetchValenbisiStations(force: Boolean = false, isUserPullRefresh: Boolean = false) {
+        if (!force && !isUserPullRefresh && com.example.data.repository.ValenbisiRepository.hasValidCache()) {
+            val cached = com.example.data.repository.ValenbisiRepository.getCachedStations()
+            if (cached.isNotEmpty()) {
+                _valenbisiStations.value = cached
+                return
+            }
+        }
         viewModelScope.launch {
+            val startTime = System.currentTimeMillis()
             _valenbisiLoading.value = true
             try {
                 val list = valenbisiRepository.fetchStations(force = force)
@@ -286,6 +294,10 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.e("Valenbisi", "Error fetching valenbisi stations: ${e.message}", e)
             } finally {
+                val elapsed = System.currentTimeMillis() - startTime
+                if (elapsed < 300L) {
+                    delay(300L - elapsed)
+                }
                 _valenbisiLoading.value = false
             }
         }
@@ -398,7 +410,11 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     private fun startBusCountdownTicker() {
         busCountdownJob?.cancel()
         busCountdownJob = viewModelScope.launch {
-            var lastNetworkFetchMs = System.currentTimeMillis()
+            val stopId = _selectedBusStop.value?.opId
+            val remainingMs = if (stopId != null) {
+                com.example.data.repository.RealTimeTransitRepository.getEmtCacheRemainingMs(stopId)
+            } else 0L
+            var lastNetworkFetchMs = System.currentTimeMillis() - (30_000L - remainingMs).coerceAtLeast(0L)
             while (isActive) {
                 delay(15000L) // 15-second battery-friendly cadence for EMT
                 if (!isActive) break
@@ -425,13 +441,9 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Adaptive network polling delay based on closest bus arrival
+                // Unified 30s real-time polling cadence (60s when next bus is far away)
                 val minMins = currentList.mapNotNull { it.minutos.toIntOrNull() }.minOfOrNull { it } ?: 999
-                val networkIntervalMs = when {
-                    minMins < 3 -> 20000L   // <3 min -> 20s
-                    minMins <= 10 -> 30000L // 3 to 10 min -> 30s
-                    else -> 60000L          // >10 min -> 60s
-                }
+                val networkIntervalMs = if (minMins <= 10) 30_200L else 60_000L
 
                 val now = System.currentTimeMillis()
                 if (now - lastNetworkFetchMs >= networkIntervalMs && isActive) {
@@ -934,6 +946,7 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         forceRefresh: Boolean = false
     ) {
         scheduledMetrobusLimitPerLine = limitPerLine
+        val startTime = System.currentTimeMillis()
         if (!isLoadMore && !isSilent) {
             _metrobusTimesLoading.value = true
             if (_selectedMetrobusStop.value?.idParada != stopId) {
@@ -963,6 +976,10 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } finally {
                 if (!isLoadMore && !isSilent) {
+                    val elapsed = System.currentTimeMillis() - startTime
+                    if (elapsed < 300L) {
+                        delay(300L - elapsed)
+                    }
                     _metrobusTimesLoading.value = false
                 } else if (isLoadMore) {
                     _isLoadingMoreMetrobusScheduled.value = false
@@ -1001,11 +1018,14 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
     private fun startMetrobusCountdownTicker() {
         metrobusCountdownJob?.cancel()
         metrobusCountdownJob = viewModelScope.launch {
-            var tickCount = 0
+            val stopId = _selectedMetrobusStop.value?.idParada
+            val remainingMs = if (stopId != null) {
+                com.example.data.repository.MetrobusRepository.getRtCacheRemainingMs(stopId)
+            } else 0L
+            var lastNetworkFetchMs = System.currentTimeMillis() - (30_000L - remainingMs).coerceAtLeast(0L)
             while (isActive) {
-                delay(15000L) // 15-second battery-friendly cadence for Metrobus
+                delay(15_100L) // 15s local countdown tick; 30s network refresh matching RT_CACHE_TTL_MS
                 if (!isActive) break
-                tickCount++
                 val currentList = _metrobusTimes.value
                 if (currentList.isNotEmpty()) {
                     var changed = false
@@ -1017,7 +1037,6 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                             changed = true
                             val newSecs = (secs - 15).coerceAtLeast(0)
                             val newMinsVal = (newSecs + 59) / 60
-                            val newMinsStr = if (newMinsVal <= 1) "1" else newMinsVal.toString()
                             val newLabel = if (newMinsVal <= 1) "Inminente" else "$newMinsVal min"
                             time.copy(
                                 secondsRemaining = newSecs,
@@ -1031,10 +1050,12 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Poll real-time / scheduled silently in background every 30s (every 2 ticks)
-                if (tickCount % 2 == 0 && isActive) {
+                // Poll real-time / scheduled silently in background every 30s
+                val now = System.currentTimeMillis()
+                if (now - lastNetworkFetchMs >= 30_200L && isActive) {
                     val stop = _selectedMetrobusStop.value ?: break
                     if (isActive) {
+                        lastNetworkFetchMs = now
                         fetchMetrobusTimes(
                             stop.idParada,
                             limitPerLine = scheduledMetrobusLimitPerLine,
@@ -1054,19 +1075,41 @@ class BusViewModel(application: Application) : AndroidViewModel(application) {
         metrobusCountdownJob = null
     }
 
-    fun onAppForegrounded() {
-        if (_selectedBusStop.value != null && busCountdownJob == null) {
-            fetchBusTimes(_selectedBusStop.value!!.opId, isSilent = true)
-            startBusCountdownTicker()
+    fun onAppForegrounded(activeSubTab: Int = -1, isValenbisiTabActive: Boolean = (activeSubTab == 2)) {
+        if (activeSubTab == 0 || activeSubTab == -1) {
+            val busStop = _selectedBusStop.value
+            if (busStop != null) {
+                if (com.example.data.repository.RealTimeTransitRepository.getEmtCacheRemainingMs(busStop.opId) <= 0L) {
+                    fetchBusTimes(
+                        stopId = busStop.opId,
+                        limitPerLine = scheduledLimitPerLine,
+                        isSilent = true,
+                        includeScheduled = isEmtScheduledExpanded
+                    )
+                }
+                if (busCountdownJob?.isActive != true) {
+                    startBusCountdownTicker()
+                }
+            }
         }
-        if (_selectedMetrobusStop.value != null && metrobusCountdownJob == null) {
-            fetchMetrobusTimes(
-                _selectedMetrobusStop.value!!.idParada,
-                limitPerLine = scheduledMetrobusLimitPerLine,
-                isSilent = true,
-                includeScheduled = isMetrobusScheduledExpanded
-            )
-            startMetrobusCountdownTicker()
+        if (activeSubTab == 1 || activeSubTab == -1) {
+            val metrobusStop = _selectedMetrobusStop.value
+            if (metrobusStop != null) {
+                if (com.example.data.repository.MetrobusRepository.getRtCacheRemainingMs(metrobusStop.idParada) <= 0L) {
+                    fetchMetrobusTimes(
+                        metrobusStop.idParada,
+                        limitPerLine = scheduledMetrobusLimitPerLine,
+                        isSilent = true,
+                        includeScheduled = isMetrobusScheduledExpanded
+                    )
+                }
+                if (metrobusCountdownJob?.isActive != true) {
+                    startMetrobusCountdownTicker()
+                }
+            }
+        }
+        if ((activeSubTab == 2 || isValenbisiTabActive) && !com.example.data.repository.ValenbisiRepository.hasValidCache()) {
+            fetchValenbisiStations(force = false, isUserPullRefresh = false)
         }
     }
 }

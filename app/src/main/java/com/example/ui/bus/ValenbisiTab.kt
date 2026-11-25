@@ -133,15 +133,19 @@ fun ValenbisiTab(
     }
 
     val pullToRefreshState = rememberPullToRefreshState()
+    val (isPullRefreshing, triggerValenbisiRefresh) = com.example.ui.components.rememberPullRefreshFeedback(
+        isLoading = isLoading,
+        onRefresh = onRefresh
+    )
 
     PullToRefreshBox(
-        isRefreshing = isLoading,
-        onRefresh = onRefresh,
+        isRefreshing = isPullRefreshing,
+        onRefresh = triggerValenbisiRefresh,
         state = pullToRefreshState,
         indicator = {
             TransitPullRefreshIndicator(
                 state = pullToRefreshState,
-                isRefreshing = isLoading,
+                isRefreshing = isPullRefreshing,
                 appLanguage = appLanguage,
                 isInitialLoad = isLoading && valenbisiStations.isEmpty(),
                 refreshingText = if (appLanguage == AppLanguage.CA) "Actualitzant Valenbisi..." else "Actualizando Valenbisi..."

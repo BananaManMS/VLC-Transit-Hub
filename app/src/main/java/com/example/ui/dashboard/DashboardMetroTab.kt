@@ -19,6 +19,7 @@ fun DashboardMetroTab(
     activeTripBottomPadding: Dp,
     onBackClick: (() -> Unit)?,
     onBackGesture: (() -> Unit)?,
+    isScreenVisible: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     MetroScreen(
@@ -31,6 +32,7 @@ fun DashboardMetroTab(
         isDarkMode = isDarkMode,
         initialPage = initialPage,
         activeTripBottomPadding = activeTripBottomPadding,
+        isScreenVisible = isScreenVisible,
         onBackClick = onBackClick,
         onBackGesture = onBackGesture
     )

@@ -38,7 +38,8 @@ fun MetroScreen(
     initialPage: Int = 0,
     onBackClick: (() -> Unit)? = null,
     onBackGesture: (() -> Unit)? = null,
-    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
+    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp,
+    isScreenVisible: Boolean = true
 ) {
     val backHandlerAction = onBackClick ?: onBackGesture
     if (backHandlerAction != null) {
@@ -63,21 +64,20 @@ fun MetroScreen(
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val isSalidasTab = pagerState.currentPage == 0
-    DisposableEffect(lifecycleOwner, metroViewModel, isSalidasTab) {
+    val isAvisosTab = pagerState.currentPage == 1
+    DisposableEffect(lifecycleOwner, metroViewModel, isSalidasTab, isAvisosTab, isScreenVisible) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
-                if (isSalidasTab) {
-                    metroViewModel.startRealTimeRefreshTicker()
-                }
-            } else if (event == Lifecycle.Event.ON_STOP || event == Lifecycle.Event.ON_PAUSE) {
-                metroViewModel.stopRealTimeRefreshTicker()
+            if (event == Lifecycle.Event.ON_RESUME && isScreenVisible) {
+                metroViewModel.onAppForegrounded(isSalidasTab = isSalidasTab, isAvisosTab = isAvisosTab)
+            } else if (event == Lifecycle.Event.ON_PAUSE) {
+                metroViewModel.onAppBackgrounded()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        if (isSalidasTab && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-            metroViewModel.startRealTimeRefreshTicker()
+        if (isScreenVisible && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            metroViewModel.onAppForegrounded(isSalidasTab = isSalidasTab, isAvisosTab = isAvisosTab)
         } else {
-            metroViewModel.stopRealTimeRefreshTicker()
+            metroViewModel.onAppBackgrounded()
         }
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)

@@ -11,22 +11,21 @@ class CercaniasAlertsPollingManager(
     private var lastFetchTime = 0L
 
     fun startPolling() {
+        if (!com.example.data.repository.renfe.RenfeAlertsRepository.hasValidCache()) {
+            viewModel.fetchCercaniasRealTimeAlerts(force = false)
+        }
         if (job?.isActive == true) return
         job = scope.launch(Dispatchers.IO) {
             while (isActive) {
-                delay(10.minutes)
-                lastFetchTime = System.currentTimeMillis()
-                viewModel.fetchCercaniasRealTimeAlerts(force = true)
+                delay(15.minutes)
+                if (!com.example.data.repository.renfe.RenfeAlertsRepository.hasValidCache()) {
+                    viewModel.fetchCercaniasRealTimeAlerts(force = false)
+                }
             }
         }
     }
 
     fun onForeground() {
-        val now = System.currentTimeMillis()
-        if (lastFetchTime > 0L && (now - lastFetchTime) >= 10 * 60 * 1000L) {
-            lastFetchTime = now
-            viewModel.fetchCercaniasRealTimeAlerts(force = true)
-        }
         startPolling()
     }
 

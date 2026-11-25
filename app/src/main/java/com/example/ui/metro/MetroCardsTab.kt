@@ -100,10 +100,6 @@ fun TarjetasTab(
     var selectedDetailCard by remember { mutableStateOf<TransitCardUiModel?>(null) }
     var pendingAlerts by remember { mutableStateOf<List<TransitCardAlert>>(emptyList()) }
 
-    LaunchedEffect(Unit) {
-        metroViewModel.autoRefreshCardsIfNeeded()
-    }
-
     LaunchedEffect(cards) {
         if (cards.isNotEmpty()) {
             val alerts = TransitCardAlertManager.getAlertsForPopup(context, cards, appLanguage)
@@ -114,15 +110,19 @@ fun TarjetasTab(
     }
 
     val pullToRefreshState = rememberPullToRefreshState()
+    val (isPullRefreshing, triggerCardsRefresh) = com.example.ui.components.rememberPullRefreshFeedback(
+        isLoading = isRefreshingCards,
+        onRefresh = { metroViewModel.refreshTransitCards() }
+    )
 
     PullToRefreshBox(
-        isRefreshing = isRefreshingCards,
-        onRefresh = { metroViewModel.refreshTransitCards() },
+        isRefreshing = isPullRefreshing,
+        onRefresh = triggerCardsRefresh,
         state = pullToRefreshState,
         indicator = {
             TransitPullRefreshIndicator(
                 state = pullToRefreshState,
-                isRefreshing = isRefreshingCards,
+                isRefreshing = isPullRefreshing,
                 appLanguage = appLanguage,
                 refreshingText = if (appLanguage == AppLanguage.CA) "Actualitzant targetes..." else "Actualizando tarjetas..."
             )

@@ -72,7 +72,7 @@ class GtfsCacheManager(private val context: Context) {
         @Volatile
         private var lastVehiclePositionsEtag: String = ""
 
-        private const val CACHE_TTL_MS = 15_000L // 15s official update cadence
+        internal const val CACHE_TTL_MS = 30_000L // 30s cooldown matching unified real-time cadence
         private val CANONICAL_LINE_REGEX = Regex("""^C[1-6]$""")
         private val OTHER_NUCLEUS_PREFIXES = listOf("10", "20", "30", "31", "32", "41", "50", "51", "60", "61", "62", "70", "80", "90")
         private val PLATF_REGEX = Regex("""PLATF\.\((\d+)\)|V[IÍ]A\s*(\d+)""", RegexOption.IGNORE_CASE)
@@ -83,6 +83,14 @@ class GtfsCacheManager(private val context: Context) {
                 .readTimeout(2500, TimeUnit.MILLISECONDS)
                 .callTimeout(3000, TimeUnit.MILLISECONDS)
                 .build()
+        }
+
+        fun getDeparturesCacheRemainingMs(): Long {
+            if (cachedTripUpdates.isEmpty() && cachedVehiclePositions.isEmpty()) return 0L
+            val latest = maxOf(lastDeparturesFetchTimeMs, lastFetchTimeMs)
+            if (latest <= 0L) return 0L
+            val remaining = CACHE_TTL_MS - (System.currentTimeMillis() - latest)
+            return if (remaining > 0L) remaining else 0L
         }
     }
 
@@ -186,13 +194,16 @@ class GtfsCacheManager(private val context: Context) {
             }
             try {
                 val tripUpdatesMap = mutableMapOf<String, GtfsRtTripUpdate>()
-                val isFresh = fetchTripUpdatesFeed(tripUpdatesMap)
+                val serverResponded = AtomicBoolean(false)
+                val isFresh = fetchTripUpdatesFeed(tripUpdatesMap, serverResponded)
                 if (isFresh && tripUpdatesMap.isNotEmpty()) {
                     val pruned = pruneOldTripUpdates(cachedTripUpdates).toMutableMap()
                     mergeTripUpdates(pruned, tripUpdatesMap, overwriteWithFlota = false)
                     cachedTripUpdates = pruned
                 }
-                lastTripUpdatesFetchTimeMs = System.currentTimeMillis()
+                if (serverResponded.get()) {
+                    lastTripUpdatesFetchTimeMs = System.currentTimeMillis()
+                }
                 isFresh
             } catch (e: Exception) {
                 Log.w("GtfsCacheManager", "Error fetching trip_updates.json: ${e.message}")
@@ -214,10 +225,13 @@ class GtfsCacheManager(private val context: Context) {
                 return@withLock false
             }
             try {
-                val hasNewData = fetchRealTimeFeeds(includeVehiclePositions = false)
-                val finishNow = System.currentTimeMillis()
-                lastDeparturesFetchTimeMs = finishNow
-                lastTripUpdatesFetchTimeMs = finishNow
+                val serverResponded = AtomicBoolean(false)
+                val hasNewData = fetchRealTimeFeeds(includeVehiclePositions = false, anyServerContact = serverResponded)
+                if (serverResponded.get()) {
+                    val finishNow = System.currentTimeMillis()
+                    lastDeparturesFetchTimeMs = finishNow
+                    lastTripUpdatesFetchTimeMs = finishNow
+                }
                 hasNewData
             } catch (e: Exception) {
                 Log.w("GtfsCacheManager", "Error fetching departures feeds: ${e.message}")
@@ -239,11 +253,14 @@ class GtfsCacheManager(private val context: Context) {
             }
 
             try {
-                val hasNewData = fetchRealTimeFeeds(includeVehiclePositions = true)
-                val finishNow = System.currentTimeMillis()
-                lastFetchTimeMs = finishNow
-                lastDeparturesFetchTimeMs = finishNow
-                lastTripUpdatesFetchTimeMs = finishNow
+                val serverResponded = AtomicBoolean(false)
+                val hasNewData = fetchRealTimeFeeds(includeVehiclePositions = true, anyServerContact = serverResponded)
+                if (serverResponded.get()) {
+                    val finishNow = System.currentTimeMillis()
+                    lastFetchTimeMs = finishNow
+                    lastDeparturesFetchTimeMs = finishNow
+                    lastTripUpdatesFetchTimeMs = finishNow
+                }
                 hasNewData
             } catch (e: Exception) {
                 Log.w("GtfsCacheManager", "Error fetching Renfe GTFS-RT: ${e.message}")
@@ -252,7 +269,10 @@ class GtfsCacheManager(private val context: Context) {
         }
     }
 
-    private fun fetchTripUpdatesFeed(outMap: MutableMap<String, GtfsRtTripUpdate>): Boolean {
+    private fun fetchTripUpdatesFeed(
+        outMap: MutableMap<String, GtfsRtTripUpdate>,
+        serverContact: AtomicBoolean? = null
+    ): Boolean {
         val reqBuilder = Request.Builder()
             .url("https://gtfsrt.renfe.com/trip_updates.json")
             .header("User-Agent", NetworkModule.USER_AGENT)
@@ -260,8 +280,12 @@ class GtfsCacheManager(private val context: Context) {
             reqBuilder.header("If-None-Match", lastTripUpdatesEtag)
         }
         fastClient.newCall(reqBuilder.build()).execute().use { response ->
-            if (response.code == 304) return false
+            if (response.code == 304) {
+                serverContact?.set(true)
+                return false
+            }
             if (response.isSuccessful) {
+                serverContact?.set(true)
                 response.header("ETag")?.takeIf { it.isNotBlank() }?.let { lastTripUpdatesEtag = it }
                 val body = response.body?.string()
                 if (!body.isNullOrBlank()) {
@@ -272,7 +296,10 @@ class GtfsCacheManager(private val context: Context) {
         return false
     }
 
-    private suspend fun fetchRealTimeFeeds(includeVehiclePositions: Boolean): Boolean = coroutineScope {
+    private suspend fun fetchRealTimeFeeds(
+        includeVehiclePositions: Boolean,
+        anyServerContact: AtomicBoolean? = null
+    ): Boolean = coroutineScope {
         val flotaTuMap = ConcurrentHashMap<String, GtfsRtTripUpdate>()
         val flotaVpMap = ConcurrentHashMap<String, LiveVehicleInfo>()
         val flotaCoveredKeys = ConcurrentHashMap.newKeySet<String>()
@@ -292,8 +319,12 @@ class GtfsCacheManager(private val context: Context) {
                 }
 
                 fastClient.newCall(reqBuilder.build()).execute().use { response ->
-                    if (response.code == 304) return@launch
+                    if (response.code == 304) {
+                        anyServerContact?.set(true)
+                        return@launch
+                    }
                     if (response.isSuccessful) {
+                        anyServerContact?.set(true)
                         response.header("ETag")?.takeIf { it.isNotBlank() }?.let { lastFlotaEtag = it }
                         val body = response.body?.string()
                         if (!body.isNullOrBlank()) {
@@ -316,7 +347,7 @@ class GtfsCacheManager(private val context: Context) {
         val jobTripUpdates = launch(Dispatchers.IO) {
             try {
                 val tempTu = mutableMapOf<String, GtfsRtTripUpdate>()
-                if (fetchTripUpdatesFeed(tempTu)) {
+                if (fetchTripUpdatesFeed(tempTu, anyServerContact)) {
                     anyFeedUpdated.set(true)
                     tuMap.putAll(tempTu)
                 }
@@ -336,8 +367,12 @@ class GtfsCacheManager(private val context: Context) {
                     }
 
                     fastClient.newCall(reqBuilder.build()).execute().use { response ->
-                        if (response.code == 304) return@launch
+                        if (response.code == 304) {
+                            anyServerContact?.set(true)
+                            return@launch
+                        }
                         if (response.isSuccessful) {
+                            anyServerContact?.set(true)
                             response.header("ETag")?.takeIf { it.isNotBlank() }?.let { lastVehiclePositionsEtag = it }
                             val body = response.body?.string()
                             if (!body.isNullOrBlank()) {

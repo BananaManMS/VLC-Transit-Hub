@@ -5,15 +5,30 @@ import com.example.data.database.AppDatabase
 import com.example.data.database.TransitCardEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.json.JSONObject
 
 class MetroCardRepository(
     private val context: Context,
-    private val database: AppDatabase = AppDatabase.getDatabase(context)
+    private val database: AppDatabase = AppDatabase.getDatabase(context),
+    private val clientOverride: OkHttpClient? = null
 ) {
-    private val client: OkHttpClient = com.example.data.network.NetworkModule.okHttpClient
+    companion object {
+        @Volatile
+        private var hasRefreshedOnAppOpen: Boolean = false
+        private val appOpenMutex = Mutex()
+        private val refreshMutex = Mutex()
+
+        @androidx.annotation.VisibleForTesting
+        fun resetSessionStateForTesting() {
+            hasRefreshedOnAppOpen = false
+        }
+    }
+
+    private val client: OkHttpClient = clientOverride ?: com.example.data.network.NetworkModule.okHttpClient
     private val cardDao = database.transitCardDao()
 
     @get:JvmName("getTransitCardsPropertyFlow")
@@ -129,51 +144,24 @@ class CardAlreadyExistsException(message: String = "Esta tarjeta ya está añadi
         }
     }
 
-    suspend fun refreshTransitCards() = withContext(Dispatchers.IO) {
-        val cards = cardDao.getAllCards()
-        for (card in cards) {
-            try {
-                val cardJson = com.example.ui.metro.MetroCardNetworkSource.fetchCardFromNetwork(card.cardNumber)
-                val title = cardJson.optString("titulo", cardJson.optString("nombre", card.defaultName))
-                val cardType = cardJson.optString("clase", cardJson.optString("tipo", card.cardType))
-                val remainingValue = cardJson.optString("saldo", cardJson.optString("saldoFormateado", card.remainingValue))
-
-                // Merge network JSON while strictly PRESERVING user preferences
-                val oldDetails = try { JSONObject(card.detailsJson) } catch (_: Exception) { JSONObject() }
-                val mergedDetails = JSONObject(cardJson.toString())
-                val preservedOrder = if (oldDetails.has("custom_order")) oldDetails.optInt("custom_order", card.customOrder) else card.customOrder
-                val preservedHome = if (oldDetails.has("show_on_home")) oldDetails.optBoolean("show_on_home", card.showOnHome) else card.showOnHome
-                val preservedInactive = if (oldDetails.has("manually_inactive")) oldDetails.optBoolean("manually_inactive", card.isManuallyInactive) else card.isManuallyInactive
-
-                mergedDetails.put("custom_order", preservedOrder)
-                mergedDetails.put("show_on_home", preservedHome)
-                mergedDetails.put("manually_inactive", preservedInactive)
-
-                val updated = card.copy(
-                    defaultName = title,
-                    cardType = cardType,
-                    remainingValue = remainingValue,
-                    detailsJson = mergedDetails.toString(),
-                    lastUpdated = System.currentTimeMillis(),
-                    customOrder = preservedOrder,
-                    showOnHome = preservedHome,
-                    isManuallyInactive = preservedInactive
-                )
-                cardDao.insertCard(updated)
-            } catch (e: Exception) {
-                android.util.Log.w("MetroCardRepository", "Error al actualizar tarjeta ${card.cardNumber}: ${e.message}")
-            }
+    private suspend fun fetchCardJson(cardNumber: String): JSONObject {
+        return if (clientOverride != null) {
+            com.example.ui.metro.MetroCardNetworkSource.fetchCardFromNetwork(cardNumber, clientOverride)
+        } else {
+            com.example.ui.metro.MetroCardNetworkSource.fetchCardFromNetwork(cardNumber)
         }
     }
 
-    suspend fun refreshTransitCardsIfNeeded(maxAgeMillis: Long = 3600000L): Boolean = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        val cards = cardDao.getAllCards()
-        var refreshedAny = false
-        for (card in cards) {
-            if (now - card.lastUpdated > maxAgeMillis) {
+    suspend fun refreshTransitCards(minCooldownMs: Long = 60_000L) = withContext(Dispatchers.IO) {
+        refreshMutex.withLock {
+            val now = System.currentTimeMillis()
+            val cards = cardDao.getAllCards()
+            for (card in cards) {
+                if (minCooldownMs > 0L && (now - card.lastUpdated) in 0L until minCooldownMs) {
+                    continue
+                }
                 try {
-                    val cardJson = com.example.ui.metro.MetroCardNetworkSource.fetchCardFromNetwork(card.cardNumber)
+                    val cardJson = fetchCardJson(card.cardNumber)
                     val title = cardJson.optString("titulo", cardJson.optString("nombre", card.defaultName))
                     val cardType = cardJson.optString("clase", cardJson.optString("tipo", card.cardType))
                     val remainingValue = cardJson.optString("saldo", cardJson.optString("saldoFormateado", card.remainingValue))
@@ -194,18 +182,36 @@ class CardAlreadyExistsException(message: String = "Esta tarjeta ya está añadi
                         cardType = cardType,
                         remainingValue = remainingValue,
                         detailsJson = mergedDetails.toString(),
-                        lastUpdated = now,
+                        lastUpdated = System.currentTimeMillis(),
                         customOrder = preservedOrder,
                         showOnHome = preservedHome,
                         isManuallyInactive = preservedInactive
                     )
                     cardDao.insertCard(updated)
-                    refreshedAny = true
                 } catch (e: Exception) {
                     android.util.Log.w("MetroCardRepository", "Error al actualizar tarjeta ${card.cardNumber}: ${e.message}")
                 }
             }
         }
-        refreshedAny
     }
+
+    /**
+     * Refreshes saved transit cards once per app launch (process session).
+     * Subsequent screen visits in the same session do not trigger redundant network calls;
+     * manual pull-to-refresh calls [refreshTransitCards] directly.
+     */
+    suspend fun refreshTransitCardsOnAppOpen(): Boolean = withContext(Dispatchers.IO) {
+        if (hasRefreshedOnAppOpen) return@withContext false
+        appOpenMutex.withLock {
+            if (hasRefreshedOnAppOpen) return@withLock false
+            val cards = cardDao.getAllCards()
+            hasRefreshedOnAppOpen = true
+            if (cards.isEmpty()) return@withLock false
+            refreshTransitCards(minCooldownMs = 0L)
+            true
+        }
+    }
+
+    suspend fun refreshTransitCardsIfNeeded(maxAgeMillis: Long = 3600000L): Boolean =
+        refreshTransitCardsOnAppOpen()
 }

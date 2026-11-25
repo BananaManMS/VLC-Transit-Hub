@@ -10,6 +10,8 @@ import com.example.BuildConfig
 
 object NetworkModule {
     const val USER_AGENT = "ValenciaTransitHub/1.0 (Android; Contact: info@valenciatransithub.com)"
+    const val VIATGEM_PROXY_HOST = "viatgem-proxy.lizh0815.workers.dev"
+    const val VIATGEM_PROXY_BASE_URL = "https://$VIATGEM_PROXY_HOST"
 
     val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -20,8 +22,9 @@ object NetworkModule {
             .addInterceptor { chain ->
                 val request = chain.request()
                 val header = request.newBuilder().header("Accept", "application/json")
-                if (request.url.host.contains("metrovalencia")) {
-                    header.header("X-App-Secret", BuildConfig.METROVALENCIA_API_SECRET)
+                val host = request.url.host
+                if (host.equals(VIATGEM_PROXY_HOST, ignoreCase = true) || host.contains("metrovalencia")) {
+                    header.header("X-App-Secret", BuildConfig.METROVALENCIA_API_SECRET.trim())
                 }
                 chain.proceed(header.build())
             }

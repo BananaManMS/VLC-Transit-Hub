@@ -217,13 +217,19 @@ fun DashboardScreen(
         }
     }
 
+    val isNoFullOverlay = !isPlannerVisible && !isNetworkPlansVisible
+    val isHomeScreenVisible = activeTab == DashboardTab.Inicio && isNoFullOverlay
+    val currentIsHomeScreenVisible by androidx.compose.runtime.rememberUpdatedState(isHomeScreenVisible)
+
     LaunchedEffect(isAppInForeground) {
         if (isAppInForeground) {
-            viewModel.onAppForegrounded()
+            viewModel.onAppForegrounded(isHomeVisible = currentIsHomeScreenVisible)
             if (LocationUtils.hasLocationPermission(context)) {
                 LocationUtils.requestDeviceLocation(context) { lat, lng ->
                     viewModel.updateLocation(lat, lng)
-                    viewModel.updateWeatherByLocation(lat, lng, context)
+                    if (currentIsHomeScreenVisible) {
+                        viewModel.updateWeatherByLocation(lat, lng, context)
+                    }
                 }
                 LocationUtils.getLocationUpdates(
                     context = context,
@@ -234,6 +240,12 @@ fun DashboardScreen(
                     viewModel.updateLocation(loc.latitude, loc.longitude)
                 }
             }
+        }
+    }
+
+    LaunchedEffect(isHomeScreenVisible, isAppInForeground) {
+        if (isHomeScreenVisible && isAppInForeground) {
+            viewModel.onHomeTabBecameVisible()
         }
     }
 
@@ -542,7 +554,7 @@ fun DashboardScreen(
                                         LocationUtils.requestDeviceLocation(context, handleLocationResult)
                                     }
                                     viewModel.refreshAll()
-                                    viewModel.fetchAllDashboardAlerts(force = true)
+                                    viewModel.fetchAllDashboardAlerts(force = false)
                                 },
                                 currentTimeFlow = viewModel.currentTime,
                                 appLanguage = appLanguage,
@@ -673,6 +685,7 @@ fun DashboardScreen(
                         isDarkMode = isDarkMode,
                         initialPage = busInitialPage,
                         activeTripBottomPadding = dynamicBottomTripPadding,
+                        isScreenVisible = isNoFullOverlay,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(bottom = innerPadding.calculateBottomPadding())
@@ -700,6 +713,7 @@ fun DashboardScreen(
                         isDarkMode = isDarkMode,
                         initialPage = metroInitialPage,
                         activeTripBottomPadding = dynamicBottomTripPadding,
+                        isScreenVisible = isNoFullOverlay,
                         onBackClick = if (previousTabForBack != null) {
                             {
                                 val backTo = previousTabForBack ?: DashboardTab.Inicio
@@ -737,6 +751,7 @@ fun DashboardScreen(
                         isDarkMode = isDarkMode,
                         initialPage = cercaniasInitialPage,
                         activeTripBottomPadding = dynamicBottomTripPadding,
+                        isScreenVisible = isNoFullOverlay,
                         onBackClick = if (previousTabForBack != null) {
                             {
                                 val backTo = previousTabForBack ?: DashboardTab.Inicio

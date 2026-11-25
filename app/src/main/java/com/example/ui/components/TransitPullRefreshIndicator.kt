@@ -26,6 +26,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -35,6 +41,38 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.example.ui.dashboard.AppLanguage
+import kotlinx.coroutines.delay
+
+/**
+ * Ensures Material 3 PullToRefreshBox always performs a clean false -> true -> false
+ * transition when the user releases a pull-to-refresh gesture, even if the repository
+ * serves cached data instantaneously without flipping its loading StateFlow.
+ */
+@Composable
+fun rememberPullRefreshFeedback(
+    isLoading: Boolean,
+    minFeedbackMs: Long = 450L,
+    onRefresh: () -> Unit
+): Pair<Boolean, () -> Unit> {
+    var refreshTriggerId by remember { mutableIntStateOf(0) }
+    var isSyntheticRefreshing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(refreshTriggerId) {
+        if (refreshTriggerId > 0) {
+            isSyntheticRefreshing = true
+            delay(minFeedbackMs)
+            isSyntheticRefreshing = false
+        }
+    }
+
+    val effectiveRefreshing = isLoading || isSyntheticRefreshing
+    val triggerRefresh: () -> Unit = {
+        isSyntheticRefreshing = true
+        refreshTriggerId++
+        onRefresh()
+    }
+    return effectiveRefreshing to triggerRefresh
+}
 
 /**
  * Custom Material 3 Pull-to-Refresh indicator providing clear, human-readable context

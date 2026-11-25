@@ -53,6 +53,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,7 +84,8 @@ fun EmtBusScreen(
     initialPage: Int = -1,
     modifier: Modifier = Modifier,
     isDarkMode: Boolean = true,
-    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
+    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp,
+    isScreenVisible: Boolean = true
 ) {
     val appLanguage by viewModel.appLanguage.collectAsState()
     val texts = remember(appLanguage) { AppTexts.get(appLanguage) }
@@ -259,14 +261,34 @@ fun EmtBusScreen(
                 } catch (e: Exception) {}
             }
             busViewModel.loadMetrobusStops()
-        } else if (pagerState.currentPage == 2 && valenbisiStations.isEmpty()) {
-            busViewModel.fetchValenbisiStations()
+        } else if (pagerState.currentPage == 2) {
+            busViewModel.fetchValenbisiStations(force = false, isUserPullRefresh = false)
         }
     }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
+    val currentSubTab by rememberUpdatedState(pagerState.currentPage)
+    val currentIsScreenVisible by rememberUpdatedState(isScreenVisible)
+    DisposableEffect(lifecycleOwner, busViewModel, isScreenVisible) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    if (currentIsScreenVisible) {
+                        busViewModel.onAppForegrounded(activeSubTab = currentSubTab)
+                    }
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                    busViewModel.onAppBackgrounded()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (!isScreenVisible) {
+            busViewModel.onAppBackgrounded()
+        }
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             busViewModel.onAppBackgrounded()
         }
     }
@@ -535,7 +557,7 @@ fun EmtBusScreen(
                         onSearchQueryChanged = { busViewModel.setValenbisiSearchQuery(it) },
                         onToggleFavorite = { busViewModel.toggleValenbisiFavorite(it) },
                         onSaveAlias = { stationNumber, alias -> busViewModel.saveValenbisiAlias(stationNumber, alias) },
-                        onRefresh = { busViewModel.fetchValenbisiStations(force = true) },
+                        onRefresh = { busViewModel.fetchValenbisiStations(force = false, isUserPullRefresh = true) },
                         onUpdateLocation = { lat, lng ->
                             viewModel.updateLocation(lat, lng)
                             busViewModel.updateLocation(lat, lng)
@@ -598,7 +620,7 @@ fun EmtBusScreen(
                 editingMetrobusStopForAlias = selectedMetrobusStop
             },
             onRefresh = {
-                busViewModel.fetchMetrobusTimes(selectedMetrobusStop!!.idParada, forceRefresh = true)
+                busViewModel.fetchMetrobusTimes(selectedMetrobusStop!!.idParada, forceRefresh = false)
             },
             scheduledDepartures = metrobusScheduledTimes,
             isScheduledLoaded = isMetrobusScheduledLoaded,

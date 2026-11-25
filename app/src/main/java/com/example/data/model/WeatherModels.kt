@@ -3,7 +3,10 @@ package com.example.data.model
 import androidx.compose.runtime.Immutable
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 
@@ -85,7 +88,15 @@ data class WeatherData(
 
 object WeatherService {
     private val cache = ConcurrentHashMap<String, Pair<Long, WeatherData>>()
+    private val fetchMutex = Mutex()
     private const val CACHE_EXPIRATION_MS = 900_000L
+
+    @androidx.annotation.VisibleForTesting
+    internal var overrideHttpClientForTesting: OkHttpClient? = null
+
+    fun formatCoordCacheKey(latitude: Double, longitude: Double): String {
+        return String.format(java.util.Locale.US, "%.2f_%.2f", latitude, longitude)
+    }
 
     fun getCachedData(key: String, ignoreExpiry: Boolean = false): WeatherData? {
         val entry = cache[key] ?: return null
@@ -97,6 +108,11 @@ object WeatherService {
 
     fun putCachedData(key: String, data: WeatherData) {
         cache[key] = Pair(System.currentTimeMillis(), data)
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun clearCacheForTesting() {
+        cache.clear()
     }
 
     fun mapWmoToCondition(code: Int): WeatherCondition {
@@ -120,103 +136,117 @@ object WeatherService {
         return getWeatherDataByCoords(39.46975, -0.37639, city)
     }
 
+    suspend fun fetchWeatherDataByCoordsOrNull(
+        latitude: Double,
+        longitude: Double,
+        cityName: String = "Valencia"
+    ): WeatherData? = withContext(Dispatchers.IO) {
+        val cacheKey = formatCoordCacheKey(latitude, longitude)
+        getCachedData(cacheKey)?.let { return@withContext it }
+
+        fetchMutex.withLock {
+            getCachedData(cacheKey)?.let { return@withLock it }
+
+            try {
+                val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current_weather=true&hourly=temperature_2m,relative_humidity_2m,weathercode,precipitation_probability&timezone=Europe%2FMadrid"
+                val request = Request.Builder().url(url).build()
+                val client = overrideHttpClientForTesting ?: com.example.data.network.NetworkModule.okHttpClient
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val bodyStr = response.body?.string() ?: ""
+                        if (bodyStr.isNotBlank()) {
+                            val json = JSONObject(bodyStr)
+                            val current = json.getJSONObject("current_weather")
+                            val currentTemp = current.getDouble("temperature").toInt()
+                            val weatherCode = current.getInt("weathercode")
+                            val windSpeed = current.getDouble("windspeed").toInt()
+                            val condition = mapWmoToCondition(weatherCode)
+
+                            val hourly = json.getJSONObject("hourly")
+                            val times = hourly.getJSONArray("time")
+                            val temps = hourly.getJSONArray("temperature_2m")
+                            val codes = hourly.getIntOrNullArray("weathercode") ?: hourly.getJSONArray("weathercode")
+                            val precips = hourly.optJSONArray("precipitation_probability")
+
+                            val currentTimeFromApi = current.optString("time")
+                            val targetPrefix = if (currentTimeFromApi.length >= 13) {
+                                currentTimeFromApi.take(13)
+                            } else {
+                                val madridCal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
+                                String.format(
+                                    java.util.Locale.US,
+                                    "%04d-%02d-%02dT%02d",
+                                    madridCal.get(java.util.Calendar.YEAR),
+                                    madridCal.get(java.util.Calendar.MONTH) + 1,
+                                    madridCal.get(java.util.Calendar.DAY_OF_MONTH),
+                                    madridCal.get(java.util.Calendar.HOUR_OF_DAY)
+                                )
+                            }
+
+                            var startIndex = -1
+                            for (i in 0 until times.length()) {
+                                val t = times.getString(i)
+                                if (t.startsWith(targetPrefix)) {
+                                    startIndex = i
+                                    break
+                                }
+                            }
+                            if (startIndex == -1) {
+                                for (i in 0 until times.length()) {
+                                    if (times.getString(i) >= targetPrefix) {
+                                        startIndex = i
+                                        break
+                                    }
+                                }
+                            }
+                            if (startIndex == -1) {
+                                startIndex = 0
+                            }
+
+                            val forecastList = mutableListOf<ForecastHour>()
+                            val count = minOf(24, times.length() - startIndex)
+                            var totalPrecip = 0
+                            for (offset in 0 until count) {
+                                val i = startIndex + offset
+                                val timeStr = times.getString(i).substringAfter("T").take(5)
+                                val temp = temps.getDouble(i).toInt()
+                                val code = codes.getInt(i)
+                                forecastList.add(ForecastHour(time = timeStr, tempCelsius = temp.toDouble(), condition = mapWmoToCondition(code)))
+                                if (precips != null && i < precips.length()) {
+                                    totalPrecip += precips.getInt(i)
+                                }
+                            }
+                            val avgPrecip = if (count > 0) totalPrecip / count else 10
+                            val weatherData = WeatherData(
+                                cityName = cityName,
+                                currentTempCelsius = currentTemp,
+                                condition = condition,
+                                humidityPercent = 55,
+                                windKmh = windSpeed,
+                                precipitationChancePercent = avgPrecip,
+                                hourlyForecast = forecastList,
+                                willRainTodayOrTomorrow = avgPrecip > 40,
+                                rainProbabilityToday = avgPrecip,
+                                rainProbabilityTomorrow = (avgPrecip * 0.8).toInt()
+                            )
+                            putCachedData(cacheKey, weatherData)
+                            return@withLock weatherData
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+
+            getCachedData(cacheKey, ignoreExpiry = true)
+        }
+    }
+
+    private fun JSONObject.getIntOrNullArray(key: String) = optJSONArray(key)
+
     suspend fun getWeatherDataByCoords(
         latitude: Double,
         longitude: Double,
         cityName: String = "Valencia"
-    ): WeatherData = withContext(Dispatchers.IO) {
-        val cacheKey = "${latitude}_${longitude}"
-        getCachedData(cacheKey)?.let { return@withContext it }
-
-        try {
-            val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current_weather=true&hourly=temperature_2m,relative_humidity_2m,weathercode,precipitation_probability&timezone=Europe%2FMadrid"
-            val request = Request.Builder().url(url).build()
-            val response = com.example.data.network.NetworkModule.okHttpClient.newCall(request).execute()
-            if (response.isSuccessful) {
-                val bodyStr = response.body?.string() ?: ""
-                if (bodyStr.isNotBlank()) {
-                    val json = JSONObject(bodyStr)
-                    val current = json.getJSONObject("current_weather")
-                    val currentTemp = current.getDouble("temperature").toInt()
-                    val weatherCode = current.getInt("weathercode")
-                    val windSpeed = current.getDouble("windspeed").toInt()
-                    val condition = mapWmoToCondition(weatherCode)
-
-                    val hourly = json.getJSONObject("hourly")
-                    val times = hourly.getJSONArray("time")
-                    val temps = hourly.getJSONArray("temperature_2m")
-                    val codes = hourly.getJSONArray("weathercode")
-                    val precips = hourly.optJSONArray("precipitation_probability")
-
-                    val currentTimeFromApi = current.optString("time")
-                    val targetPrefix = if (currentTimeFromApi.length >= 13) {
-                        currentTimeFromApi.take(13)
-                    } else {
-                        val madridCal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Madrid"))
-                        String.format(
-                            java.util.Locale.US,
-                            "%04d-%02d-%02dT%02d",
-                            madridCal.get(java.util.Calendar.YEAR),
-                            madridCal.get(java.util.Calendar.MONTH) + 1,
-                            madridCal.get(java.util.Calendar.DAY_OF_MONTH),
-                            madridCal.get(java.util.Calendar.HOUR_OF_DAY)
-                        )
-                    }
-
-                    var startIndex = -1
-                    for (i in 0 until times.length()) {
-                        val t = times.getString(i)
-                        if (t.startsWith(targetPrefix)) {
-                            startIndex = i
-                            break
-                        }
-                    }
-                    if (startIndex == -1) {
-                        for (i in 0 until times.length()) {
-                            if (times.getString(i) >= targetPrefix) {
-                                startIndex = i
-                                break
-                            }
-                        }
-                    }
-                    if (startIndex == -1) {
-                        startIndex = 0
-                    }
-
-                    val forecastList = mutableListOf<ForecastHour>()
-                    val count = minOf(24, times.length() - startIndex)
-                    var totalPrecip = 0
-                    for (offset in 0 until count) {
-                        val i = startIndex + offset
-                        val timeStr = times.getString(i).substringAfter("T").take(5)
-                        val temp = temps.getDouble(i).toInt()
-                        val code = codes.getInt(i)
-                        forecastList.add(ForecastHour(time = timeStr, tempCelsius = temp.toDouble(), condition = mapWmoToCondition(code)))
-                        if (precips != null && i < precips.length()) {
-                            totalPrecip += precips.getInt(i)
-                        }
-                    }
-                    val avgPrecip = if (count > 0) totalPrecip / count else 10
-                    val weatherData = WeatherData(
-                        cityName = cityName,
-                        currentTempCelsius = currentTemp,
-                        condition = condition,
-                        humidityPercent = 55,
-                        windKmh = windSpeed,
-                        precipitationChancePercent = avgPrecip,
-                        hourlyForecast = forecastList,
-                        willRainTodayOrTomorrow = avgPrecip > 40,
-                        rainProbabilityToday = avgPrecip,
-                        rainProbabilityTomorrow = (avgPrecip * 0.8).toInt()
-                    )
-                    putCachedData(cacheKey, weatherData)
-                    return@withContext weatherData
-                }
-            }
-        } catch (_: Exception) { }
-
-        getCachedData(cacheKey, ignoreExpiry = true) ?: WeatherData(cityName = cityName)
-    }
+    ): WeatherData = fetchWeatherDataByCoordsOrNull(latitude, longitude, cityName) ?: WeatherData(cityName = cityName)
 
     suspend fun getCurrentWeather(): WeatherData {
         return getWeatherDataByCoords(39.46975, -0.37639, "Valencia")

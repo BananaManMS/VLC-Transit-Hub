@@ -32,7 +32,8 @@ private object GoogleMapPolylineConversionCache {
     val emtColor: Color get() = COLOR_EMT_RED
     val mbColor: Color get() = COLOR_MB_ORANGE
 
-    val sharedHttpClient: okhttp3.OkHttpClient by lazy { okhttp3.OkHttpClient() }
+    val sharedHttpClient: okhttp3.OkHttpClient
+        get() = com.example.data.network.NetworkModule.okHttpClient
 
     @Volatile
     private var cachedMetroSetsRef: MetroMapOverlayLoader.PolylineSets? = null

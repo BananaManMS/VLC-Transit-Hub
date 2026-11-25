@@ -18,7 +18,8 @@ import java.util.Locale
 
 class RenfeAlertsRepository(
     private val context: Context,
-    private val database: AppDatabase = AppDatabase.getDatabase(context)
+    private val database: AppDatabase = AppDatabase.getDatabase(context),
+    private val httpClient: okhttp3.OkHttpClient = NetworkModule.okHttpClient
 ) {
     val activeAlerts = _activeAlerts.asStateFlow()
     val isLoading = _isLoading.asStateFlow()
@@ -26,15 +27,19 @@ class RenfeAlertsRepository(
 
     suspend fun fetchActiveAlerts(force: Boolean = false): List<CercaniasAlert> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        if (!force && lastFetchTimestamp > 0L && (now - lastFetchTimestamp < CACHE_DURATION_MS)) {
+        if (!force && hasSuccessfulFetch && lastFetchTimestamp > 0L && (now - lastFetchTimestamp < CACHE_DURATION_MS)) {
             _activeAlerts.value = cachedAlerts
+            _isLoading.value = false
+            _hasError.value = false
             return@withContext cachedAlerts
         }
 
         fetchMutex.withLock {
             val lockNow = System.currentTimeMillis()
-            if (!force && lastFetchTimestamp > 0L && (lockNow - lastFetchTimestamp < CACHE_DURATION_MS)) {
+            if (!force && hasSuccessfulFetch && lastFetchTimestamp > 0L && (lockNow - lastFetchTimestamp < CACHE_DURATION_MS)) {
                 _activeAlerts.value = cachedAlerts
+                _isLoading.value = false
+                _hasError.value = false
                 return@withLock cachedAlerts
             }
 
@@ -55,7 +60,7 @@ class RenfeAlertsRepository(
                 }
 
                 var isNotModified = false
-                val responseBody = NetworkModule.okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+                val responseBody = httpClient.newCall(requestBuilder.build()).execute().use { response ->
                     when {
                         response.code == 304 -> {
                             isNotModified = true
@@ -69,7 +74,7 @@ class RenfeAlertsRepository(
                     }
                 }
 
-                if (isNotModified && cachedAlerts.isNotEmpty()) {
+                if (isNotModified && hasSuccessfulFetch) {
                     lastFetchTimestamp = System.currentTimeMillis()
                     _activeAlerts.value = cachedAlerts
                     _hasError.value = false
@@ -81,7 +86,7 @@ class RenfeAlertsRepository(
                     val headerObj = jsonObject.optJSONObject("header")
                     val headerTimestamp = headerObj?.optLong("timestamp", 0L) ?: 0L
 
-                    if (headerTimestamp > 0L && headerTimestamp == cachedAlertsHeaderTimestamp && cachedAlerts.isNotEmpty()) {
+                    if (headerTimestamp > 0L && headerTimestamp == cachedAlertsHeaderTimestamp && hasSuccessfulFetch) {
                         lastFetchTimestamp = System.currentTimeMillis()
                         _activeAlerts.value = cachedAlerts
                         _hasError.value = false
@@ -228,6 +233,7 @@ class RenfeAlertsRepository(
                     val sortedList = list.distinctBy { it.id }.sortedByDescending { it.timestamp }
                     cachedAlerts = sortedList
                     cachedAlertsHeaderTimestamp = headerTimestamp
+                    hasSuccessfulFetch = true
                     lastFetchTimestamp = System.currentTimeMillis()
                     _activeAlerts.value = sortedList
                     _hasError.value = false
@@ -328,12 +334,15 @@ class RenfeAlertsRepository(
     }
 
     companion object {
-        private const val CACHE_DURATION_MS = 180_000L // 3 minutes cache
+        internal const val CACHE_DURATION_MS = 15 * 60 * 1000L // 15 minutes cache (+10 min)
         private val fetchMutex = Mutex()
         private val VALENCIA_VALID_LINES = listOf("C1", "C2", "C3", "C4", "C5", "C6")
 
         @Volatile
         private var lastFetchTimestamp: Long = 0L
+
+        @Volatile
+        private var hasSuccessfulFetch: Boolean = false
 
         @Volatile
         private var cachedAlerts: List<CercaniasAlert> = emptyList()
@@ -350,7 +359,19 @@ class RenfeAlertsRepository(
 
         fun hasValidCache(): Boolean {
             val now = System.currentTimeMillis()
-            return lastFetchTimestamp > 0L && (now - lastFetchTimestamp < CACHE_DURATION_MS)
+            return hasSuccessfulFetch && lastFetchTimestamp > 0L && (now - lastFetchTimestamp < CACHE_DURATION_MS)
+        }
+
+        @androidx.annotation.VisibleForTesting
+        fun clearCacheForTesting() {
+            lastFetchTimestamp = 0L
+            hasSuccessfulFetch = false
+            cachedAlerts = emptyList()
+            cachedAlertsHeaderTimestamp = 0L
+            cachedAlertsEtag = ""
+            _activeAlerts.value = emptyList()
+            _isLoading.value = false
+            _hasError.value = false
         }
 
         fun getCachedAlerts(): List<CercaniasAlert> = cachedAlerts

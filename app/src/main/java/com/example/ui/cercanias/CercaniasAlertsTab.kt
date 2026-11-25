@@ -169,15 +169,19 @@ fun CercaniasAlertsTab(
     }
 
     val pullToRefreshState = rememberPullToRefreshState()
+    val (isPullRefreshing, triggerAlertsRefresh) = com.example.ui.components.rememberPullRefreshFeedback(
+        isLoading = isCercaniasAlertsLoading,
+        onRefresh = onRetry
+    )
 
     PullToRefreshBox(
-        isRefreshing = isCercaniasAlertsLoading,
-        onRefresh = onRetry,
+        isRefreshing = isPullRefreshing,
+        onRefresh = triggerAlertsRefresh,
         state = pullToRefreshState,
         indicator = {
             TransitPullRefreshIndicator(
                 state = pullToRefreshState,
-                isRefreshing = isCercaniasAlertsLoading,
+                isRefreshing = isPullRefreshing,
                 appLanguage = appLanguage,
                 refreshingText = if (appLanguage == AppLanguage.CA) "Actualitzant avisos..." else "Actualizando avisos..."
             )

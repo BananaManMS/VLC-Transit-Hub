@@ -145,9 +145,11 @@ class MapDataLoader(
         if (valenbisiPeriodicJob?.isActive == true) return
         valenbisiPeriodicJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
-                delay(600_000L) // 10 minutes interval matching Valenbisi API update cycle
+                val remainingMs = ValenbisiRepository.getCacheRemainingMs()
+                val sleepMs = if (remainingMs > 0L) remainingMs + 500L else (10 * 60 * 1000L)
+                delay(sleepMs)
                 if (isActive) {
-                    refreshValenbisiStations()
+                    refreshValenbisiStations(force = false)
                 }
             }
         }
@@ -161,7 +163,7 @@ class MapDataLoader(
     fun refreshValenbisiStations(force: Boolean = false) {
         scope.launch(Dispatchers.IO) {
             val cached = ValenbisiRepository.getCachedStations()
-            if (!force && cached.isNotEmpty()) {
+            if (!force && ValenbisiRepository.hasValidCache() && cached.isNotEmpty()) {
                 if (valenbisiStations.value.isEmpty()) {
                     valenbisiStations.value = cached
                 }

@@ -180,7 +180,7 @@ fun ProximosTrenesScreen(
     // If all tracked departures have expired naturally over time, trigger auto-refresh for new incoming trains
     LaunchedEffect(departures, visibleDepartures.isEmpty()) {
         if (departures.isNotEmpty() && visibleDepartures.isEmpty()) {
-            metroViewModel.fetchRealTimeDepartures(selectedStationId, isAutoRefresh = true, forceRefresh = true)
+            metroViewModel.fetchRealTimeDepartures(selectedStationId, isAutoRefresh = true, forceRefresh = false)
         }
     }
 
@@ -479,14 +479,18 @@ fun ProximosTrenesScreen(
 
             val pullToRefreshState = rememberPullToRefreshState()
             val isInitialDeparturesLoad = visibleDepartures.isEmpty() || lineDepartureGroups.isEmpty()
+            val (isPullRefreshing, triggerDeparturesRefresh) = com.example.ui.components.rememberPullRefreshFeedback(
+                isLoading = isLoading,
+                onRefresh = { metroViewModel.fetchRealTimeDepartures(selectedStationId, forceRefresh = false) }
+            )
             PullToRefreshBox(
-                isRefreshing = isLoading,
-                onRefresh = { metroViewModel.fetchRealTimeDepartures(selectedStationId, forceRefresh = true) },
+                isRefreshing = isPullRefreshing,
+                onRefresh = triggerDeparturesRefresh,
                 state = pullToRefreshState,
                 indicator = {
                     TransitPullRefreshIndicator(
                         state = pullToRefreshState,
-                        isRefreshing = isLoading,
+                        isRefreshing = isPullRefreshing,
                         stationName = stationDisplayName,
                         operatorName = "Metrovalencia",
                         appLanguage = appLanguage,
@@ -585,7 +589,7 @@ fun ProximosTrenesScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Button(
-                                        onClick = { metroViewModel.fetchRealTimeDepartures(selectedStationId, forceRefresh = true) },
+                                        onClick = { metroViewModel.fetchRealTimeDepartures(selectedStationId, forceRefresh = false) },
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                         shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier
@@ -649,7 +653,7 @@ fun ProximosTrenesScreen(
                                     stationIncidents = stationIncidents,
                                     selectedStationId = selectedStationId,
                                     selectedStation = selectedStation,
-                                    onRetry = { metroViewModel.fetchRealTimeDepartures(selectedStationId, forceRefresh = true) },
+                                    onRetry = { metroViewModel.fetchRealTimeDepartures(selectedStationId, forceRefresh = false) },
                                     onShowScheduled = { stId, stName ->
                                         metroScheduleViewModel.loadInlineTheoreticalDepartures(stId, stName)
                                     }

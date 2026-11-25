@@ -30,7 +30,8 @@ fun CercaniasScreen(
     modifier: Modifier = Modifier,
     onBackClick: (() -> Unit)? = null,
     onBackGesture: (() -> Unit)? = null,
-    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
+    activeTripBottomPadding: androidx.compose.ui.unit.Dp = 0.dp,
+    isScreenVisible: Boolean = true
 ) {
     val backHandlerAction = onBackClick ?: onBackGesture
     if (backHandlerAction != null) {
@@ -86,19 +87,33 @@ fun CercaniasScreen(
         .collectAsState(initial = com.example.util.isNetworkAvailable(context))
 
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, viewModel) {
+    val isSalidasTab = pagerState.currentPage == 0
+    DisposableEffect(lifecycleOwner, viewModel, isSalidasTab, isScreenVisible) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) {
+            if (event == Lifecycle.Event.ON_RESUME && isScreenVisible) {
                 viewModel.startAlertsPolling()
-                if (departures.isEmpty()) {
-                    viewModel.fetchCercaniasDepartures()
+                if (isSalidasTab) {
+                    viewModel.resumeDeparturesPollingIfNeeded()
+                } else {
+                    viewModel.stopCercaniasPolling()
                 }
-            } else if (event == Lifecycle.Event.ON_STOP) {
+            } else if (event == Lifecycle.Event.ON_PAUSE) {
                 viewModel.stopCercaniasPolling()
                 viewModel.stopAlertsPolling()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
+        if (isScreenVisible && lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+            viewModel.startAlertsPolling()
+            if (isSalidasTab) {
+                viewModel.resumeDeparturesPollingIfNeeded()
+            } else {
+                viewModel.stopCercaniasPolling()
+            }
+        } else {
+            viewModel.stopCercaniasPolling()
+            viewModel.stopAlertsPolling()
+        }
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             viewModel.stopCercaniasPolling()
@@ -162,7 +177,7 @@ fun CercaniasScreen(
                             appLanguage = appLanguage,
                             activeTripBottomPadding = activeTripBottomPadding,
                             hasCercaniasAlertsError = hasCercaniasAlertsError,
-                            onRetry = { viewModel.fetchCercaniasRealTimeAlerts(force = true) },
+                            onRetry = { viewModel.fetchCercaniasRealTimeAlerts(force = false) },
                             onNavigateToStation = { stationId ->
                                 viewModel.selectCercaniasStation(stationId)
                                 scope.launch {

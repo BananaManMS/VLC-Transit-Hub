@@ -396,14 +396,18 @@ fun CercaniasDeparturesTab(
 
         // Pull to refresh + List of Departures
         val pullToRefreshState = rememberPullToRefreshState()
+        val (isPullRefreshing, triggerCercaniasRefresh) = com.example.ui.components.rememberPullRefreshFeedback(
+            isLoading = isLoading,
+            onRefresh = { viewModel.refreshCercaniasAll() }
+        )
         PullToRefreshBox(
-            isRefreshing = isLoading,
-            onRefresh = { viewModel.refreshCercaniasAll() },
+            isRefreshing = isPullRefreshing,
+            onRefresh = triggerCercaniasRefresh,
             state = pullToRefreshState,
             indicator = {
                 TransitPullRefreshIndicator(
                     state = pullToRefreshState,
-                    isRefreshing = isLoading,
+                    isRefreshing = isPullRefreshing,
                     stationName = stationDisplayName,
                     operatorName = "Renfe Cercanías",
                     appLanguage = appLanguage,

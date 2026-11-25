@@ -19,6 +19,7 @@ fun DashboardCercaniasTab(
     onBackClick: (() -> Unit)?,
     onBackGesture: (() -> Unit)?,
     onOpenMap: (() -> Unit)? = null,
+    isScreenVisible: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     CercaniasScreen(
@@ -30,6 +31,7 @@ fun DashboardCercaniasTab(
             .statusBarsPadding()
             .padding(start = 16.dp, end = 16.dp, top = 8.dp),
         activeTripBottomPadding = activeTripBottomPadding,
+        isScreenVisible = isScreenVisible,
         onBackClick = onBackClick,
         onBackGesture = onBackGesture
     )

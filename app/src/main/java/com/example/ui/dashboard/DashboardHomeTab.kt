@@ -315,14 +315,19 @@ fun DashboardHomeTab(
     val defaultWorkTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_work_title)
     val defaultPinnedTitle = androidx.compose.ui.res.stringResource(com.example.R.string.commute_pinned_title)
 
+    val (isPullRefreshing, triggerHomeRefresh) = com.example.ui.components.rememberPullRefreshFeedback(
+        isLoading = isRefreshing,
+        onRefresh = onRefresh
+    )
+
     PullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = onRefresh,
+        isRefreshing = isPullRefreshing,
+        onRefresh = triggerHomeRefresh,
         state = pullToRefreshState,
         indicator = {
             TransitPullRefreshIndicator(
                 state = pullToRefreshState,
-                isRefreshing = isRefreshing,
+                isRefreshing = isPullRefreshing,
                 appLanguage = appLanguage,
                 refreshingText = if (appLanguage == AppLanguage.CA) "Actualitzant inici..." else "Actualizando inicio...",
                 modifier = Modifier.statusBarsPadding()

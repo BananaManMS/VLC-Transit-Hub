@@ -28,8 +28,8 @@ class MetrobusScheduledRepository(private val context: Context) {
 
     companion object {
         private const val TAG = "MetrobusScheduledRepo"
-        private val API_SECRET = BuildConfig.METROVALENCIA_API_SECRET
-        private const val METROBUS_API_BASE = "https://metrovalencia-cloudflare-worker-api-tester-224385556854.europe-west2.run.app/v1/metrobus"
+        private val API_SECRET = BuildConfig.METROVALENCIA_API_SECRET.trim()
+        private const val METROBUS_API_BASE = "${com.example.data.network.NetworkModule.VIATGEM_PROXY_BASE_URL}/v1/metrobus"
         private const val SCHEDULE_CACHE_TTL_MS = 30 * 60 * 1000L
 
         private val scheduleCache = ConcurrentHashMap<String, Pair<Long, List<CachedScheduleEntry>>>()
@@ -103,7 +103,7 @@ class MetrobusScheduledRepository(private val context: Context) {
                 val url = "$METROBUS_API_BASE/paradas/$stopId/horario"
                 val request = Request.Builder()
                     .url(url)
-                    .addHeader("X-App-Secret", API_SECRET)
+                    .header("X-App-Secret", API_SECRET)
                     .build()
                 client.newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
